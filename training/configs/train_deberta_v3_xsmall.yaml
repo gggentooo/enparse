@@ -1,0 +1,40 @@
+# =============================================================================
+# training/configs/train_deberta_v3_xsmall.yaml — hyperparameters for
+# microsoft/deberta-v3-xsmall (MIT, ~70M params, ~70 MB int8)
+# =============================================================================
+#
+# Description:
+#   Per-candidate training config read by scripts/train.py. Same key set as
+#   every other train_<model>.yaml so candidates are compared on equal terms.
+#
+# Phases: 0 (Unsloth check), 6 (selection run), 7 (full training and tuning).
+#
+# Tasks:
+#   1. Phase 0: set `framework` to unsloth or hf_trainer per check_env.py result.
+#   2. Phase 6: short run — 3 epochs, default hyperparameters, shared seed.
+#   3. Phase 7: LR sweep, then final config run with 3 seeds.
+#   4. Note: DeBERTa-v3 uses a SentencePiece tokenizer; confirm Transformers.js
+#      and Optimum export support during Phase 6 quick export.
+#
+# Dependencies:
+#   Read by: scripts/train.py, scripts/check_env.py, scripts/calibrate.py,
+#            scripts/export_onnx.py, scripts/evaluate.py.
+#   Uses paths and dataset from: configs/data.yaml.
+#
+# Planned keys (values from plan-training.md → Phase 7; none set yet):
+#   model_name            — microsoft/deberta-v3-xsmall
+#   framework             — unsloth | hf_trainer (Phase 0 outcome)
+#   head                  — combined (UPOS|CHUNK); two_head optional experiment
+#   learning_rate         — 5e-5 (sweep 2e-5, 3e-5, 5e-5, 1e-4)
+#   lr_schedule           — linear, warmup_ratio 0.1
+#   batch_size            — 32 windows (grad accumulation if needed)
+#   epochs                — up to 10 (Phase 6: 3)
+#   early_stopping        — metric dev chunk F1, patience 2
+#   weight_decay          — 0.01
+#   max_seq_length        — 256
+#   precision             — fp32 (bf16 only if stable and faster on MPS)
+#   seeds                 — 3 seeds for the final configuration
+#   output_subdir         — checkpoint subfolder under data/checkpoints/
+#
+# Status: not populated (header only).
+# =============================================================================

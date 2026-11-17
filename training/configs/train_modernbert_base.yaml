@@ -1,0 +1,40 @@
+# =============================================================================
+# training/configs/train_modernbert_base.yaml — hyperparameters for
+# answerdotai/ModernBERT-base (Apache 2.0, ~150M params, ~150 MB int8;
+# accuracy upper bound)
+# =============================================================================
+#
+# Description:
+#   Per-candidate training config read by scripts/train.py. Same key set as
+#   every other train_<model>.yaml so candidates are compared on equal terms.
+#   Over the proposed 80 MB size cap unless the cap is raised.
+#
+# Phases: 0 (Unsloth check), 6 (selection run), 7 (only if selected).
+#
+# Tasks:
+#   1. Phase 0: set `framework` to unsloth or hf_trainer per check_env.py result.
+#   2. Phase 6: short run — 3 epochs, default hyperparameters, shared seed.
+#   3. Confirm Transformers.js and Optimum export support during Phase 6.
+#
+# Dependencies:
+#   Read by: scripts/train.py, scripts/check_env.py, scripts/calibrate.py,
+#            scripts/export_onnx.py, scripts/evaluate.py.
+#   Uses paths and dataset from: configs/data.yaml.
+#
+# Planned keys (values from plan-training.md → Phase 7; none set yet):
+#   model_name            — answerdotai/ModernBERT-base
+#   framework             — unsloth | hf_trainer (Phase 0 outcome)
+#   head                  — combined (UPOS|CHUNK)
+#   learning_rate         — 5e-5
+#   lr_schedule           — linear, warmup_ratio 0.1
+#   batch_size            — 32 windows (grad accumulation if needed)
+#   epochs                — 3 (Phase 6)
+#   early_stopping        — metric dev chunk F1, patience 2
+#   weight_decay          — 0.01
+#   max_seq_length        — 256
+#   precision             — fp32
+#   seeds                 — shared Phase 6 seed
+#   output_subdir         — checkpoint subfolder under data/checkpoints/
+#
+# Status: not populated (header only).
+# =============================================================================

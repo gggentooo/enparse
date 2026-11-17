@@ -1,0 +1,8 @@
+/*
+ * src/components/Shared/Button.module.css — styles for Button.tsx
+ *
+ * Description: button variants and states.
+ * Tasks: 1. Variants. 2. Hover, focus-visible, disabled, loading.
+ * Dependencies: src/css/tokens.css. Used by: Button.tsx.
+ * Status: header only; not implemented.
+ */

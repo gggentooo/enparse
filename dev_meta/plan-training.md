@@ -46,6 +46,7 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Training data license:** CC BY-SA 4.0 obligations for derived data and trained weights (Phase 1).
 - **Download size cap:** proposed ≤ 80 MB for the shipped model file; affects base-model choice (Phase 6).
 - **Extra data:** whether to add GUM (Phase 1) and learner-style noise augmentation (Phase 4).
+- **Browser benchmark page location:** Phase 10 needs a minimal Vite page; it is not in the layout (proposed: `training/js/bench-page/`).
 
 ---
 
@@ -63,7 +64,7 @@ This guide applies to all contributors (human and AI) editing this file.
 | macOS (current release) + Xcode Command Line Tools | Compilers and Metal support for PyTorch MPS |
 | Python 3.12 (managed with `uv`) | Training environment |
 | Node.js 20+ | Tokenization alignment, JS baselines, Transformers.js benchmarks |
-| git + git-lfs | Fetching UD treebanks and model weights |
+| git + git-lfs | Fetching UD treebanks and model weights; storing shipped model files in `public/models/` |
 | Chrome, Safari, Firefox (current) | Browser benchmarks (WebGPU and WASM) |
 
 ### Python libraries (`training/requirements.txt`, versions pinned at setup)
@@ -83,6 +84,8 @@ This guide applies to all contributors (human and AI) editing this file.
 | `numpy`, `pandas` | Data handling and reports |
 | `tensorboard` | Local training logs (no external tracking service) |
 | `pytest` | Tests for data conversion scripts |
+| `pyyaml` | Reading `configs/*.yaml` |
+| `ruff` | Format and lint (dev only) |
 
 ### Node libraries (`training/js/package.json`)
 
@@ -91,6 +94,8 @@ This guide applies to all contributors (human and AI) editing this file.
 | `wink-nlp`, `wink-eng-lite-web-model` | Runtime tokenizer for alignment; fallback baseline |
 | `compromise` | Comparison baseline |
 | `@huggingface/transformers` (Transformers.js) | ONNX parity and speed tests outside the browser |
+| `tsx` | Runs the app's TypeScript (e.g., `chunkPatterns.ts`) from Node scripts |
+| `js-yaml` | Reading `../configs/*.yaml` |
 
 ### Data
 
@@ -116,12 +121,16 @@ Approximate shipped size at int8 ≈ 1 MB per million parameters.
 
 ```
 training/
+├── README.md (setup and run commands)
+├── .gitignore (data/, weights, caches)
 ├── requirements.txt
 ├── configs/
 │   ├── data.yaml (UD release tag, paths, window size)
-│   └── train_<model>.yaml (hyperparameters per candidate)
-├── data/ (git-ignored: raw UD files, processed datasets)
+│   ├── eval.yaml (calibration, export, parity, benchmark settings) (proposed)
+│   └── train_<model>.yaml (hyperparameters per candidate; one file per model)
+├── data/ (git-ignored: raw UD files, processed datasets, checkpoints, ONNX exports)
 ├── scripts/
+│   ├── check_env.py (Phase 0 MPS and Unsloth check) (proposed)
 │   ├── fetch_data.sh
 │   ├── derive_chunks.py (UD trees → chunk tags)
 │   ├── prepare_data.py (labels, windows, splits)
@@ -134,8 +143,8 @@ training/
 │   ├── align_tokens.mjs (wink tokenizer vs UD words)
 │   ├── evaluate_baselines.mjs (wink + chunkPatterns, compromise)
 │   └── benchmark.mjs (Transformers.js speed and parity)
-├── tests/ (pytest for derive_chunks and prepare_data)
-├── reports/ (metrics, error samples, benchmark results)
+├── tests/ (pytest for derive_chunks and prepare_data; conftest.py)
+├── reports/ (metrics, error samples, benchmark results; README.md index)
 └── MODEL_CARD.md
 ```
 
@@ -145,18 +154,58 @@ training/
 
 Each phase lists tasks, deliverables, and an exit criterion. Do not start a phase until the previous exit criterion is met.
 
+### Phase pre-0 — Pre-flight check
+
+Pre-flight review run on 2026-11-17 against the training machine and the repository. Everything below must be done before Phase 0 starts, except items in *Gates for later phases*, which must be done before the phase named.
+
+**Machine check (2026-11-17)**
+
+| Item | Required | Found | Status |
+|------|----------|-------|--------|
+| Hardware | M5 Pro, 48 GB | Apple M5 Pro, 48 GB, macOS 27.0.1 | Ready |
+| Free disk | ~20 GB | ~595 GB | Ready |
+| Xcode CLT | Installed | `/Library/Developer/CommandLineTools` | Ready |
+| `uv` | Installed | 0.13.5 (cache dir `~/.cache/uv` not yet created) | Ready |
+| Python 3.12 | Installed via `uv` | Not installed (pyenv default is 3.15.2) | **To do** |
+| Node.js | 20+ | 26.13.1, npm 11.20.0 | Ready |
+| git-lfs | Installed and active | Not installed | **To do** |
+| Repository scaffold | `training/` layout | Created; all files are headers only | Ready |
+
+**Tasks**
+1. Install git-lfs (e.g., `brew install git-lfs`) and run `git lfs install` once. Confirm `git lfs track` lists the patterns in `.gitattributes`.
+2. Install Python 3.12 with `uv python install 3.12`. Pin it for `training/` with a `.python-version` file so it does not use the global 3.15.
+3. Add Python tool config for `ruff` and `pytest` (proposed: `training/pyproject.toml` with tool settings only; dependencies stay in `requirements.txt`).
+4. Confirm Unsloth support (open risk): check Unsloth's current docs for Apple Silicon (MPS) and encoder token-classification support. If neither is supported, plan for `Trainer` and keep Unsloth only as a Phase 0 check.
+5. Owner: confirm the gate schedule below.
+
+**Gates for later phases**
+
+| Needed before | Item | Owner of decision | Tracked in |
+|---------------|------|-------------------|------------|
+| Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | `plan.md` → *Training data licensing* |
+| Phase 3 | `src/modules/parser/winkBackend.ts` tokenization implemented (alignment must match runtime); root `package.json` with pinned `wink-nlp` and `@huggingface/transformers` versions to mirror in `training/js/` | Dev | `architecture.md` |
+| Phase 5 | `src/modules/parser/chunkPatterns.ts` implemented (run via `tsx`) | Owner (patterns), dev | `plan.md` → *Fallback chunk patterns* |
+| Phase 6 | Model size cap; deployment host's per-file limit and Git LFS support | Owner | `plan.md` → *Model size cap*, *Deployment target* |
+| Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds* |
+| Phase 10 | Location of the minimal Vite browser benchmark page | Owner | *Open questions* (this document) |
+| Phase 10 | Vite tooling set up in the app | Dev | `plan.md` → *Tooling* |
+| Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test | Owner, dev | `plan.md` → *Attribution display* |
+
+**Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
+**Exit criterion:** every row in *Machine check* is Ready, tasks 1–4 are done, and the owner has confirmed the gate schedule.
+
 ### Phase 0 — Environment setup and tooling check
 
 **Tasks**
-1. Install Xcode CLT, `uv`, Python 3.12, Node.js 20+, git-lfs.
-2. Create the `training/` layout and a `uv` virtual environment; install and pin `requirements.txt`.
-3. Confirm PyTorch sees MPS: `torch.backends.mps.is_available()` returns `True`.
+1. Confirm Phase pre-0 is complete.
+2. Create a `uv` virtual environment with Python 3.12 in `training/.venv`; install and pin `requirements.txt`. Install and pin `training/js/package.json` with npm (lockfile committed).
+3. Confirm PyTorch sees MPS: `torch.backends.mps.is_available()` returns `True` (`scripts/check_env.py`).
 4. **Unsloth check:** load `distilbert-base-cased` as a token-classification model through Unsloth on MPS and run 50 training steps on dummy labels.
    - Pass → use Unsloth for all training.
    - Fail (unsupported architecture, task, or device) → use Hugging Face `Trainer` directly. Note the outcome in this document.
-5. Check Unsloth with `deberta-v3-xsmall` and `ModernBERT-base` the same way.
+5. Check Unsloth with `deberta-v3-xsmall`, `bert-base-cased`, and `ModernBERT-base` the same way.
 
-**Deliverables:** pinned `requirements.txt`; a note in this document on which framework is used per model.
+**Deliverables:** pinned `requirements.txt` and `training/js` lockfile; a note in this document on which framework is used per model.
 **Exit criterion:** a dummy training run completes on MPS for every candidate model.
 
 ### Phase 1 — Data acquisition and licensing
@@ -216,7 +265,7 @@ At runtime, wink-nlp splits text into words before the model runs. Training word
 
 **Tasks**
 1. `prepare_data.py`: combine UPOS and chunk tags into `UPOS|CHUNK` labels; build the label map; drop label combinations seen < 5 times in train and map them to the nearest valid label.
-2. Build windows: consecutive sentences from the same document (`# newdoc id`) packed up to 256 subword tokens, with sentence boundaries kept. Long single sentences are split at 256 with 32-token overlap.
+2. Build windows: consecutive sentences from the same document (`# newdoc id`) packed up to 256 subword tokens (same window size as the runtime), with sentence boundaries kept. Long single sentences are split at 256 with 32-token overlap.
 3. Subword alignment: label the first subword of each word; set the rest to `-100`.
 4. Keep the official EWT train/dev/test splits. Test is used only in Phase 7 final evaluation.
 5. Optional augmentation (train split only, ≤ 15% of windows): lowercase sentence starts, drop final punctuation, common learner typos. Evaluate the effect in Phase 7; keep only if dev F1 does not drop.
@@ -314,7 +363,7 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 ### Phase 11 — Packaging and release
 
 **Tasks**
-1. Copy the exported files to `public/models/enparse-tagger/` with `labels.json` (label map, temperature, margin, model version, training data version).
+1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json` (label map, temperature, margin, model version, training data version).
 2. Write `MODEL_CARD.md`: base model, data and licenses, attribution text, metrics, known weaknesses, intended use.
 3. Tag the release (e.g., `model-v1.0.0`); record config, seed, data version, and checksums for reproducibility.
 4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences.
@@ -339,3 +388,23 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Added: Prerequisites (hardware, system software, Python and Node libraries, data, base model candidates).
 - Added: `training/` directory layout.
 - Added: Phases 0–12 with tasks, deliverables, and exit criteria.
+
+## 2026-11-17T02:57:39Z — Claude Opus 5.5, Scaffolded training/ directory
+
+- Added: `training/` scaffold matching the layout; every file has a header (description, phase, tasks, dependencies). No code yet.
+- Added (proposed): `configs/eval.yaml` (post-training thresholds out of scripts), `scripts/check_env.py` (Phase 0 check), `tests/conftest.py`.
+- Added: `training/README.md`, `training/.gitignore`, `reports/README.md`, `MODEL_CARD.md` skeleton; one `train_<model>.yaml` per candidate.
+- Modified: *Training directory layout* lists the new files.
+
+## 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size; added dependencies
+
+- Modified: Phase 4 states that training and runtime windows are both 256 subword tokens.
+- Added: `pyyaml` and `ruff` to Python libraries; `tsx` and `js-yaml` to Node libraries (`tsx` runs TypeScript files in Node).
+
+## 2026-11-17T04:00:45Z — Claude Opus 5.5, Pre-flight check (Phase pre-0)
+
+- Added: *Phase pre-0 — Pre-flight check* with machine check results, tasks (git-lfs, Python 3.12, tool config, Unsloth support check), and gates for later phases.
+- Added: open question on the Phase 10 browser benchmark page location.
+- Modified: Phase 0 — tool installation moved to Phase pre-0; task 2 now also pins `training/js`; task 5 now includes `bert-base-cased` (exit criterion covers every candidate).
+- Modified: git-lfs purpose and Phase 11 task 1 note that shipped ONNX files are tracked with Git LFS.
+- Modified: `pyyaml`, `ruff`, `js-yaml` approved by owner; proposed marks removed.

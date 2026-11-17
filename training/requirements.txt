@@ -1,0 +1,46 @@
+# =============================================================================
+# training/requirements.txt — Python dependencies for the Enparse tagger pipeline
+# =============================================================================
+#
+# Description:
+#   Pinned Python dependencies for all scripts in training/scripts/ and tests
+#   in training/tests/. Installed into a uv-managed Python 3.12 virtual
+#   environment. Not shipped with the app.
+#
+# Phase: 0 — Environment setup and tooling check (plan-training.md).
+#
+# Tasks:
+#   1. Create the venv: Python 3.12 via uv.
+#   2. Install the libraries below and pin exact versions (==) in this file.
+#   3. Confirm torch reports MPS available (scripts/check_env.py).
+#   4. Record which framework (Unsloth or HF Trainer) is used per model in
+#      plan-training.md → Phase 0.
+#   5. Note major-version upgrades in the plan-training.md changelog.
+#
+# Dependencies:
+#   System: macOS + Xcode CLT, uv, Python 3.12 (see plan-training.md →
+#           Prerequisites → System software).
+#   License rule: permissive licenses only (MIT, Apache 2.0, BSD, ISC);
+#           see agents.md → Dependency policy.
+#
+# Planned packages (unpinned until Phase 0; uncomment and pin at setup):
+#   torch                 — training backend (MPS build)
+#   unsloth               — training acceleration (only if Phase 0 check passes)
+#   transformers          — models, tokenizers, Trainer
+#   datasets              — dataset building and caching
+#   accelerate            — device handling for Trainer
+#   conllu                — parsing UD .conllu files
+#   seqeval               — CoNLL-style chunk precision/recall/F1
+#   evaluate              — metric helpers
+#   optimum[onnxruntime]  — ONNX export and quantization
+#   onnx                  — ONNX model validation
+#   onnxruntime           — ONNX inference for parity checks
+#   numpy                 — numeric arrays
+#   pandas                — reports and tables
+#   pyyaml                — reading configs/*.yaml
+#   tensorboard           — local training logs (no external tracking service)
+#   pytest                — tests for data conversion scripts
+#   ruff                  — format and lint (dev only)
+#
+# Status: not populated (header only).
+# =============================================================================

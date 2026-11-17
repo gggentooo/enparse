@@ -1,0 +1,8 @@
+/*
+ * src/components/Pages/VocabPage.module.css — styles for VocabPage.tsx
+ *
+ * Description: list sidebar, item table, export/import controls.
+ * Tasks: 1. List and item layout. 2. Action bar.
+ * Dependencies: src/css/tokens.css. Used by: VocabPage.tsx.
+ * Status: header only; not implemented.
+ */

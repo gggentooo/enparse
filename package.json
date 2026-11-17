@@ -1,0 +1,31 @@
+{
+  "//": [
+    "package.json — Enparse web app manifest",
+    "",
+    "Description:",
+    "  npm manifest for the client-side app (src/). Training tools have their own",
+    "  manifest in training/js/package.json.",
+    "",
+    "Tasks:",
+    "  1. Add scripts (agents.md -> Tooling and commands): dev, build, typecheck,",
+    "     lint, test, test:e2e.",
+    "  2. Add dependencies below and pin exact versions in the lockfile.",
+    "  3. Keep wink-nlp and @huggingface/transformers versions identical to",
+    "     training/js/package.json.",
+    "  4. Report bundle-size impact for every new runtime dependency.",
+    "",
+    "Dependencies (planned; versions unpinned):",
+    "  Runtime: react, react-dom (18+), react-router-dom, @huggingface/transformers,",
+    "           wink-nlp, wink-eng-lite-web-model, jszip (optional),",
+    "           csv-stringify + csv-parse (optional).",
+    "  Dev:     typescript, vite, @vitejs/plugin-react, @types/react, @types/react-dom,",
+    "           vitest, @testing-library/react, @playwright/test,",
+    "           eslint, typescript-eslint, eslint-plugin-react-hooks, prettier (proposed).",
+    "  System:  Node.js 20+ (proposed).",
+    "",
+    "Status: header only; not populated."
+  ],
+  "name": "enparse",
+  "private": true,
+  "type": "module"
+}

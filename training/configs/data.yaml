@@ -1,0 +1,52 @@
+# =============================================================================
+# training/configs/data.yaml — data sources, paths, and dataset-building settings
+# =============================================================================
+#
+# Description:
+#   Single source of data settings for every data-handling script. No script
+#   hard-codes paths, versions, or window sizes (agents.md → Training code).
+#
+# Phases: 1 (acquisition), 2 (chunk derivation), 3 (alignment), 4 (dataset).
+#
+# Tasks:
+#   1. Phase 1: record UD English EWT release tag, commit hash, and SHA-256
+#      checksums of each .conllu file after fetch_data.sh runs.
+#   2. Phase 1: record GUM decision and allowed subcorpora (if any).
+#   3. Phase 4: set window and label settings used by prepare_data.py.
+#
+# Dependencies:
+#   Read by: scripts/fetch_data.sh, scripts/derive_chunks.py,
+#            scripts/prepare_data.py, scripts/evaluate.py,
+#            js/align_tokens.mjs, js/evaluate_baselines.mjs.
+#
+# Planned keys (values to be filled per phase; none set yet):
+#   ud_ewt:
+#     repo_url            — UD_English-EWT git URL
+#     release_tag         — pinned UD release tag (Phase 1)
+#     commit              — commit hash of the tag (Phase 1)
+#     checksums           — {train,dev,test}.conllu SHA-256 (Phase 1)
+#   gum:
+#     enabled             — bool; default false until Phase 1 decision
+#     subcorpora          — list of license-compatible subcorpora
+#   paths (all under training/data/, git-ignored) (proposed):
+#     raw                 — data/raw/
+#     chunked             — data/processed/chunked/   (derive_chunks.py output)
+#     aligned             — data/processed/aligned/   (align_tokens.mjs output)
+#     dataset             — data/processed/dataset/   (prepare_data.py output)
+#     labels              — data/processed/labels.json
+#     checkpoints         — data/checkpoints/
+#     runs                — data/runs/                (TensorBoard logs)
+#     onnx                — data/onnx/                (export_onnx.py output)
+#   windows:
+#     max_subword_tokens  — 256 (same as runtime window)
+#     long_sentence_overlap — 32
+#   labels:
+#     min_label_count     — 5 (rarer UPOS|CHUNK combos mapped to nearest valid)
+#   augmentation:
+#     enabled             — bool (Phase 4 task 5; kept only if dev F1 holds)
+#     max_fraction        — 0.15 of train windows
+#     kinds               — lowercase_sentence_start, drop_final_punct, learner_typos
+#   seed                  — global data seed
+#
+# Status: not populated (header only).
+# =============================================================================

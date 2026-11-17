@@ -1,0 +1,20 @@
+/*
+ * src/css/global.css — global styles (reset, typography)
+ *
+ * Description:
+ *   The only global stylesheet (agents.md → Styling). Everything else uses
+ *   CSS Modules.
+ *
+ * Tasks:
+ *   1. Minimal reset (box-sizing, margins, form element inheritance).
+ *   2. Base typography on html/body using tokens from tokens.css.
+ *   3. Visible focus styles for keyboard users (:focus-visible).
+ *   4. prefers-reduced-motion handling.
+ *
+ * Dependencies:
+ *   Uses: src/css/tokens.css (custom properties). Imported by: src/main.tsx.
+ *
+ * Open items (plan.md → Undecided): visual design, accessibility standard.
+ *
+ * Status: header only; not implemented.
+ */

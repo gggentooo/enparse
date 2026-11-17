@@ -1,0 +1,8 @@
+/*
+ * src/components/Shared/Modal.module.css — styles for Modal.tsx
+ *
+ * Description: dialog panel and backdrop.
+ * Tasks: 1. Panel. 2. ::backdrop. 3. Action row.
+ * Dependencies: src/css/tokens.css. Used by: Modal.tsx.
+ * Status: header only; not implemented.
+ */

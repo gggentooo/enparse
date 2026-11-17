@@ -1,0 +1,36 @@
+# =============================================================================
+# training/.gitignore — keeps data, checkpoints, and large artifacts out of git
+# =============================================================================
+#
+# Description:
+#   Enforces agents.md → Training code: never commit raw or processed datasets,
+#   checkpoints, or large ONNX files. Shipped model files live in
+#   public/models/enparse-tagger/, outside training/.
+#
+# Phase: 0 — Environment setup (layout creation).
+#
+# Tasks:
+#   1. Ignore all of data/ (raw UD files, processed datasets, checkpoints,
+#      TensorBoard runs, ONNX exports — see configs/data.yaml for subpaths).
+#   2. Ignore model weight files anywhere under training/.
+#   3. Ignore Python environment and tool caches.
+#
+# Dependencies:
+#   Root .gitignore already ignores node_modules/ and logs.
+#   Paths referenced: configs/data.yaml (data subdirectories).
+# =============================================================================
+
+# Datasets, checkpoints, logs, exports
+data/
+
+# Model weights
+*.onnx
+*.safetensors
+*.bin
+*.pt
+
+# Python environment and caches
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

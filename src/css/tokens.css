@@ -1,0 +1,22 @@
+/*
+ * src/css/tokens.css — design tokens
+ *
+ * Description:
+ *   CSS custom properties on :root for colors, spacing, fonts, radii, and
+ *   breakpoints. Components never hard-code these values (agents.md → Styling).
+ *
+ * Tasks:
+ *   1. Color tokens: surface, text, accent, border, focus, error.
+ *   2. Chunk colors: NP, VP, PP, ADJP, ADVP, O (used by OutputPage).
+ *   3. Spacing scale, font families (Latin + Hangul), font sizes, radii.
+ *   4. Breakpoint values (documented here; media queries cannot use custom properties).
+ *   5. Optional dark theme via prefers-color-scheme.
+ *
+ * Dependencies:
+ *   Imported by: src/main.tsx. Used by: global.css and every *.module.css.
+ *
+ * Open items (plan.md → Undecided): visual design (palette, parse-display style),
+ *   target devices (breakpoints).
+ *
+ * Status: header only; not implemented.
+ */

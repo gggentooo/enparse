@@ -39,10 +39,11 @@ Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp 
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
 - **Training data licensing:** confirm CC BY-SA 4.0 (UD EWT) obligations for derived chunk data and trained weights; decide whether to add GUM.
 - **Chunk derivation rules:** how NP/VP/PP/ADJP/ADVP spans are derived from UD dependency trees.
-- **Model hosting and size cap:** same static host vs separate URL; confirm proposed 80 MB maximum download.
+- **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.) Check the chosen deployment host's per-file size limit and Git LFS support.
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
 - **Fallback chunk patterns:** exact POS patterns in `chunkPatterns.ts`.
+
 
 ### Dictionary
 
@@ -62,6 +63,7 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 
 - **Affix inventory:** source and size of prefix/root/suffix list; definition of "frequently occurring".
 - **Affix content:** whether affixes have Korean glosses and examples, and their data source.
+- **Base validation word list:** `subwordParser` accepts a split only if the base is a known word, but modules cannot import `dictionary/`. Source of the known-word list (dictionary headwords via `subwordService`, or a bundled list in `subword/`) is open.
 
 ### Vocabulary lists
 
@@ -77,6 +79,7 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 - **Grammar labels:** whether chunk/phrase labels and explanations are shown in Korean (e.g., 명사구).
 - **Target devices and browsers:** desktop only or mobile/responsive; minimum browser versions.
 - **Visual design:** branding, color palette, and parse-display style (tree, brackets, color-coded chunks).
+- **Attribution display:** where the app shows required data and model attribution (e.g., UD EWT, CC BY-SA 4.0); no page for it exists in the skeleton. Needed before model release (`plan-training.md` Phase 11).
 - **Accessibility:** required standard (e.g., WCAG 2.1 AA).
 
 ### Project and process
@@ -159,3 +162,20 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 
 - Modified: 'Undecided' → 'Tooling' now points to proposals in `agents.md`.
 - Added: 'Undecided' → 'Module public API' item (proposed `index.ts` per module).
+
+## 2026-11-17T02:57:39Z — Claude Opus 5.5, Training scaffold open questions
+
+- Added: 'Undecided' → 'Parser' items for the baseline harness and training vs runtime window size.
+
+## 2026-11-17T03:31:22Z — Claude Opus 5.5, Resolved window size and baseline harness
+
+- Removed: 'Undecided' → 'Parser' items *Baseline harness* (deferred until `src/` exists; `tsx` chosen to run TypeScript in Node) and *Training vs runtime window* (decided: 256 tokens for both).
+
+## 2026-11-17T03:36:56Z — Claude Opus 5.5, App scaffold open question
+
+- Added: 'Undecided' → 'Subword parsing' → *Base validation word list*.
+
+## 2026-11-17T04:00:45Z — Claude Opus 5.5, Model hosting decided; attribution item
+
+- Modified: 'Undecided' → 'Parser' → *Model hosting and size cap* renamed *Model size cap*; hosting decided (`public/models/` with Git LFS).
+- Added: 'Undecided' → 'UI/UX' → *Attribution display*.

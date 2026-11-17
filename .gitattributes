@@ -1,0 +1,20 @@
+# =============================================================================
+# .gitattributes — Git LFS tracking for shipped model files
+# =============================================================================
+#
+# Description:
+#   Shipped parser model files in public/models/ are stored with Git LFS
+#   (architecture.md → Model training → Artifacts; agents.md → Training code).
+#   Only public/models/ is tracked; training/ exports are git-ignored.
+#
+# Tasks:
+#   1. Every contributor installs git-lfs and runs `git lfs install` once
+#      (plan-training.md → Phase pre-0).
+#   2. Deployment must check out LFS files (not pointer files) before building.
+#
+# Dependencies:
+#   git-lfs. Files produced by training/scripts/export_onnx.py (Phase 11).
+# =============================================================================
+
+public/models/**/*.onnx filter=lfs diff=lfs merge=lfs -text
+public/models/**/*.onnx_data filter=lfs diff=lfs merge=lfs -text

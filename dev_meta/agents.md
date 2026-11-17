@@ -207,9 +207,9 @@ Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
 ### Training code (`training/`)
 
 - Python 3.12 managed with `uv`; dependencies pinned in `requirements.txt`.
-- Format and lint with `ruff` (proposed); type hints on all functions; tests with `pytest`.
+- Format and lint with `ruff`; type hints on all functions; tests with `pytest`.
 - Every script reads settings from `configs/*.yaml`; no hard-coded paths or hyperparameters.
-- Never commit raw or processed datasets, checkpoints, or large ONNX files to `training/` (git-ignored). Shipped model files live in `public/models/`.
+- Never commit raw or processed datasets, checkpoints, or large ONNX files to `training/` (git-ignored). Shipped model files live in `public/models/` and are tracked with Git LFS (`.gitattributes`); never commit them as regular git blobs.
 - Follow the phase order and exit criteria in `plan-training.md`; record outcomes there.
 
 ---
@@ -270,3 +270,8 @@ Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
 - Added: project summary, source-of-truth documents, agent workflow and boundaries, architecture rules summary.
 - Added: coding, module/feature, testing, tooling, dependency, and documentation guides; definition of done.
 - Added (proposed): module public API via `index.ts`; Vitest/RTL/Playwright; npm; ESLint + Prettier; ruff for training code.
+
+## 2026-11-17T04:00:45Z — Claude Opus 5.5, ruff approved; Git LFS rule
+
+- Modified: *Training code* — `ruff` approved by owner (proposed mark removed).
+- Modified: *Training code* — shipped model files in `public/models/` are tracked with Git LFS.

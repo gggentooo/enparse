@@ -1,0 +1,22 @@
+/*
+ * tsconfig.json — TypeScript compiler settings for the app
+ * (not in the original architecture.md skeleton; required by agents.md → TypeScript)
+ *
+ * Description:
+ *   Compiler options for src/ and vite.config.ts. Used by `npm run typecheck`
+ *   (tsc --noEmit) and by editors.
+ *
+ * Tasks:
+ *   1. Set "strict": true (agents.md → TypeScript); no implicit any.
+ *   2. Target modern browsers (ES2022), module "ESNext", moduleResolution "Bundler".
+ *   3. "jsx": "react-jsx"; "isolatedModules": true (Vite requirement).
+ *   4. Include "vite/client" types (CSS Modules, worker imports).
+ *   5. "include": ["src", "vite.config.ts"].
+ *
+ * Dependencies:
+ *   Dev: typescript, vite (client types).
+ *   Used by: tsc, Vite, ESLint (typescript-eslint), Vitest.
+ *
+ * Status: header only; not populated.
+ */
+{}

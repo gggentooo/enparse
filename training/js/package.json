@@ -1,0 +1,30 @@
+{
+  "//": [
+    "training/js/package.json — Node dependencies for training-side JS tools",
+    "",
+    "Description:",
+    "  Private package for tokenization alignment, JS baselines, and Transformers.js",
+    "  parity/speed tests outside the browser. Not shipped with the app.",
+    "",
+    "Phases: 0 (setup), 3 (alignment), 5 (baselines), 9 (parity), 10 (benchmark).",
+    "",
+    "Tasks:",
+    "  1. Phase 0: add dependencies and pin exact versions (lockfile committed, per agents.md).",
+    "  2. Add scripts: align, baselines, benchmark (one per .mjs file).",
+    "  3. Keep wink-nlp and @huggingface/transformers versions identical to the app's",
+    "     root package.json so alignment and parity match runtime behavior.",
+    "",
+    "Dependencies (planned; unpinned until Phase 0):",
+    "  wink-nlp, wink-eng-lite-web-model — runtime tokenizer; fallback baseline (MIT)",
+    "  compromise                        — comparison baseline (MIT)",
+    "  @huggingface/transformers         — ONNX parity and speed tests (Apache 2.0)",
+    "  tsx                               — run the app's TypeScript files in Node (MIT)",
+    "  js-yaml                           — read ../configs/*.yaml (MIT)",
+    "  System: Node.js 20+.",
+    "",
+    "Status: header only; not populated."
+  ],
+  "name": "enparse-training-js",
+  "private": true,
+  "type": "module"
+}

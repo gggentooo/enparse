@@ -1,0 +1,8 @@
+/*
+ * src/components/Layout/Sidebar.module.css — styles for Sidebar.tsx
+ *
+ * Description: navigation list and active link.
+ * Tasks: 1. Nav list. 2. Active and focus states. 3. Collapsed state on narrow screens.
+ * Dependencies: src/css/tokens.css. Used by: Sidebar.tsx.
+ * Status: header only; not implemented.
+ */

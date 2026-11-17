@@ -1,0 +1,19 @@
+/**
+ * src/modules/output/index.ts — public API of the output module (proposed file)
+ *
+ * Description:
+ *   Builds the render-ready annotation model from parse results. Other
+ *   layers import only from this file (agents.md → Module public API).
+ *
+ * Layer: modules/ (output)
+ *
+ * Tasks:
+ *   1. Re-export annotate() from ./annotator.ts.
+ *   2. Re-export public types from ./types.ts.
+ *
+ * Dependencies:
+ *   Internal: ./annotator.ts, ./types.ts.
+ *   Used by: services/parserService.ts.
+ *
+ * Status: header only; not implemented.
+ */

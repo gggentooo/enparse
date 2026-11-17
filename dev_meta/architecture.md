@@ -58,7 +58,15 @@ This guide applies to all contributors (human and AI) editing this file.
 | jszip        | Archive export format (optional)                 |
 | csv-stringify + csv-parse | CSV import/export (optional)        |
 
-**Development only (not shipped):** Python, Hugging Face Transformers, and Optimum for model training and ONNX export (see *Parsing engine*).
+**Development only (not shipped):** Python, Hugging Face Transformers, and Optimum for model training and ONNX export (see *Parsing engine*). Supporting tools:
+
+| Tool | Role |
+|------|------|
+| tsx | Runs the app's TypeScript (e.g., `chunkPatterns.ts`) from Node scripts in `training/js/` (MIT) |
+| js-yaml | Reads `training/configs/*.yaml` from Node scripts (MIT) |
+| pyyaml | Reads `training/configs/*.yaml` from Python scripts (MIT) |
+| ruff | Python format and lint for `training/` (MIT) |
+| Git LFS | Stores shipped model files in `public/models/` (see *Model training* → *Artifacts*) |
 
 No separate state-management library. Shared state lives in services and is exposed through hooks (see *Layer communication*).
 
@@ -113,7 +121,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Criterion        | How it is met                                                                 |
 |------------------|-------------------------------------------------------------------------------|
 | License          | Runtime libraries are Apache 2.0 / MIT. The model is trained in-house on openly licensed data (see *Model training*). |
-| Accuracy         | Neural taggers reach ~97–98% POS accuracy and mid-90s chunk F1 on standard benchmarks, vs ~95% POS for wink-nlp. Actual figures come from `training/evaluate.py`. |
+| Accuracy         | Neural taggers reach ~97–98% POS accuracy and mid-90s chunk F1 on standard benchmarks, vs ~95% POS for wink-nlp. Actual figures come from `training/scripts/evaluate.py`. |
 | Speed / size     | Quantized model ~65–80 MB (proposed cap 80 MB), downloaded once and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Expected to fit the 5 s budget; to be confirmed by benchmark. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
@@ -126,7 +134,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
 - **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` applies the calibration temperature and decodes logits into labels and probabilities.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
-- **Context window:** text is processed in overlapping windows of up to 512 subword tokens, so context extends beyond the current sentence.
+- **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
 
 #### Model training (offline, `training/`)
 
@@ -135,7 +143,7 @@ Full plan: [plan-training.md](plan-training.md).
 - **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
 - **Framework:** Unsloth on Apple Silicon (MPS), with Hugging Face `Trainer` as fallback; Optimum for ONNX export and quantization.
 - **Evaluation:** UPOS accuracy, chunk F1, calibration, and speed on the EWT test split, compared with the wink-nlp fallback and compromise.
-- **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`. `training/` is not shipped with the app.
+- **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`, tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
 
 #### Pipeline
 
@@ -318,7 +326,7 @@ enparse/
 │   │   └── vocabService.ts
 │   ├── core/
 │   │   └── storage.ts
-│   ├── modules/
+│   ├── modules/ (each module also has index.ts (public API) and types.ts (proposed))
 │   │   ├── input/
 │   │   │   └── textInput.ts
 │   │   ├── parser/
@@ -342,15 +350,16 @@ enparse/
 │       └── helpers.ts
 ├── public/
 │   └── models/
-│       └── enparse-tagger/ (ONNX model, tokenizer, label config; built by training/)
+│       └── enparse-tagger/ (ONNX model, tokenizer, label config; built by training/; README.md placeholder)
 ├── training/ (offline only; not shipped; layout in plan-training.md)
 │   ├── configs/
-│   ├── scripts/ (fetch, derive chunks, prepare, train, calibrate, export, evaluate)
+│   ├── scripts/ (env check, fetch, derive chunks, prepare, train, calibrate, export, evaluate)
 │   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark)
 │   ├── tests/
 │   ├── reports/
 │   └── MODEL_CARD.md
 ├── package.json
+├── tsconfig.json (strict mode)
 ├── vite.config.ts (root: 'src'; publicDir: '../public')
 └── README.md
 ```
@@ -413,3 +422,23 @@ enparse/
 ## 2026-11-17T02:24:51Z — Claude Opus 5.5, Linked agent guide
 
 - Added: `agents.md` to skeleton; pointer to `agents.md` for coding conventions and module guide.
+
+## 2026-11-17T02:57:39Z — Claude Opus 5.5, Training scaffold
+
+- Modified: `training/scripts/` skeleton note includes the proposed environment check (`check_env.py`).
+
+## 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size
+
+- Modified: *Model* → *Context window* reduced from 512 to 256 subword tokens to match training.
+
+## 2026-11-17T03:36:56Z — Claude Opus 5.5, App scaffold and dev tools
+
+- Added: *Technology stack* → development-only tools table (tsx; proposed js-yaml, pyyaml, ruff).
+- Added: skeleton entries for `tsconfig.json`, per-module `index.ts` and `types.ts` (proposed), and a `README.md` placeholder in `public/models/enparse-tagger/`.
+- Added: header-only files for the full skeleton (`src/`, root config, `public/`). No code yet.
+
+## 2026-11-17T04:00:45Z — Claude Opus 5.5, Approved dev tools; Git LFS for models
+
+- Modified: js-yaml, pyyaml, and ruff approved by owner; proposed marks removed.
+- Added: Git LFS to development tools; *Artifacts* notes that `public/models/` files are tracked with Git LFS.
+- Modified: *Parsing engine* → accuracy source path corrected to `training/scripts/evaluate.py`.

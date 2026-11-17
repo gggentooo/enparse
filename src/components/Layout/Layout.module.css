@@ -1,0 +1,8 @@
+/*
+ * src/components/Layout/Layout.module.css — styles for Layout.tsx
+ *
+ * Description: grid for header, sidebar, and content; skip link.
+ * Tasks: 1. Grid areas. 2. Breakpoint rules. 3. Visually hidden skip link until focused.
+ * Dependencies: src/css/tokens.css. Used by: Layout.tsx.
+ * Status: header only; not implemented.
+ */

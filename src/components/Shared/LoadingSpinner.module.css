@@ -1,0 +1,8 @@
+/*
+ * src/components/Shared/LoadingSpinner.module.css — styles for LoadingSpinner.tsx
+ *
+ * Description: spinner animation and progress bar.
+ * Tasks: 1. Spinner keyframes. 2. Progress bar. 3. Reduced-motion fallback.
+ * Dependencies: src/css/tokens.css. Used by: LoadingSpinner.tsx.
+ * Status: header only; not implemented.
+ */

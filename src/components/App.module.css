@@ -1,0 +1,8 @@
+/*
+ * src/components/App.module.css — styles for App.tsx
+ *
+ * Description: root container sizing (full viewport height).
+ * Tasks: 1. Root container class. Uses tokens from css/tokens.css only.
+ * Dependencies: src/css/tokens.css. Used by: App.tsx.
+ * Status: header only; not implemented.
+ */

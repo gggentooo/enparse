@@ -1,0 +1,8 @@
+/*
+ * src/components/Shared/Tooltip.module.css — styles for Tooltip.tsx
+ *
+ * Description: popover panel and arrow.
+ * Tasks: 1. Panel. 2. Placement variants.
+ * Dependencies: src/css/tokens.css. Used by: Tooltip.tsx.
+ * Status: header only; not implemented.
+ */
