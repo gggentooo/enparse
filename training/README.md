@@ -32,7 +32,9 @@ Offline pipeline that trains the `UPOS|CHUNK` token classifier and exports it to
 | `configs/` | `data.yaml`, `eval.yaml`, `train_<model>.yaml` — all paths and settings |
 | `data/` | Raw and processed data, checkpoints, logs, ONNX exports (git-ignored) |
 | `scripts/` | Python and shell pipeline steps |
-| `js/` | Node tools: alignment, baselines, Transformers.js benchmark |
+| `js/` | Node tools: alignment, baselines, Transformers.js benchmark; `bench-page/` browser benchmark (Phase 10) |
+| `pyproject.toml` | `ruff` and `pytest` settings (no dependencies) |
+| `.python-version` | Python 3.12 pin for `uv` |
 | `tests/` | pytest for `derive_chunks.py` and `prepare_data.py` |
 | `reports/` | Phase reports (see `reports/README.md`) |
 | `MODEL_CARD.md` | Shipped model card |

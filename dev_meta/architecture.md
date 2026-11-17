@@ -354,7 +354,7 @@ enparse/
 ├── training/ (offline only; not shipped; layout in plan-training.md)
 │   ├── configs/
 │   ├── scripts/ (env check, fetch, derive chunks, prepare, train, calibrate, export, evaluate)
-│   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark)
+│   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark, bench-page/ browser benchmark)
 │   ├── tests/
 │   ├── reports/
 │   └── MODEL_CARD.md
@@ -442,3 +442,7 @@ enparse/
 - Modified: js-yaml, pyyaml, and ruff approved by owner; proposed marks removed.
 - Added: Git LFS to development tools; *Artifacts* notes that `public/models/` files are tracked with Git LFS.
 - Modified: *Parsing engine* → accuracy source path corrected to `training/scripts/evaluate.py`.
+
+## 2026-11-17T04:21:52Z — Claude Opus 5.5, Bench page in skeleton
+
+- Modified: `training/js/` skeleton note includes `bench-page/` (Phase 10 browser benchmark).

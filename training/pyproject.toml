@@ -1,0 +1,38 @@
+# =============================================================================
+# training/pyproject.toml — ruff and pytest settings for the training pipeline
+# =============================================================================
+#
+# Description:
+#   Tool configuration only. No [project] table: dependencies stay pinned in
+#   requirements.txt (agents.md → Training code). Not shipped with the app.
+#
+# Phase: pre-0 (added), used from Phase 0 onward.
+#
+# Tasks:
+#   1. ruff: Python 3.12 target; lint rules include import sorting and
+#      required type hints (agents.md: type hints on all functions).
+#   2. pytest: tests in tests/; scripts/ importable without packaging.
+#   3. Adjust rules only with a reason noted in the plan-training.md changelog.
+#
+# Dependencies:
+#   Python: ruff, pytest (requirements.txt). Python version: .python-version.
+#   Used by: `ruff check`, `ruff format`, `pytest` run from training/.
+# =============================================================================
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["scripts", "tests"]
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear, UP: pyupgrade, ANN: type hints
+select = ["E", "W", "F", "I", "B", "UP", "ANN"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = "-ra --strict-markers"

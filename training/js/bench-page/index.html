@@ -1,0 +1,23 @@
+<!--
+training/js/bench-page/index.html — minimal browser benchmark page
+
+Description:
+  Standalone Vite page (not part of the app) that loads the exported tagger
+  with Transformers.js in a Web Worker and times parsing of a fixed
+  5,000-character sample.
+
+Phases: 6 (quick timing per candidate), 10 — Browser benchmarking.
+
+Tasks:
+  1. Controls: model folder, variant (int8 / fp16), device (WebGPU / WASM), Run.
+  2. Start bench.worker.mjs; show first load, cached load, median parse time
+     of 10 runs, and peak memory (where the browser exposes it).
+  3. Output a copyable result row for reports/benchmark.md.
+  4. Loads only local files served by Vite; no external network requests.
+
+Dependencies:
+  Loads: ./bench.worker.mjs. Served by: vite (training/js/package.json script).
+  Reads: ../../configs/eval.yaml values (sample size, runs) via the worker.
+
+Status: header only; not implemented.
+-->

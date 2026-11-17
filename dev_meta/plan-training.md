@@ -46,7 +46,7 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Training data license:** CC BY-SA 4.0 obligations for derived data and trained weights (Phase 1).
 - **Download size cap:** proposed ≤ 80 MB for the shipped model file; affects base-model choice (Phase 6).
 - **Extra data:** whether to add GUM (Phase 1) and learner-style noise augmentation (Phase 4).
-- **Browser benchmark page location:** Phase 10 needs a minimal Vite page; it is not in the layout (proposed: `training/js/bench-page/`).
+
 
 ---
 
@@ -123,6 +123,8 @@ Approximate shipped size at int8 ≈ 1 MB per million parameters.
 training/
 ├── README.md (setup and run commands)
 ├── .gitignore (data/, weights, caches)
+├── .python-version (3.12, used by uv)
+├── pyproject.toml (ruff and pytest settings only; no dependencies)
 ├── requirements.txt
 ├── configs/
 │   ├── data.yaml (UD release tag, paths, window size)
@@ -142,7 +144,8 @@ training/
 │   ├── package.json
 │   ├── align_tokens.mjs (wink tokenizer vs UD words)
 │   ├── evaluate_baselines.mjs (wink + chunkPatterns, compromise)
-│   └── benchmark.mjs (Transformers.js speed and parity)
+│   ├── benchmark.mjs (Transformers.js speed and parity)
+│   └── bench-page/ (minimal Vite page for Phase 10: index.html, bench.worker.mjs)
 ├── tests/ (pytest for derive_chunks and prepare_data; conftest.py)
 ├── reports/ (metrics, error samples, benchmark results; README.md index)
 └── MODEL_CARD.md
@@ -165,16 +168,16 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 | Hardware | M5 Pro, 48 GB | Apple M5 Pro, 48 GB, macOS 27.0.1 | Ready |
 | Free disk | ~20 GB | ~595 GB | Ready |
 | Xcode CLT | Installed | `/Library/Developer/CommandLineTools` | Ready |
-| `uv` | Installed | 0.13.5 (cache dir `~/.cache/uv` not yet created) | Ready |
-| Python 3.12 | Installed via `uv` | Not installed (pyenv default is 3.15.2) | **To do** |
+| `uv` | Installed | 0.13.5 | Ready |
+| Python 3.12 | Installed via `uv` | 3.12.15 (uv-managed); pinned by `training/.python-version` (global pyenv default stays 3.15.2) | Ready |
 | Node.js | 20+ | 26.13.1, npm 11.20.0 | Ready |
-| git-lfs | Installed and active | Not installed | **To do** |
+| git-lfs | Installed and active | 3.8.1; LFS filter configured; `.gitattributes` patterns tracked. Repo hooks (`pre-push`) not installed | **To do** (owner: run `git lfs install` inside the repo) |
 | Repository scaffold | `training/` layout | Created; all files are headers only | Ready |
 
 **Tasks**
-1. Install git-lfs (e.g., `brew install git-lfs`) and run `git lfs install` once. Confirm `git lfs track` lists the patterns in `.gitattributes`.
-2. Install Python 3.12 with `uv python install 3.12`. Pin it for `training/` with a `.python-version` file so it does not use the global 3.15.
-3. Add Python tool config for `ruff` and `pytest` (proposed: `training/pyproject.toml` with tool settings only; dependencies stay in `requirements.txt`).
+1. Install git-lfs and run `git lfs install` inside the repository so the LFS hooks are added; confirm `git lfs track` lists the patterns in `.gitattributes`. *Status: installed and tracking; repo hooks pending.*
+2. Install Python 3.12 with `uv python install 3.12`. Pin it for `training/` with `training/.python-version`. *Status: done.*
+3. Add `training/pyproject.toml` with `ruff` and `pytest` settings only; dependencies stay in `requirements.txt`. *Status: done.*
 4. Confirm Unsloth support (open risk): check Unsloth's current docs for Apple Silicon (MPS) and encoder token-classification support. If neither is supported, plan for `Trainer` and keep Unsloth only as a Phase 0 check.
 5. Owner: confirm the gate schedule below.
 
@@ -185,10 +188,9 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 | Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | `plan.md` → *Training data licensing* |
 | Phase 3 | `src/modules/parser/winkBackend.ts` tokenization implemented (alignment must match runtime); root `package.json` with pinned `wink-nlp` and `@huggingface/transformers` versions to mirror in `training/js/` | Dev | `architecture.md` |
 | Phase 5 | `src/modules/parser/chunkPatterns.ts` implemented (run via `tsx`) | Owner (patterns), dev | `plan.md` → *Fallback chunk patterns* |
-| Phase 6 | Model size cap; deployment host's per-file limit and Git LFS support | Owner | `plan.md` → *Model size cap*, *Deployment target* |
+| Phase 6 | Model size cap | Owner | `plan.md` → *Model size cap* |
 | Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds* |
-| Phase 10 | Location of the minimal Vite browser benchmark page | Owner | *Open questions* (this document) |
-| Phase 10 | Vite tooling set up in the app | Dev | `plan.md` → *Tooling* |
+| Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | `plan.md` → *Tooling* |
 | Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test | Owner, dev | `plan.md` → *Attribution display* |
 
 **Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
@@ -350,7 +352,7 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 ### Phase 10 — Browser benchmarking
 
 **Tasks**
-1. Build a minimal Vite test page that loads the model with Transformers.js in a Web Worker and parses a fixed 5,000-character sample.
+1. Build the minimal Vite test page in `training/js/bench-page/` that loads the model with Transformers.js in a Web Worker and parses a fixed 5,000-character sample.
 2. Measure in Chrome, Safari, and Firefox, with WebGPU (where available) and WASM:
    - First load time (download + initialization), cached load time.
    - Parse time for 5,000 characters (median of 10 runs).
@@ -408,3 +410,10 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Modified: Phase 0 — tool installation moved to Phase pre-0; task 2 now also pins `training/js`; task 5 now includes `bert-base-cased` (exit criterion covers every candidate).
 - Modified: git-lfs purpose and Phase 11 task 1 note that shipped ONNX files are tracked with Git LFS.
 - Modified: `pyyaml`, `ruff`, `js-yaml` approved by owner; proposed marks removed.
+
+## 2026-11-17T04:21:52Z — Claude Opus 5.5, Pre-0 progress; bench page and tool config
+
+- Added: `training/pyproject.toml` (ruff and pytest settings, owner-approved), `training/.python-version` (3.12), `training/js/bench-page/` (`index.html`, `bench.worker.mjs` headers) to layout.
+- Modified: Phase pre-0 machine check — Python 3.12 (3.12.15) ready; git-lfs 3.8.1 installed, repo hooks pending; tasks 2–3 done.
+- Modified: Phase 10 task 1 uses `training/js/bench-page/` (owner decision).
+- Removed: open question and gate row for the bench page location (decided); hosting-limit check from the Phase 6 gate (deferred by owner).

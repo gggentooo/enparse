@@ -39,7 +39,7 @@ Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp 
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
 - **Training data licensing:** confirm CC BY-SA 4.0 (UD EWT) obligations for derived chunk data and trained weights; decide whether to add GUM.
 - **Chunk derivation rules:** how NP/VP/PP/ADJP/ADVP spans are derived from UD dependency trees.
-- **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.) Check the chosen deployment host's per-file size limit and Git LFS support.
+- **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.)
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
 - **Fallback chunk patterns:** exact POS patterns in `chunkPatterns.ts`.
@@ -179,3 +179,7 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 
 - Modified: 'Undecided' → 'Parser' → *Model hosting and size cap* renamed *Model size cap*; hosting decided (`public/models/` with Git LFS).
 - Added: 'Undecided' → 'UI/UX' → *Attribution display*.
+
+## 2026-11-17T04:21:52Z — Claude Opus 5.5, Deferred hosting limits
+
+- Removed: hosting per-file limit check from *Model size cap* (deferred by owner).

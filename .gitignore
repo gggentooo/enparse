@@ -52,7 +52,6 @@ __pycache__/
 
 # Training tool caches created in the working directory
 unsloth_compiled_cache/
-unsloth-tmp/
 
 # Caches
 .cache/
