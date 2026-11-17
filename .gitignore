@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+.vite/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Package manager
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Misc
+*.tgz
+*.zip
