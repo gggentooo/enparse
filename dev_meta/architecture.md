@@ -53,8 +53,12 @@ This guide applies to all contributors (human and AI) editing this file.
 | TypeScript   | Type safety across all layers                    |
 | Vite         | Build tool (static server, bundler)              |
 | CSS Modules  | Scoped, maintainable styling per component       |
+| Transformers.js | Runs the in-house ONNX tagger in the browser (WebGPU/WASM) (Apache 2.0) |
+| wink-nlp + wink-eng-lite-web-model | Sentence split, lemmas, and fallback POS tagging/chunking (MIT) |
 | jszip        | Archive export format (optional)                 |
 | csv-stringify + csv-parse | CSV import/export (optional)        |
+
+**Development only (not shipped):** Python, Hugging Face Transformers, and Optimum for model training and ONNX export (see *Parsing engine*).
 
 No separate state-management library. Shared state lives in services and is exposed through hooks (see *Layer communication*).
 
@@ -83,13 +87,107 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 |------------------------------|---------------------------------------------------------------------------------------------------|
 | `core/storage.ts`            | Persistent state wrapper (LocalStorage for small data, IndexedDB for larger datasets).             |
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
-| `input/textInput.ts`         | Prepares raw text for parsing: cleanup, normalization, sentence segmentation. UI is in `InputPage`. |
-| `parser/parser.ts`           | Parser adapter interface. Accepts sentences, returns NP/VP chunks and ambiguity list. Pluggable backend. |
-| `output/annotator.ts`        | Converts parse results into an annotation model (chunks, highlights, tree data). Rendering is in `OutputPage`. |
+| `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
+| `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, and chunk parses. Pluggable backend. |
+| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX tagger via Transformers.js; decodes UPOS and chunk labels with probabilities. |
+| `parser/winkBackend.ts`      | Sentence split and lemmas; fallback `ParserBackend` (POS tags + `chunkPatterns`).                  |
+| `parser/chunkPatterns.ts`    | Fallback POS patterns defining NP, VP, PP, and ADJP chunks.                                       |
+| `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
+| `parser/parser.worker.ts`    | Web Worker entry: loads backends once, switches to fallback mode if needed, parses off the main thread. |
+| `output/annotator.ts`        | Converts parse results into an annotation model (chunks, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
-| `subword/subwordParser.ts`   | Splits words into prefixes, roots, suffixes, and inflections (e.g., *un-* + *happy* + *-ness*).    |
+| `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
+| `subword/affixes.ts`         | Affix inventory data used by `subwordParser`.                                                      |
 | `vocab/vocabManager.ts`      | CRUD for custom vocabulary lists. Export/import as JSON or CSV. Persists via `core/storage`.       |
+
+---
+
+### Parsing engine
+
+**Priority:** accuracy before speed. Up to ~5 s per 5,000 characters on a typical laptop is acceptable.
+
+**Primary engine:** an in-house transformer tagger, run in the browser with [Transformers.js](https://github.com/huggingface/transformers.js) (Apache 2.0).
+**Support / fallback:** [wink-nlp](https://github.com/winkjs/wink-nlp) + [wink-eng-lite-web-model](https://github.com/winkjs/wink-eng-lite-web-model) (MIT).
+
+| Criterion        | How it is met                                                                 |
+|------------------|-------------------------------------------------------------------------------|
+| License          | Runtime libraries are Apache 2.0 / MIT. The model is trained in-house on openly licensed data (see *Model training*). |
+| Accuracy         | Neural taggers reach ~97–98% POS accuracy and mid-90s chunk F1 on standard benchmarks, vs ~95% POS for wink-nlp. Actual figures come from `training/evaluate.py`. |
+| Speed / size     | Quantized model ~65–80 MB (proposed cap 80 MB), downloaded once and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Expected to fit the 5 s budget; to be confirmed by benchmark. |
+| Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
+| NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
+| Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
+| Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
+
+#### Model
+
+- **Architecture:** standard token classifier with one combined label per word, `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing combined-label probabilities. A two-head variant is an optional training experiment.
+- **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
+- **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` applies the calibration temperature and decodes logits into labels and probabilities.
+- **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
+- **Context window:** text is processed in overlapping windows of up to 512 subword tokens, so context extends beyond the current sentence.
+
+#### Model training (offline, `training/`)
+
+Full plan: [plan-training.md](plan-training.md).
+
+- **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
+- **Framework:** Unsloth on Apple Silicon (MPS), with Hugging Face `Trainer` as fallback; Optimum for ONNX export and quantization.
+- **Evaluation:** UPOS accuracy, chunk F1, calibration, and speed on the EWT test split, compared with the wink-nlp fallback and compromise.
+- **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`. `training/` is not shipped with the app.
+
+#### Pipeline
+
+```
+raw text
+  └─► input/textInput.ts (preprocessor)
+        └─► parser.worker.ts
+              ├─► winkBackend: sentence split, lemmas
+              ├─► transformerBackend: windows → UPOS + chunk labels with probabilities
+              └─► ambiguity.ts: alternative parses
+        └─► output/annotator.ts → annotation model → OutputPage
+```
+
+- `parserService` runs this chain.
+- Subword segmentation runs on demand: `subwordService` receives a word and its lemma from the parse result.
+
+#### Fallback mode
+
+- Used while the model downloads, if model loading fails, or on devices without enough memory.
+- `winkBackend` provides POS tags, and `chunkPatterns.ts` builds chunks from them. Ambiguity uses rule-based patterns only.
+- The UI shows that results come from basic mode and offers re-parsing once the model is ready.
+
+#### Preprocessor (`input/textInput.ts`)
+
+- Unicode NFKC normalization; curly quotes and dashes converted to ASCII equivalents.
+- Strips control characters, zero-width characters, and emoji.
+- Hangul/CJK and other non-Latin text are removed; the UI shows a notice listing what was removed.
+- Collapses repeated whitespace; keeps paragraph breaks.
+- **Max length:** 5,000 characters (configurable). Longer input is rejected with a character count; it is not silently truncated.
+
+#### Ambiguity handling
+
+1. **Primary parse (context-selected):** the highest-probability label for each word, chosen by the model using surrounding context. Marked "most likely".
+2. **Probability-based alternatives:** words whose top two labels are close (margin below a threshold, e.g. 0.2) are treated as ambiguous. `ambiguity.ts` builds alternative label sequences from them, keeps only valid ones (consistent BIO chunks), and ranks them by joint probability.
+3. **Attachment alternatives (rule-based):** flat chunks do not encode where a prepositional phrase attaches. `ambiguity.ts` flags `VP NP PP` sequences and offers both readings (PP modifies the verb or the noun).
+4. **Cap:** at most 5 alternatives per sentence (configurable).
+
+#### Subword segmentation
+
+- wink provides the inflectional split via lemma (*running* → *run* + *-ing*).
+- `subwordParser.ts` strips derivational affixes from `affixes.ts`, longest match first.
+- A split is accepted only if the remaining base is a known word or lemma, preventing false splits (*under* ≠ *un-* + *der*).
+
+#### Alternatives considered
+
+| Option                         | Status                                                                                  |
+|--------------------------------|-----------------------------------------------------------------------------------------|
+| wink-nlp + `chunkPatterns.ts`  | Kept as fallback. Fast and tiny, but lower tagging accuracy and hand-written chunk rules. |
+| compromise (MIT, ~250 KB)      | Not used. No published tagging accuracy, and a second tagger can disagree with the primary one. Included in evaluation for comparison only. |
+| Off-the-shelf chunking models  | Not used. Licenses are non-commercial (QCRI) or unstated (vblagoje, AdapterHub); CoNLL-2000 data has no clear license. |
+| spaCy / Stanza via Pyodide     | Not used. spaCy in the browser is experimental only; Stanza needs PyTorch, which does not run in the browser. |
+| Earley parser (e.g., nearley) + hand-written grammar | Not used. A broad English grammar is large to write, and parse counts can explode. |
 
 ---
 
@@ -99,14 +197,16 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 components/  ──►  hooks/  ──►  services/  ──►  modules/  ──►  core/storage.ts
                                                          └──►  utils/helpers.ts
 
-parserService      ──► input/textInput ─► parser/parser ─► output/annotator   (called in sequence by the service)
+parserService      ──► input/textInput ─► parser/parser.worker ─► output/annotator   (called in sequence by the service)
+                                           └─► parser/transformerBackend, winkBackend, chunkPatterns, ambiguity
 dictionaryService  ──► dictionary/dictionary ──► dictionary/staticDb
 subwordService     ──► subword/subwordParser
 vocabService       ──► vocab/vocabManager ──► core/storage
 ```
 
 - Arrows point from dependent to dependency.
-- `dictionary.ts` → `staticDb.ts` is the only intra-module import; both belong to the same `dictionary` module.
+- Files inside the same module may import each other (e.g., `dictionary.ts` → `staticDb.ts`, `parser.worker.ts` → `transformerBackend.ts`). Imports across modules are not allowed.
+- Modules may import external libraries listed in *Technology stack* (e.g., `parser/` uses Transformers.js and wink-nlp).
 
 ---
 
@@ -178,7 +278,9 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 enparse/
 ├── dev_meta/
 │   ├── plan.md
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── plan-training.md
+│   └── agents.md
 ├── src/
 │   ├── index.html
 │   ├── main.tsx (entry point)
@@ -220,25 +322,42 @@ enparse/
 │   │   ├── input/
 │   │   │   └── textInput.ts
 │   │   ├── parser/
-│   │   │   └── parser.ts
+│   │   │   ├── parser.ts
+│   │   │   ├── transformerBackend.ts
+│   │   │   ├── winkBackend.ts
+│   │   │   ├── chunkPatterns.ts
+│   │   │   ├── ambiguity.ts
+│   │   │   └── parser.worker.ts
 │   │   ├── output/
 │   │   │   └── annotator.ts
 │   │   ├── dictionary/
 │   │   │   ├── dictionary.ts
 │   │   │   └── staticDb.ts
 │   │   ├── subword/
-│   │   │   └── subwordParser.ts
+│   │   │   ├── subwordParser.ts
+│   │   │   └── affixes.ts
 │   │   └── vocab/
 │   │       └── vocabManager.ts
 │   └── utils/
 │       └── helpers.ts
+├── public/
+│   └── models/
+│       └── enparse-tagger/ (ONNX model, tokenizer, label config; built by training/)
+├── training/ (offline only; not shipped; layout in plan-training.md)
+│   ├── configs/
+│   ├── scripts/ (fetch, derive chunks, prepare, train, calibrate, export, evaluate)
+│   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark)
+│   ├── tests/
+│   ├── reports/
+│   └── MODEL_CARD.md
 ├── package.json
-├── vite.config.ts (root: 'src')
+├── vite.config.ts (root: 'src'; publicDir: '../public')
 └── README.md
 ```
 
-- `src/` contains all source files. `dist/` is generated by Vite and is git-ignored.
-- Each logic module is a self-contained directory under `modules/`.
+- `src/` contains all app source files. `dist/` is generated by Vite and is git-ignored.
+- `training/` holds the offline model pipeline. Its output in `public/models/` is served as static files.
+- Each logic module is a self-contained directory under `modules/`. Coding conventions and the step-by-step module guide are in `agents.md`.
 
 #### Adding a new feature
 
@@ -267,3 +386,30 @@ enparse/
 - Modified: Dependency graph redrawn to match layer rules; module chaining now done in `parserService`.
 - Modified: "Backend modules" renamed "Logic modules" (app is fully client-side). Header/Sidebar roles split (branding vs navigation).
 - Removed: `app.ts` (replaced by `main.tsx`), `core/router.ts` (replaced by React Router), `core/eventBus.ts` (replaced by service subscriptions), `useStorage` hook (no matching service).
+
+## 2026-11-17T01:41:17Z — Claude Opus 5.5, Selected parsing engine
+
+- Added: wink-nlp + wink-eng-lite-web-model to *Technology stack*.
+- Added: *Parsing engine* section (criteria, pipeline, preprocessor rules, ambiguity handling, subword segmentation, alternatives considered).
+- Added: `parser/winkBackend.ts`, `parser/chunkPatterns.ts`, `parser/ambiguity.ts`, `parser/parser.worker.ts`, `subword/affixes.ts` to modules table and skeleton.
+- Modified: `input/textInput.ts` defined as the preprocessor; `parser/parser.ts` and `output/annotator.ts` outputs updated (tokens and alternatives; no parse-tree data).
+- Modified: Dependency rules allow imports within a module and of listed external libraries.
+
+## 2026-11-17T01:56:15Z — Claude Opus 5.5, Switched primary parser to in-house transformer
+
+- Added: Transformers.js to *Technology stack*; development-only training stack note.
+- Added: *Model*, *Model training*, and *Fallback mode* subsections; `parser/transformerBackend.ts`; `public/models/` and `training/` to skeleton.
+- Modified: *Parsing engine* — accuracy before speed (~5 s per 5,000 characters acceptable); in-house transformer tagger is primary; wink-nlp handles sentence split, lemmas, and fallback.
+- Modified: *Ambiguity handling* — alternatives now ranked by model probabilities; PP attachment kept as a rule.
+- Modified: *Alternatives considered* — updated statuses; added off-the-shelf chunking models (license issues).
+- Removed: 60-token max sentence length (overlapping context windows replace it).
+
+## 2026-11-17T02:03:03Z — Claude Opus 5.5, Aligned with training plan
+
+- Added: link to `plan-training.md` in *Model training*; `plan-training.md` to skeleton.
+- Modified: *Model* — single combined `UPOS|CHUNK` label head replaces two heads; cased base-model candidates updated; calibration temperature applied at runtime.
+- Modified: model size estimate to ~65–80 MB (proposed 80 MB cap); training framework (Unsloth on MPS, `Trainer` fallback); `training/` skeleton matches the training plan.
+
+## 2026-11-17T02:24:51Z — Claude Opus 5.5, Linked agent guide
+
+- Added: `agents.md` to skeleton; pointer to `agents.md` for coding conventions and module guide.

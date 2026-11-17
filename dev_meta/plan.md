@@ -33,11 +33,16 @@ Open details and decisions required before development can proceed. Remove items
 
 ### Parser
 
-- **Parsing engine:** no backend chosen (rule-based chunker, JS NLP library, or WASM/ONNX model). Determines accuracy, bundle size, and ambiguity support.
-- **Output granularity:** NP/VP chunks only, or full constituency tree (PP, ADJP, clauses)? Plan says chunks; annotator mentions parse-tree visualization.
-- **Ambiguity handling:** how ambiguous parses are detected, ranked, and how many are shown.
-- **Input limits:** max text length, sentence segmentation, handling of non-English or mixed Korean input.
-- **Performance budget:** acceptable parse latency and model size; whether parsing runs in a Web Worker.
+Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, lemmas, and fallback (see *Parsing engine* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
+
+- **Base model:** `distilbert-base-cased` or `deberta-v3-xsmall` (references: `bert-base-cased`, `ModernBERT-base`); pick by benchmark. Training plan: `plan-training.md`.
+- **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
+- **Training data licensing:** confirm CC BY-SA 4.0 (UD EWT) obligations for derived chunk data and trained weights; decide whether to add GUM.
+- **Chunk derivation rules:** how NP/VP/PP/ADJP/ADVP spans are derived from UD dependency trees.
+- **Model hosting and size cap:** same static host vs separate URL; confirm proposed 80 MB maximum download.
+- **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
+- **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
+- **Fallback chunk patterns:** exact POS patterns in `chunkPatterns.ts`.
 
 ### Dictionary
 
@@ -46,16 +51,16 @@ Open details and decisions required before development can proceed. Remove items
 - **Storage format:** JSON vs SQLite-WASM (both listed).
 - **Hosting:** which raw content URL host (e.g., GitHub raw, CDN); sharding and lazy-loading strategy; offline caching.
 - **Build pipeline:** scripts/location for compiling source data into the static DB (not in skeleton).
-- **Lemmatization:** mapping inflected forms to headwords (e.g., *ran* → *run*).
+- **Lemmatization:** wink-nlp provides lemmas (*ran* → *run*); confirm dictionary headwords match wink's lemma forms.
 - **Multiword expressions:** whether phrasal verbs and idioms are supported.
 - **Sense selection:** show all senses, or pick by context/POS.
 - **Lookup trigger:** text selection, hover, click, or tap; popup tooltip vs separate `DictionaryPage`.
 
 ### Subword parsing
 
+Method selected: rule-based affix stripping with base validation; inflections via wink lemmas (see `architecture.md`). Remaining:
+
 - **Affix inventory:** source and size of prefix/root/suffix list; definition of "frequently occurring".
-- **Segmentation method:** rule-based list matching vs algorithmic; handling of false positives (e.g., *under* ≠ *un-* + *der*).
-- **Scope:** derivational affixes only, or inflections too.
 - **Affix content:** whether affixes have Korean glosses and examples, and their data source.
 
 ### Vocabulary lists
@@ -79,7 +84,8 @@ Open details and decisions required before development can proceed. Remove items
 - **MVP scope:** which features ship first and milestone order.
 - **Deployment target:** static host (e.g., GitHub Pages, Netlify, Cloudflare Pages).
 - **Offline/PWA:** whether the app should work offline.
-- **Tooling:** package manager, Node version, linting/formatting, test framework, CI.
+- **Tooling:** confirm proposals in `agents.md` → *Tooling and commands* (npm, Node 20+, ESLint + Prettier, Vitest/RTL/Playwright); choose CI.
+- **Module public API:** confirm `agents.md` proposal that each module exposes its API via `modules/<name>/index.ts`.
 - **Project license.**
 - **Analytics/privacy:** whether any usage tracking is collected.
 
@@ -131,3 +137,25 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 - Modified: Format template now includes the [Author] field required by rule 2 (matches `architecture.md`).
 - Modified: 'Undecided' → 'Architecture' reduced to module interfaces; other items resolved in `architecture.md` (React final, React Router, service subscriptions instead of event bus, `main.tsx` entry, logic-only modules).
 - Removed: 'Enparse architectural proposal' and 'Frontend architecture proposal' sections (duplicated and conflicted with `architecture.md`).
+
+## 2026-11-17T01:41:17Z — Claude Opus 5.5, Parsing engine selected
+
+- Modified: 'Undecided' → 'Parser' — engine, granularity, ambiguity approach, input limits, and Web Worker resolved in `architecture.md`; remaining items are chunk patterns, ambiguity patterns, limit defaults, and latency target.
+- Modified: 'Undecided' → 'Subword parsing' — segmentation method and scope resolved.
+- Modified: 'Undecided' → 'Dictionary' — lemmatization item narrowed to matching wink lemma forms.
+
+## 2026-11-17T01:56:15Z — Claude Opus 5.5, Primary parser switched to in-house transformer
+
+- Added: 'Undecided' → 'Parser' items for base model, acceptance thresholds, training data licensing, chunk derivation, model hosting, training environment, and ambiguity threshold.
+- Modified: 'Undecided' → 'Parser' — records accuracy-before-speed decision (~5 s per 5,000 characters acceptable) and new engine choice.
+- Removed: 'Performance target' item (decided); 60-token sentence limit from limit defaults.
+
+## 2026-11-17T02:03:03Z — Claude Opus 5.5, Linked training plan
+
+- Modified: 'Undecided' → 'Parser' — base-model candidates updated (cased models) with link to `plan-training.md`; size cap item now proposes 80 MB.
+- Removed: 'Training environment' item (decided: Unsloth on the owner's MacBook Pro M5 Pro; see `plan-training.md`).
+
+## 2026-11-17T02:24:51Z — Claude Opus 5.5, Linked agent guide
+
+- Modified: 'Undecided' → 'Tooling' now points to proposals in `agents.md`.
+- Added: 'Undecided' → 'Module public API' item (proposed `index.ts` per module).
