@@ -137,6 +137,8 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Architecture:** standard token classifier with one combined label per word, `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing combined-label probabilities. A two-head variant is an optional training experiment.
 - **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
 - **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` applies the calibration temperature and decodes logits into labels and probabilities.
+- **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
+- **Traceability:** every `ParseResult` carries the model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
 - **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
 
@@ -461,3 +463,7 @@ enparse/
 - Added: H1 document title "Enparse Architecture".
 - Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.
 - Modified: content sections raised one level (H3 → H2, H4 → H3); *Core features* and *Design principles* are H3 under *Project overview*, matching `plan.md`.
+
+### 2026-11-17T22:43:29Z — Claude Opus 5.5, labels.json schema and ParseResult traceability
+
+- Added: *Model* → `labels.json` schema reference (`plan-training.md` Phase 4) and `ParseResult` traceability (model version, wink offsets).

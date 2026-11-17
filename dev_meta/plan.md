@@ -39,7 +39,6 @@ Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp 
 
 - **Base model:** `distilbert-base-cased` or `deberta-v3-xsmall` (references: `bert-base-cased`, `ModernBERT-base`); pick by benchmark. Training plan: `plan-training.md`.
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
-- **Training data licensing:** confirm CC BY-SA 4.0 (UD EWT) obligations for derived chunk data and trained weights; decide whether to add GUM.
 - **Chunk derivation rules:** how NP/VP/PP/ADJP/ADVP spans are derived from UD dependency trees.
 - **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.)
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
@@ -195,3 +194,11 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 
 - Added: H1 document title "Enparse Project Plan".
 - Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.
+
+### 2026-11-17T23:16:13Z — Claude Opus 5.5, Phase 1 licensing proposal
+
+- Modified: 'Undecided' → 'Parser' → *Training data licensing* now points to the proposed position and GUM exclusion in `plan-training.md`.
+
+### 2026-11-17T23:17:31Z — Claude Opus 5.5, Training data licensing decided
+
+- Removed: 'Undecided' → 'Parser' → *Training data licensing*. Decision (owner): UD EWT only; weights shipped under CC BY-SA 4.0 with attribution, legal advice before commercial release; GUM excluded. Recorded in `plan-training.md` → Phase 1 *Outcome* and `training/MODEL_CARD.md`.

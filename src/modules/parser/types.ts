@@ -11,8 +11,9 @@
  *   2. Chunk: type (NP, VP, PP, ADJP, ADVP), token range.
  *   3. SentenceParse: tokens, primary chunks, alternatives (ranked, with
  *      probability and reason: probability or attachment).
- *   4. ParseResult: sentences, mode (model | basic), model version.
- *   5. LabelConfig: shape of labels.json (label map, temperature, margin, versions).
+ *   4. ParseResult: sentences, mode (model | basic), model version from
+ *      labels.json; every Token keeps wink character offsets (traceability).
+ *   5. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4).
  *   6. Worker message types (request/response unions).
  *   7. Errors: ParserLoadError, ParserRuntimeError.
  *

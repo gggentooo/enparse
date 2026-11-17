@@ -18,12 +18,15 @@ Tasks:
        (`# newdoc id`) packed up to max_subword_tokens, keeping sentence
        boundaries. Split long single sentences with the configured overlap.
     4. Tokenize with the base model's tokenizer; label the first subword of
-       each word, set the rest to -100.
+       each word, set the rest to -100. Partial labels: words with
+       reviewed=False get -100 on every subword; windows with no reviewed
+       word are dropped; label counts use reviewed words only.
     5. Keep official EWT train/dev/test splits. Test is reserved for the
        Phase 7 final evaluation.
     6. Optional augmentation (train only, <= max_fraction of windows):
        lowercase sentence starts, drop final punctuation, learner typos.
-    7. Save datasets to data/processed/dataset/<model>/ and labels.json.
+    7. Save datasets to data/processed/dataset/<model>/ and labels.json
+       (schema v1, Phase 4 fields; plan-training.md → Phase 4).
     8. Write dataset statistics (label counts, window lengths) to
        reports/dataset.md.
 

@@ -39,15 +39,16 @@ This guide applies to all contributors (human and AI) editing this file.
   - A two-head model (separate UPOS and chunk outputs) is an optional experiment in Phase 7, only if the combined head underperforms.
 - **Word unit = runtime word unit.** Training words must match the words wink-nlp produces at runtime (Phase 3).
 - **Labels on first subword.** Only the first subword of each word carries a label; others are ignored in the loss (`-100`).
+- **Partial labels.** Words without a checked label (e.g., unreviewed words in user feedback) also get `-100`, so the loss uses only labels a person or the treebank confirmed (Phase 4).
+- **Traceable outputs.** `labels.json` has a fixed, versioned schema (Phase 4), and the app's `ParseResult` carries the model version and wink word offsets (Phase 11), so any parse, including user feedback, can be traced to the model and word split that produced it.
 - **Multi-sentence context.** Training examples are windows of consecutive sentences from the same document, matching the runtime's overlapping context windows.
 - **Cased models only.** Capitalization is a strong cue for proper nouns and sentence boundaries.
 
 ### Open questions
 
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 to ship (proposed ≥ 97% / ≥ 94%). Tracked in `plan.md` → *Undecided*.
-- **Training data license:** CC BY-SA 4.0 obligations for derived data and trained weights (Phase 1).
 - **Download size cap:** proposed ≤ 80 MB for the shipped model file; affects base-model choice (Phase 6).
-- **Extra data:** whether to add GUM (Phase 1) and learner-style noise augmentation (Phase 4).
+- **Extra data:** learner-style noise augmentation (Phase 4). GUM excluded (Phase 1).
 
 
 ---
@@ -104,7 +105,7 @@ This guide applies to all contributors (human and AI) editing this file.
 | Dataset | License | Use |
 |---------|---------|-----|
 | UD English EWT (latest UD release, pinned tag) | CC BY-SA 4.0 | Primary train/dev/test data (~254k words, web text) |
-| UD English GUM (optional) | Varies by subcorpus | Extra training data, if licenses allow |
+| UD English GUM | CC BY-NC-SA 4.0 (UD release) | Not used (non-commercial; Phase 1) |
 
 ### Base model candidates
 
@@ -187,13 +188,14 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 
 | Needed before | Item | Owner of decision | Tracked in |
 |---------------|------|-------------------|------------|
-| Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | `plan.md` → *Training data licensing* |
+| Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | Done: Phase 1 *Outcome* |
 | Phase 3 | `src/modules/parser/winkBackend.ts` tokenization implemented (alignment must match runtime); root `package.json` pins the same `wink-nlp` and `@huggingface/transformers` versions as `training/js/` (chosen in Phase 0) | Dev | `architecture.md` |
 | Phase 5 | `src/modules/parser/chunkPatterns.ts` implemented (run via `tsx`) | Owner (patterns), dev | `plan.md` → *Fallback chunk patterns* |
 | Phase 6 | Model size cap | Owner | `plan.md` → *Model size cap* |
 | Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds* |
 | Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | `plan.md` → *Tooling* |
-| Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test | Owner, dev | `plan.md` → *Attribution display* |
+| Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | `architecture.md` → *Model* |
+| Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `plan.md` → *Attribution display*; `architecture.md` → *Model* |
 
 **Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
 **Exit criterion:** every row in *Machine check* is Ready, tasks 1–4 are done, and the owner has confirmed the gate schedule.
@@ -245,6 +247,16 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 **Deliverables:** raw data with pinned versions; a license summary in `MODEL_CARD.md`.
 **Exit criterion:** license position recorded and accepted by the project owner.
 
+**Outcome (2026-11-18): exit criterion met (owner accepted the license position and GUM exclusion).**
+
+- `fetch_data.sh` implemented: reads `configs/data.yaml`, shallow-clones the tag, verifies commit and SHA-256 (idempotent; exit 2 if values are unpinned).
+- UD English EWT pinned at `r2.19` (latest UD release), commit `6b021622f3ab7902730f313fa5955a8b8cdd52b8`. Checksums for train/dev/test and `LICENSE.txt` in `data.yaml`.
+- Size: train 12,544 / dev 2,001 / test 2,077 sentences; 204,578 / 25,148 / 25,094 words.
+- License summary and attribution text in `MODEL_CARD.md`. Position (owner-accepted):
+  - Raw and derived data are not redistributed (git-ignored).
+  - Trained weights are treated as CC BY-SA 4.0 derived material and shipped under CC BY-SA 4.0 with attribution. Legal advice before commercial release.
+- GUM: excluded (owner decision). The UD r2.19 release is CC BY-NC-SA 4.0 as a whole (per-text sources vary: wikiHow and fiction are BY-NC-SA). `gum.enabled: false`.
+
 ### Phase 2 — Chunk derivation from UD trees
 
 UD has dependency trees, not chunks. `derive_chunks.py` converts them to flat, non-recursive chunks in the style of the CoNLL-2000 standard.
@@ -280,7 +292,7 @@ At runtime, wink-nlp splits text into words before the model runs. Training word
 1. `align_tokens.mjs`: tokenize each EWT sentence's raw text (`# text =` line) with wink-nlp; align to UD words.
 2. Handle UD multiword tokens (e.g., *don't* → *do* + *n't*): use the form that matches wink's split.
 3. Measure word-level agreement. For mismatches, add mapping rules (merge or split) and define how labels transfer.
-4. Store the final word segmentation in the processed dataset, so training uses wink-style words.
+4. Store the final word segmentation in the processed dataset, so training uses wink-style words. Each word keeps its character offsets (`start`, `end`) into the sentence text, the same offsets wink gives at runtime.
 
 **Deliverables:** alignment script, mismatch report (`reports/alignment.md`), mapping rules.
 **Exit criterion:** ≥ 99.5% of words align; remaining mismatches documented.
@@ -291,12 +303,41 @@ At runtime, wink-nlp splits text into words before the model runs. Training word
 1. `prepare_data.py`: combine UPOS and chunk tags into `UPOS|CHUNK` labels; build the label map; drop label combinations seen < 5 times in train and map them to the nearest valid label.
 2. Build windows: consecutive sentences from the same document (`# newdoc id`) packed up to 256 subword tokens (same window size as the runtime), with sentence boundaries kept. Long single sentences are split at 256 with 32-token overlap.
 3. Subword alignment: label the first subword of each word; set the rest to `-100`.
-4. Keep the official EWT train/dev/test splits. Test is used only in Phase 7 final evaluation.
-5. Optional augmentation (train split only, ≤ 15% of windows): lowercase sentence starts, drop final punctuation, common learner typos. Evaluate the effect in Phase 7; keep only if dev F1 does not drop.
-6. Save processed datasets with `datasets` to `training/data/processed/`.
+4. **Partial labels:** each input word has a `reviewed` flag (`true` for all EWT words).
+   - Unreviewed words get `-100` on every subword; they still appear in the input as context.
+   - Label counts (task 1) use reviewed words only. Windows with no reviewed word are dropped.
+   - Chunk F1 is computed only on sentences where every word is reviewed; UPOS accuracy uses all reviewed words.
+   - Unit tests in `tests/test_prepare_data.py` cover fully, partly, and un-reviewed windows.
+5. Keep the official EWT train/dev/test splits. Test is used only in Phase 7 final evaluation.
+6. Optional augmentation (train split only, ≤ 15% of windows): lowercase sentence starts, drop final punctuation, common learner typos. Evaluate the effect in Phase 7; keep only if dev F1 does not drop.
+7. Save processed datasets with `datasets` to `training/data/processed/`.
+8. Write `labels.json` following the schema below (schema version 1).
 
-**Deliverables:** processed datasets, `labels.json` (label map), dataset statistics report.
-**Exit criterion:** dataset loads; label and window statistics reviewed.
+**`labels.json` schema (version 1)**
+
+Single contract between training and the app. Later phases fill their fields; they do not add or rename fields.
+
+| Field | Type | Written by (phase) | Meaning |
+|-------|------|--------------------|---------|
+| `schema_version` | int | `prepare_data.py` (4) | `1`. Bumped on any breaking change (rename, removal, type change). |
+| `labels` | string[] | `prepare_data.py` (4) | Combined `UPOS\|CHUNK` labels; array index = class id. Must equal the model's `config.json` `id2label` order. |
+| `upos` | string[] | `prepare_data.py` (4) | The 17 UPOS tags, fixed order (for marginalizing). |
+| `chunk_tags` | string[] | `prepare_data.py` (4) | `B-`/`I-` × NP, VP, PP, ADJP, ADVP, plus `O`. |
+| `label_merges` | object | `prepare_data.py` (4) | Rare combinations mapped to their replacement (`from` → `to`). Informational; the app ignores it. |
+| `window.max_subword_tokens` | int | `prepare_data.py` (4) | `256`; the app uses it for runtime windows. |
+| `versions.base_model` | string | `prepare_data.py` (4) | Hugging Face id of the base model (tokenizer source). |
+| `versions.data` | object | `prepare_data.py` (4) | UD release tag and commit; list of feedback batch ids (empty until Phase 12). |
+| `versions.wink` | object | `prepare_data.py` (4) | `wink-nlp` and `wink-eng-lite-web-model` versions from `training/js/package-lock.json`. The app warns if its versions differ. |
+| `calibration.temperature` | number \| null | `calibrate.py` (8) | Softmax temperature. |
+| `ambiguity.margin` | number \| null | `calibrate.py` (8) | Top-two probability margin for alternatives. |
+| `model_version` | string \| null | `export_onnx.py` (11) | Semantic version matching the release tag (e.g., `1.0.0`). |
+
+- Fields are `null` until their phase writes them. The app throws `ParserLoadError` if a field it needs is `null`.
+- Adding an optional field does not change `schema_version`; anything else does.
+- `src/modules/parser/types.ts` → `LabelConfig` mirrors this table (Phase 4 exit gate).
+
+**Deliverables:** processed datasets, `labels.json` (schema v1, Phase 4 fields filled), dataset statistics report.
+**Exit criterion:** dataset loads; label and window statistics reviewed; `labels.json` validates against schema v1, and `LabelConfig` matches it.
 
 ### Phase 5 — Baseline evaluation
 
@@ -353,7 +394,7 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 1. `calibrate.py`: fit a single temperature on dev logits; report expected calibration error before and after.
 2. Tune the ambiguity margin (proposed 0.2): for each margin, measure on dev how often the correct label is in the alternatives versus the average number of alternatives per sentence.
 3. Pick the margin that best balances coverage and a cap of 5 alternatives per sentence.
-4. Store temperature and margin in `labels.json`.
+4. Store temperature and margin in `labels.json` (`calibration.temperature`, `ambiguity.margin`; see the Phase 4 schema).
 
 **Deliverables:** calibration report; updated `labels.json`.
 **Exit criterion:** calibration error reduced; margin chosen and recorded in `architecture.md`.
@@ -387,17 +428,17 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 ### Phase 11 — Packaging and release
 
 **Tasks**
-1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json` (label map, temperature, margin, model version, training data version).
+1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` is set here.
 2. Write `MODEL_CARD.md`: base model, data and licenses, attribution text, metrics, known weaknesses, intended use.
 3. Tag the release (e.g., `model-v1.0.0`); record config, seed, data version, and checksums for reproducibility.
-4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences.
+4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word.
 
 **Deliverables:** shipped model files, model card, release tag.
 **Exit criterion:** app integration test passes.
 
 ### Phase 12 — Maintenance (ongoing)
 
-- Optional: collect misparsed sentences reported in the app (opt-in, stored locally until exported by the user) as a regression set. Requires a new app feature; not yet planned.
+- Optional: collect misparsed sentences reported in the app (opt-in, stored locally until exported by the user) as a regression set and extra training data. Requires a new app feature; not yet planned. Already prepared for: feedback records can store words with wink offsets and the model version from `ParseResult`, and unreviewed words are handled as partial labels (Phase 4).
 - Retrain when: a new UD release fixes relevant annotations, the regression set grows past ~200 sentences, or a better base model fits the budget.
 - Every retrain repeats Phases 7–11 and must not regress on the test split or the regression set.
 
@@ -455,3 +496,22 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 
 - Added: H1 document title "Enparse Parser Training Plan".
 - Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.
+
+### 2026-11-17T22:43:29Z — Claude Opus 5.5, Partial labels, labels.json schema, traceable ParseResult
+
+- Added: key design decisions for partial labels and traceable outputs.
+- Added: Phase 4 task 4 (partial labels with a per-word `reviewed` flag) and task 8 with the `labels.json` schema v1 table; exit criterion requires the schema and a matching `LabelConfig`.
+- Added: Phase 4 exit gate (`LabelConfig` matches schema v1); Phase 11 gate includes `ParseResult` model version and wink offsets.
+- Modified: Phase 3 task 4 keeps wink character offsets per word; Phase 8 task 4 and Phase 11 task 1 refer to schema fields; Phase 11 integration test checks `ParseResult` traceability; Phase 12 notes what is already prepared for feedback data.
+- Modified: Phase 4 tasks renumbered (old 4–6 are now 5–7).
+
+### 2026-11-17T23:16:13Z — Claude Opus 5.5, Phase 1 data acquisition and license summary
+
+- Added: Phase 1 *Outcome*: UD EWT r2.19 pinned (commit, checksums), corpus size, proposed license position, proposed GUM exclusion.
+- Modified: *Open questions* (training data license, extra data) and *Data* table (GUM license) reflect Phase 1 findings.
+
+### 2026-11-17T23:17:31Z — Claude Opus 5.5, Phase 1 complete
+
+- Modified: Phase 1 *Outcome* — owner accepted the license position and GUM exclusion; exit criterion met.
+- Modified: *Gates for later phases* → Phase 1 exit row marked done.
+- Removed: *Open questions* → training data license (decided).

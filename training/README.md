@@ -57,4 +57,10 @@ python scripts/check_env.py   # Phase 0 check: MPS + dummy run per candidate mod
 
 ## Running
 
-TODO(training-setup): one command per phase, added as scripts are implemented.
+Run from `training/` with the venv active.
+
+| Phase | Command | Notes |
+|-------|---------|-------|
+| 1 | `sh scripts/fetch_data.sh` | Clones UD EWT at the tag in `configs/data.yaml` into `data/raw/`; verifies commit and SHA-256. Exit 2 = unpinned values printed for recording. |
+
+TODO(training-setup): commands for Phases 2–11, added as scripts are implemented.

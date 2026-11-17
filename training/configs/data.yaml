@@ -48,5 +48,35 @@
 #     kinds               — lowercase_sentence_start, drop_final_punct, learner_typos
 #   seed                  — global data seed
 #
-# Status: not populated (header only).
+# Status: Phase 1 keys set (ud_ewt, gum, paths.raw); later keys added per phase.
 # =============================================================================
+
+# Phase 1 — UD English EWT (CC BY-SA 4.0). commit/checksums: null until the
+# first fetch_data.sh run prints them; later runs fail on mismatch.
+# Pinned 2026-11-18 (latest UD release).
+ud_ewt:
+  repo_url: https://github.com/UniversalDependencies/UD_English-EWT.git
+  release_tag: r2.19
+  commit: 6b021622f3ab7902730f313fa5955a8b8cdd52b8
+  dir: ud_ewt
+  files:
+    train: en_ewt-ud-train.conllu
+    dev: en_ewt-ud-dev.conllu
+    test: en_ewt-ud-test.conllu
+    license: LICENSE.txt
+  checksums:
+    train: fa6b2c9fc048273ee52f9609bcdc5880df366b6b72847e01a353259ea78c2a37
+    dev: ebd876f58675824910a380e1c28145739856a0d595fc44851d577d0e7047f356
+    test: 5b5df91ca23677345b941dc58d81617753e0d2d8bee12094e2a25cead3c18973
+    license: b3d1b0f4c6ae151f7eb78738f46ebd5ee140f8a7f76501ba26af123140d35ae7
+
+# Phase 1 — GUM excluded: the UD release (r2.19) is licensed CC BY-NC-SA 4.0
+# as a whole; non-commercial data is not allowed (agents.md → Dependency
+# policy). Owner decision, 2026-11-18.
+gum:
+  enabled: false
+  subcorpora: []
+
+# All paths are relative to training/ and git-ignored.
+paths:
+  raw: data/raw
