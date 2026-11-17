@@ -1,20 +1,22 @@
-# Document Maintaining Guide
+# Enparse Parser Training Plan
+
+## Document Maintaining Guide
 
 This guide applies to all contributors (human and AI) editing this file.
 
-## Rules
+### Rules
 
 1. **Direct edits.** Edits are made directly on the document. Existing content may be modified, reordered, or removed as needed.
 2. **Changelog at bottom.** A 'Changelog' section must always exist at the bottom of the document. All changes made with each update are appended to the bottom of the changelog with a summary and timestamp. The [Author] field must be filled in with the username in the case of human contributors, and the model name in the case that an agent makes the update.
 3. **Concise language.** Write in brief, clear English. Avoid unnecessary verbosity.
 4. **Changelog format.** Each changelog entry must begin with a datetime stamp in ISO 8601 format (e.g., `2026-11-17T10:30:00Z`), followed by a bulleted list of what was added, modified, or removed.
 
-## Format template
+### Format template
 
 ```md
 ## Changelog
 
-## YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
+### YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
 
 - Added: ...
 - Modified: ...
@@ -29,7 +31,7 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Output:** A quantized ONNX model loaded by `parser/transformerBackend.ts` via Transformers.js (see *Parsing engine* in `architecture.md`).
 - **Priority:** Accuracy before speed. Runtime budget: ≤ ~5 s per 5,000 characters on a typical laptop.
 - **Training machine:** MacBook Pro M5 Pro, 48 GB unified memory. Training uses the PyTorch MPS (Metal) backend.
-- **Training framework:** Unsloth, with plain Hugging Face `Trainer` as fallback (see Phase 0).
+- **Training framework:** Hugging Face `Trainer` on MPS for every candidate. Unsloth was ruled out in Phase 0.
 
 ### Key design decisions
 
@@ -72,19 +74,19 @@ This guide applies to all contributors (human and AI) editing this file.
 | Library | Purpose |
 |---------|---------|
 | `torch` (MPS build) | Training backend |
-| `unsloth` | Training acceleration and memory savings (if Phase 0 passes) |
 | `transformers` | Models, tokenizers, `Trainer` |
 | `datasets` | Dataset building and caching |
 | `accelerate` | Device handling for `Trainer` |
 | `conllu` | Parsing UD `.conllu` files |
 | `seqeval` | CoNLL-style chunk precision/recall/F1 |
 | `evaluate` | Metric helpers |
-| `optimum[onnxruntime]` | ONNX export and quantization |
+| `optimum`, `optimum-onnx` | ONNX export (exporter is in `optimum-onnx` since Optimum 2) and quantization |
 | `onnx`, `onnxruntime` | ONNX validation and parity checks |
 | `numpy`, `pandas` | Data handling and reports |
 | `tensorboard` | Local training logs (no external tracking service) |
 | `pytest` | Tests for data conversion scripts |
 | `pyyaml` | Reading `configs/*.yaml` |
+| `sentencepiece`, `protobuf` | DeBERTa-v3 tokenizer loading and fast-tokenizer conversion |
 | `ruff` | Format and lint (dev only) |
 
 ### Node libraries (`training/js/package.json`)
@@ -171,22 +173,22 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 | `uv` | Installed | 0.13.5 | Ready |
 | Python 3.12 | Installed via `uv` | 3.12.15 (uv-managed); pinned by `training/.python-version` (global pyenv default stays 3.15.2) | Ready |
 | Node.js | 20+ | 26.13.1, npm 11.20.0 | Ready |
-| git-lfs | Installed and active | 3.8.1; LFS filter configured; `.gitattributes` patterns tracked. Repo hooks (`pre-push`) not installed | **To do** (owner: run `git lfs install` inside the repo) |
+| git-lfs | Installed and active | 3.8.1; LFS filter configured; `.gitattributes` patterns tracked; repo hooks installed (checked 2026-11-18) | Ready |
 | Repository scaffold | `training/` layout | Created; all files are headers only | Ready |
 
 **Tasks**
-1. Install git-lfs and run `git lfs install` inside the repository so the LFS hooks are added; confirm `git lfs track` lists the patterns in `.gitattributes`. *Status: installed and tracking; repo hooks pending.*
+1. Install git-lfs and run `git lfs install` inside the repository so the LFS hooks are added; confirm `git lfs track` lists the patterns in `.gitattributes`. *Status: done.*
 2. Install Python 3.12 with `uv python install 3.12`. Pin it for `training/` with `training/.python-version`. *Status: done.*
 3. Add `training/pyproject.toml` with `ruff` and `pytest` settings only; dependencies stay in `requirements.txt`. *Status: done.*
-4. Confirm Unsloth support (open risk): check Unsloth's current docs for Apple Silicon (MPS) and encoder token-classification support. If neither is supported, plan for `Trainer` and keep Unsloth only as a Phase 0 check.
-5. Owner: confirm the gate schedule below.
+4. Confirm Unsloth support (open risk): check Unsloth's current docs for Apple Silicon (MPS) and encoder token-classification support. If neither is supported, plan for `Trainer` and keep Unsloth only as a Phase 0 check. *Status: done, will use Huggingface Trainer.*
+5. Owner: confirm the gate schedule below. *Status: done.*
 
 **Gates for later phases**
 
 | Needed before | Item | Owner of decision | Tracked in |
 |---------------|------|-------------------|------------|
 | Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | `plan.md` → *Training data licensing* |
-| Phase 3 | `src/modules/parser/winkBackend.ts` tokenization implemented (alignment must match runtime); root `package.json` with pinned `wink-nlp` and `@huggingface/transformers` versions to mirror in `training/js/` | Dev | `architecture.md` |
+| Phase 3 | `src/modules/parser/winkBackend.ts` tokenization implemented (alignment must match runtime); root `package.json` pins the same `wink-nlp` and `@huggingface/transformers` versions as `training/js/` (chosen in Phase 0) | Dev | `architecture.md` |
 | Phase 5 | `src/modules/parser/chunkPatterns.ts` implemented (run via `tsx`) | Owner (patterns), dev | `plan.md` → *Fallback chunk patterns* |
 | Phase 6 | Model size cap | Owner | `plan.md` → *Model size cap* |
 | Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds* |
@@ -209,6 +211,26 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 
 **Deliverables:** pinned `requirements.txt` and `training/js` lockfile; a note in this document on which framework is used per model.
 **Exit criterion:** a dummy training run completes on MPS for every candidate model.
+
+**Outcome (2026-11-18): exit criterion met.**
+
+- Environment: Python 3.12.15, torch 2.15.0 (MPS available), transformers 4.57.6. Full pin list in `requirements.txt`; `training/js/package-lock.json` committed.
+- `scripts/check_env.py`: 50 steps, batch 8, 10 dummy labels, length 256, fp32, no `PYTORCH_ENABLE_MPS_FALLBACK` (settings in `configs/eval.yaml` → `env_check`).
+- Unsloth 2026.11.6 (throwaway venv): on macOS, `FastModel.from_pretrained` goes to the MLX backend, not PyTorch MPS, and failed for every model. Its dependency `unsloth-zoo` is LGPL-3.0-or-later, which the dependency policy does not allow. Unsloth is not in `requirements.txt`.
+
+| Model | Framework | Dummy run (HF `Trainer`, MPS) |
+|-------|-----------|-------------------------------|
+| `distilbert-base-cased` | `hf_trainer` | Pass, 7.2 s |
+| `microsoft/deberta-v3-xsmall` | `hf_trainer` | Pass, 13.2 s |
+| `bert-base-cased` | `hf_trainer` | Pass, 15.6 s |
+| `answerdotai/ModernBERT-base` | `hf_trainer` | Pass, 21.2 s |
+
+- Notes for later phases:
+  - DeBERTa-v3: the fast-tokenizer conversion warns that byte fallback is not supported. Check unknown-token rates in Phase 3 and parity in Phase 9.
+  - `training/js` versions were picked here (`wink-nlp` 2.4.0, `@huggingface/transformers` 4.3.2). The root `package.json` must use the same versions (Phase 3 gate).
+  - Some npm dev dependencies are not under a permissive license: `sharp-libvips` (LGPL-3.0, via Transformers.js, Node image support) and `lightningcss` (MPL-2.0, via Vite). They are dev-only and not shipped. Waiting on owner review; tracked in `plan.md` → *Undecided*.
+  - npm 11 blocked install scripts (`onnxruntime-node`, `esbuild`, `protobufjs`). All packages still load in Node without them.
+  - `js-yaml` 5 has no default export. Use `import * as yaml from "js-yaml"`.
 
 ### Phase 1 — Data acquisition and licensing
 
@@ -383,7 +405,7 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 
 ## Changelog
 
-## 2026-11-17T02:03:03Z — Claude Opus 5.5, Created training plan
+### 2026-11-17T02:03:03Z — Claude Opus 5.5, Created training plan
 
 - Added: Document Maintaining Guide (same as `plan.md` and `architecture.md`).
 - Added: Overview, key design decisions, and open questions.
@@ -391,19 +413,19 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Added: `training/` directory layout.
 - Added: Phases 0–12 with tasks, deliverables, and exit criteria.
 
-## 2026-11-17T02:57:39Z — Claude Opus 5.5, Scaffolded training/ directory
+### 2026-11-17T02:57:39Z — Claude Opus 5.5, Scaffolded training/ directory
 
 - Added: `training/` scaffold matching the layout; every file has a header (description, phase, tasks, dependencies). No code yet.
 - Added (proposed): `configs/eval.yaml` (post-training thresholds out of scripts), `scripts/check_env.py` (Phase 0 check), `tests/conftest.py`.
 - Added: `training/README.md`, `training/.gitignore`, `reports/README.md`, `MODEL_CARD.md` skeleton; one `train_<model>.yaml` per candidate.
 - Modified: *Training directory layout* lists the new files.
 
-## 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size; added dependencies
+### 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size; added dependencies
 
 - Modified: Phase 4 states that training and runtime windows are both 256 subword tokens.
 - Added: `pyyaml` and `ruff` to Python libraries; `tsx` and `js-yaml` to Node libraries (`tsx` runs TypeScript files in Node).
 
-## 2026-11-17T04:00:45Z — Claude Opus 5.5, Pre-flight check (Phase pre-0)
+### 2026-11-17T04:00:45Z — Claude Opus 5.5, Pre-flight check (Phase pre-0)
 
 - Added: *Phase pre-0 — Pre-flight check* with machine check results, tasks (git-lfs, Python 3.12, tool config, Unsloth support check), and gates for later phases.
 - Added: open question on the Phase 10 browser benchmark page location.
@@ -411,9 +433,25 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Modified: git-lfs purpose and Phase 11 task 1 note that shipped ONNX files are tracked with Git LFS.
 - Modified: `pyyaml`, `ruff`, `js-yaml` approved by owner; proposed marks removed.
 
-## 2026-11-17T04:21:52Z — Claude Opus 5.5, Pre-0 progress; bench page and tool config
+### 2026-11-17T04:21:52Z — Claude Opus 5.5, Pre-0 progress; bench page and tool config
 
 - Added: `training/pyproject.toml` (ruff and pytest settings, owner-approved), `training/.python-version` (3.12), `training/js/bench-page/` (`index.html`, `bench.worker.mjs` headers) to layout.
 - Modified: Phase pre-0 machine check — Python 3.12 (3.12.15) ready; git-lfs 3.8.1 installed, repo hooks pending; tasks 2–3 done.
 - Modified: Phase 10 task 1 uses `training/js/bench-page/` (owner decision).
 - Removed: open question and gate row for the bench page location (decided); hosting-limit check from the Phase 6 gate (deferred by owner).
+
+### 2026-11-17T22:00:00Z — Hankyung Lee, Pre-0 progress; marked all tasks as done
+
+- Modified: Phase pre-0 tasks are now all marked done.
+
+### 2026-11-17T22:14:22Z — Claude Opus 5.5, Phase 0 complete
+
+- Added: Phase 0 *Outcome*: Trainer is used for all four candidates, each passes a dummy MPS run; Unsloth result; notes for later phases.
+- Added: `sentencepiece`, `protobuf`, `optimum-onnx` to Python libraries.
+- Modified: Overview training framework is now Hugging Face `Trainer`; pre-0 git-lfs row set to Ready; Phase 3 gate now says the root `package.json` mirrors the `training/js` versions.
+- Removed: `unsloth` from Python libraries.
+
+### 2026-11-17T22:20:06Z — Claude Opus 5.5, Heading hierarchy
+
+- Added: H1 document title "Enparse Parser Training Plan".
+- Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.

@@ -5,42 +5,125 @@
 # Description:
 #   Pinned Python dependencies for all scripts in training/scripts/ and tests
 #   in training/tests/. Installed into a uv-managed Python 3.12 virtual
-#   environment. Not shipped with the app.
+#   environment (training/.venv). Not shipped with the app.
 #
 # Phase: 0 — Environment setup and tooling check (plan-training.md).
 #
-# Tasks:
-#   1. Create the venv: Python 3.12 via uv.
-#   2. Install the libraries below and pin exact versions (==) in this file.
-#   3. Confirm torch reports MPS available (scripts/check_env.py).
-#   4. Record which framework (Unsloth or HF Trainer) is used per model in
-#      plan-training.md → Phase 0.
-#   5. Note major-version upgrades in the plan-training.md changelog.
+# Install (from training/):
+#   uv venv --python 3.12 .venv
+#   uv pip install -r requirements.txt
+#
+# Update: install or upgrade with `uv pip install`, run scripts/check_env.py,
+#   then regenerate the pin list below with `uv pip freeze`. Note
+#   major-version upgrades in the plan-training.md changelog.
 #
 # Dependencies:
 #   System: macOS + Xcode CLT, uv, Python 3.12 (see plan-training.md →
 #           Prerequisites → System software).
 #   License rule: permissive licenses only (MIT, Apache 2.0, BSD, ISC);
-#           see agents.md → Dependency policy.
+#           see agents.md → Dependency policy. Checked 2026-11-18: no GPL,
+#           LGPL, or non-commercial licenses in the pinned set.
 #
-# Planned packages (unpinned until Phase 0; uncomment and pin at setup):
+# Direct packages (everything else below is a transitive pin):
 #   torch                 — training backend (MPS build)
-#   unsloth               — training acceleration (only if Phase 0 check passes)
 #   transformers          — models, tokenizers, Trainer
 #   datasets              — dataset building and caching
 #   accelerate            — device handling for Trainer
 #   conllu                — parsing UD .conllu files
 #   seqeval               — CoNLL-style chunk precision/recall/F1
 #   evaluate              — metric helpers
-#   optimum[onnxruntime]  — ONNX export and quantization
+#   optimum, optimum-onnx — ONNX export (exporter lives in optimum-onnx) and
+#                           quantization
 #   onnx                  — ONNX model validation
 #   onnxruntime           — ONNX inference for parity checks
 #   numpy                 — numeric arrays
 #   pandas                — reports and tables
 #   pyyaml                — reading configs/*.yaml
+#   sentencepiece         — DeBERTa-v3 tokenizer loading and fast conversion
+#   protobuf              — required by sentencepiece tokenizer conversion
 #   tensorboard           — local training logs (no external tracking service)
 #   pytest                — tests for data conversion scripts
 #   ruff                  — format and lint (dev only)
 #
-# Status: not populated (header only).
+# Not included: unsloth — Phase 0 check failed on macOS (routes to MLX, not
+#   PyTorch MPS) and its dependency unsloth-zoo is LGPL-3.0-or-later.
+#
+# Status: pinned (Phase 0, 2026-11-18; full `uv pip freeze`).
 # =============================================================================
+
+absl-py==2.5.1
+accelerate==1.16.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
+anyio==4.16.0
+attrs==26.1.0
+certifi==2026.10.23
+charset-normalizer==3.5.2
+cloudpickle==3.1.2
+conllu==6.1.1
+datasets==5.0.1
+dill==0.4.1
+evaluate==0.4.6
+filelock==4.2.11
+flatbuffers==25.12.19
+frozenlist==1.8.0
+fsspec==2026.6.0
+grpcio==1.85.1
+h11==0.16.0
+hf-xet==1.8.0
+httpcore==1.0.9
+httpx==0.28.1
+huggingface-hub==0.36.2
+idna==3.20
+iniconfig==2.3.1
+jinja2==3.1.6
+joblib==1.6.0
+markdown==3.11.3
+markupsafe==3.0.4
+ml-dtypes==0.7.0
+mpmath==1.3.0
+multidict==7.2.1
+multiprocess==0.70.19
+narwhals==2.29.0
+networkx==3.7
+numpy==2.5.5
+onnx==1.23.2
+onnxruntime==1.32.0
+optimum==2.1.0
+optimum-onnx==0.1.0
+packaging==26.3
+pandas==3.1.1
+pillow==13.0.0
+pluggy==1.7.0
+propcache==0.5.4
+protobuf==7.36.2
+psutil==7.2.2
+pyarrow==26.0.1
+pygments==2.21.0
+pytest==9.2.0
+python-dateutil==4.0.0
+pyyaml==6.0.3
+regex==2026.11.15
+requests==2.34.2
+ruff==0.17.5
+safetensors==0.8.0
+scikit-learn==1.9.1
+scipy==1.18.1
+sentencepiece==0.2.3
+seqeval==1.2.2
+setuptools==84.2.1
+sympy==1.14.0
+tensorboard==2.21.0
+tensorboard-data-server==0.7.2
+threadpoolctl==3.8.0
+tokenizers==0.22.2
+torch==2.15.0
+tqdm==4.70.1
+transformers==4.57.6
+typing-extensions==4.16.0
+tzdata==2026.6
+urllib3==2.8.0
+werkzeug==3.1.9
+xxhash==4.1.0
+yarl==1.25.1

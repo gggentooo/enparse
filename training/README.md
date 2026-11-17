@@ -7,7 +7,7 @@ Description:
   in dev_meta/agents.md → Training code. Not shipped with the app.
 
 Tasks:
-  1. Phase 0: fill in setup commands (uv venv, pip install, npm install in js/).
+  1. Phase 0: setup commands (done).
   2. Add one run command per phase as scripts are implemented.
   3. Keep in sync with plan-training.md → Training directory layout.
 
@@ -15,7 +15,7 @@ Dependencies:
   System: macOS + Xcode CLT, uv, Python 3.12, Node.js 20+, git + git-lfs.
   Python: requirements.txt. Node: js/package.json.
 
-Status: skeleton only; commands not written yet.
+Status: setup written (Phase 0); run commands added per phase.
 -->
 
 # Enparse training pipeline
@@ -41,7 +41,19 @@ Offline pipeline that trains the `UPOS|CHUNK` token classifier and exports it to
 
 ## Setup
 
-TODO(training-setup): written in Phase 0.
+Requires macOS (Apple Silicon), Xcode CLT, `uv`, Node.js 20+, git-lfs. Run from `training/`:
+
+```bash
+uv venv --python 3.12 .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+(cd js && npm ci)
+python scripts/check_env.py   # Phase 0 check: MPS + dummy run per candidate model
+```
+
+- Framework: Hugging Face `Trainer` on MPS (Unsloth unsupported; see `plan-training.md` → Phase 0).
+- Lint and format: `ruff check scripts tests` and `ruff format scripts tests`.
+- Updating Python pins: install or upgrade with `uv pip install`, rerun `check_env.py`, then regenerate the pin list in `requirements.txt` with `uv pip freeze` (keep the header).
 
 ## Running
 

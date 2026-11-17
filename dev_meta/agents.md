@@ -1,20 +1,22 @@
-# Document Maintaining Guide
+# Enparse Agent Development Guide
+
+## Document Maintaining Guide
 
 This guide applies to all contributors (human and AI) editing this file.
 
-## Rules
+### Rules
 
 1. **Direct edits.** Edits are made directly on the document. Existing content may be modified, reordered, or removed as needed.
 2. **Changelog at bottom.** A 'Changelog' section must always exist at the bottom of the document. All changes made with each update are appended to the bottom of the changelog with a summary and timestamp. The [Author] field must be filled in with the username in the case of human contributors, and the model name in the case that an agent makes the update.
 3. **Concise language.** Write in brief, clear English. Avoid unnecessary verbosity.
 4. **Changelog format.** Each changelog entry must begin with a datetime stamp in ISO 8601 format (e.g., `2026-11-17T10:30:00Z`), followed by a bulleted list of what was added, modified, or removed.
 
-## Format template
+### Format template
 
 ```md
 ## Changelog
 
-## YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
+### YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
 
 - Added: ...
 - Modified: ...
@@ -264,14 +266,19 @@ Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
 
 ## Changelog
 
-## 2026-11-17T02:24:51Z — Claude Opus 5.5, Created agent development guide
+### 2026-11-17T02:24:51Z — Claude Opus 5.5, Created agent development guide
 
 - Added: Document Maintaining Guide (same as other `dev_meta/` documents).
 - Added: project summary, source-of-truth documents, agent workflow and boundaries, architecture rules summary.
 - Added: coding, module/feature, testing, tooling, dependency, and documentation guides; definition of done.
 - Added (proposed): module public API via `index.ts`; Vitest/RTL/Playwright; npm; ESLint + Prettier; ruff for training code.
 
-## 2026-11-17T04:00:45Z — Claude Opus 5.5, ruff approved; Git LFS rule
+### 2026-11-17T04:00:45Z — Claude Opus 5.5, ruff approved; Git LFS rule
 
 - Modified: *Training code* — `ruff` approved by owner (proposed mark removed).
 - Modified: *Training code* — shipped model files in `public/models/` are tracked with Git LFS.
+
+### 2026-11-17T22:20:06Z — Claude Opus 5.5, Heading hierarchy
+
+- Added: H1 document title "Enparse Agent Development Guide".
+- Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.

@@ -1,20 +1,22 @@
-# Document Maintaining Guide
+# Enparse Architecture
+
+## Document Maintaining Guide
 
 This guide applies to all contributors (human and AI) editing this file.
 
-## Rules
+### Rules
 
 1. **Direct edits.** Edits are made directly on the document. Existing content may be modified, reordered, or removed as needed.
 2. **Changelog at bottom.** A 'Changelog' section must always exist at the bottom of the document. All changes made with each update are appended to the bottom of the changelog with a summary and timestamp. The [Author] field must be filled in with the username in the case of human contributors, and the model name in the case that an agent makes the update.
 3. **Concise language.** Write in brief, clear English. Avoid unnecessary verbosity.
 4. **Changelog format.** Each changelog entry must begin with a datetime stamp in ISO 8601 format (e.g., `2026-11-17T10:30:00Z`), followed by a bulleted list of what was added, modified, or removed.
 
-## Format template
+### Format template
 
 ```md
 ## Changelog
 
-## YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
+### YYYY-MM-DDTHH:MM:SSZ — [Author], [Brief title]
 
 - Added: ...
 - Modified: ...
@@ -23,7 +25,7 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ---
 
-### Project overview
+## Project overview
 
 - **Goal:** Build a browser-based English grammar and vocabulary study tool for Korean speakers.
 - **Purpose:** Parse English text and produce annotated output to support grammar and vocabulary learning.
@@ -44,7 +46,7 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ---
 
-### Technology stack
+## Technology stack
 
 | Technology   | Role                                           |
 |--------------|-------------------------------------------------|
@@ -68,11 +70,13 @@ This guide applies to all contributors (human and AI) editing this file.
 | ruff | Python format and lint for `training/` (MIT) |
 | Git LFS | Stores shipped model files in `public/models/` (see *Model training* → *Artifacts*) |
 
+- **Version sync:** `training/js/package.json` pins `wink-nlp` 2.4.0, `wink-eng-lite-web-model` 1.8.1, and `@huggingface/transformers` 4.3.2 (Phase 0). The app's root `package.json` must use the same versions.
+
 No separate state-management library. Shared state lives in services and is exposed through hooks (see *Layer communication*).
 
 ---
 
-### Layers
+## Layers
 
 The app has four layers. Each layer may only depend on the layer(s) below it.
 
@@ -89,7 +93,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 
 ---
 
-### Logic modules
+## Logic modules
 
 | Module                       | Description                                                                                       |
 |------------------------------|---------------------------------------------------------------------------------------------------|
@@ -111,7 +115,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 
 ---
 
-### Parsing engine
+## Parsing engine
 
 **Priority:** accuracy before speed. Up to ~5 s per 5,000 characters on a typical laptop is acceptable.
 
@@ -128,7 +132,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
-#### Model
+### Model
 
 - **Architecture:** standard token classifier with one combined label per word, `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing combined-label probabilities. A two-head variant is an optional training experiment.
 - **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
@@ -136,16 +140,16 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
 - **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
 
-#### Model training (offline, `training/`)
+### Model training (offline, `training/`)
 
 Full plan: [plan-training.md](plan-training.md).
 
 - **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
-- **Framework:** Unsloth on Apple Silicon (MPS), with Hugging Face `Trainer` as fallback; Optimum for ONNX export and quantization.
+- **Framework:** Hugging Face `Trainer` on Apple Silicon (MPS). Unsloth was ruled out in Phase 0. Optimum (`optimum-onnx`) handles ONNX export and quantization.
 - **Evaluation:** UPOS accuracy, chunk F1, calibration, and speed on the EWT test split, compared with the wink-nlp fallback and compromise.
 - **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`, tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
 
-#### Pipeline
+### Pipeline
 
 ```
 raw text
@@ -160,13 +164,13 @@ raw text
 - `parserService` runs this chain.
 - Subword segmentation runs on demand: `subwordService` receives a word and its lemma from the parse result.
 
-#### Fallback mode
+### Fallback mode
 
 - Used while the model downloads, if model loading fails, or on devices without enough memory.
 - `winkBackend` provides POS tags, and `chunkPatterns.ts` builds chunks from them. Ambiguity uses rule-based patterns only.
 - The UI shows that results come from basic mode and offers re-parsing once the model is ready.
 
-#### Preprocessor (`input/textInput.ts`)
+### Preprocessor (`input/textInput.ts`)
 
 - Unicode NFKC normalization; curly quotes and dashes converted to ASCII equivalents.
 - Strips control characters, zero-width characters, and emoji.
@@ -174,20 +178,20 @@ raw text
 - Collapses repeated whitespace; keeps paragraph breaks.
 - **Max length:** 5,000 characters (configurable). Longer input is rejected with a character count; it is not silently truncated.
 
-#### Ambiguity handling
+### Ambiguity handling
 
 1. **Primary parse (context-selected):** the highest-probability label for each word, chosen by the model using surrounding context. Marked "most likely".
 2. **Probability-based alternatives:** words whose top two labels are close (margin below a threshold, e.g. 0.2) are treated as ambiguous. `ambiguity.ts` builds alternative label sequences from them, keeps only valid ones (consistent BIO chunks), and ranks them by joint probability.
 3. **Attachment alternatives (rule-based):** flat chunks do not encode where a prepositional phrase attaches. `ambiguity.ts` flags `VP NP PP` sequences and offers both readings (PP modifies the verb or the noun).
 4. **Cap:** at most 5 alternatives per sentence (configurable).
 
-#### Subword segmentation
+### Subword segmentation
 
 - wink provides the inflectional split via lemma (*running* → *run* + *-ing*).
 - `subwordParser.ts` strips derivational affixes from `affixes.ts`, longest match first.
 - A split is accepted only if the remaining base is a known word or lemma, preventing false splits (*under* ≠ *un-* + *der*).
 
-#### Alternatives considered
+### Alternatives considered
 
 | Option                         | Status                                                                                  |
 |--------------------------------|-----------------------------------------------------------------------------------------|
@@ -199,7 +203,7 @@ raw text
 
 ---
 
-### Dependency graph
+## Dependency graph
 
 ```
 components/  ──►  hooks/  ──►  services/  ──►  modules/  ──►  core/storage.ts
@@ -218,7 +222,7 @@ vocabService       ──► vocab/vocabManager ──► core/storage
 
 ---
 
-### Layer communication
+## Layer communication
 
 ```
 Component ─► Hook ─► Service ─► Module(s)
@@ -232,14 +236,14 @@ Component ─► Hook ─► Service ─► Module(s)
 
 ---
 
-### Frontend structure
+## Frontend structure
 
-#### Routing
+### Routing
 
 - Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`).
 - `ContentArea` renders the active route via `<Outlet />`.
 
-#### Component hierarchy
+### Component hierarchy
 
 ```
 main.tsx (entry: mounts <RouterProvider> into index.html)
@@ -259,7 +263,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
           └── LoadingSpinner.tsx
 ```
 
-#### Services and hooks
+### Services and hooks
 
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
@@ -270,7 +274,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 
 ---
 
-### Styling strategy
+## Styling strategy
 
 - **CSS Modules** — Each component has a corresponding `.module.css` file next to it.
 - Styles are scoped to the component; no global leakage.
@@ -280,7 +284,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 
 ---
 
-### Complete project skeleton
+## Complete project skeleton
 
 ```
 enparse/
@@ -368,7 +372,7 @@ enparse/
 - `training/` holds the offline model pipeline. Its output in `public/models/` is served as static files.
 - Each logic module is a self-contained directory under `modules/`. Coding conventions and the step-by-step module guide are in `agents.md`.
 
-#### Adding a new feature
+### Adding a new feature
 
 1. Logic module in `modules/<feature>/` (if new logic is needed).
 2. Service in `services/` wrapping that module.
@@ -380,13 +384,13 @@ enparse/
 
 ## Changelog
 
-## 2026-11-17T00:32:01Z — Switched to direct-edit model with Changelog
+### 2026-11-17T00:32:01Z — Switched to direct-edit model with Changelog
 
 - Modified: Document Maintaining Guide — replaced append-only rule with direct-edit rule; added requirement for a Changelog section at the bottom.
 - Modified: Changelog format — entries now record added/modified/removed items with timestamp.
 - Removed: Timestamped section header from existing content (consolidated into single document body).
 
-## 2026-11-17T00:54:54Z — Claude Opus 5.5, Resolved architectural conflicts (React final)
+### 2026-11-17T00:54:54Z — Claude Opus 5.5, Resolved architectural conflicts (React final)
 
 - Added: React Router (`createHashRouter`) to stack; `routes.tsx` and `main.tsx` entry point.
 - Added: *Layers* section with explicit dependency rules; *Layer communication* section (service subscriptions via `useSyncExternalStore`).
@@ -396,7 +400,7 @@ enparse/
 - Modified: "Backend modules" renamed "Logic modules" (app is fully client-side). Header/Sidebar roles split (branding vs navigation).
 - Removed: `app.ts` (replaced by `main.tsx`), `core/router.ts` (replaced by React Router), `core/eventBus.ts` (replaced by service subscriptions), `useStorage` hook (no matching service).
 
-## 2026-11-17T01:41:17Z — Claude Opus 5.5, Selected parsing engine
+### 2026-11-17T01:41:17Z — Claude Opus 5.5, Selected parsing engine
 
 - Added: wink-nlp + wink-eng-lite-web-model to *Technology stack*.
 - Added: *Parsing engine* section (criteria, pipeline, preprocessor rules, ambiguity handling, subword segmentation, alternatives considered).
@@ -404,7 +408,7 @@ enparse/
 - Modified: `input/textInput.ts` defined as the preprocessor; `parser/parser.ts` and `output/annotator.ts` outputs updated (tokens and alternatives; no parse-tree data).
 - Modified: Dependency rules allow imports within a module and of listed external libraries.
 
-## 2026-11-17T01:56:15Z — Claude Opus 5.5, Switched primary parser to in-house transformer
+### 2026-11-17T01:56:15Z — Claude Opus 5.5, Switched primary parser to in-house transformer
 
 - Added: Transformers.js to *Technology stack*; development-only training stack note.
 - Added: *Model*, *Model training*, and *Fallback mode* subsections; `parser/transformerBackend.ts`; `public/models/` and `training/` to skeleton.
@@ -413,36 +417,47 @@ enparse/
 - Modified: *Alternatives considered* — updated statuses; added off-the-shelf chunking models (license issues).
 - Removed: 60-token max sentence length (overlapping context windows replace it).
 
-## 2026-11-17T02:03:03Z — Claude Opus 5.5, Aligned with training plan
+### 2026-11-17T02:03:03Z — Claude Opus 5.5, Aligned with training plan
 
 - Added: link to `plan-training.md` in *Model training*; `plan-training.md` to skeleton.
 - Modified: *Model* — single combined `UPOS|CHUNK` label head replaces two heads; cased base-model candidates updated; calibration temperature applied at runtime.
 - Modified: model size estimate to ~65–80 MB (proposed 80 MB cap); training framework (Unsloth on MPS, `Trainer` fallback); `training/` skeleton matches the training plan.
 
-## 2026-11-17T02:24:51Z — Claude Opus 5.5, Linked agent guide
+### 2026-11-17T02:24:51Z — Claude Opus 5.5, Linked agent guide
 
 - Added: `agents.md` to skeleton; pointer to `agents.md` for coding conventions and module guide.
 
-## 2026-11-17T02:57:39Z — Claude Opus 5.5, Training scaffold
+### 2026-11-17T02:57:39Z — Claude Opus 5.5, Training scaffold
 
 - Modified: `training/scripts/` skeleton note includes the proposed environment check (`check_env.py`).
 
-## 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size
+### 2026-11-17T03:31:22Z — Claude Opus 5.5, Unified window size
 
 - Modified: *Model* → *Context window* reduced from 512 to 256 subword tokens to match training.
 
-## 2026-11-17T03:36:56Z — Claude Opus 5.5, App scaffold and dev tools
+### 2026-11-17T03:36:56Z — Claude Opus 5.5, App scaffold and dev tools
 
 - Added: *Technology stack* → development-only tools table (tsx; proposed js-yaml, pyyaml, ruff).
 - Added: skeleton entries for `tsconfig.json`, per-module `index.ts` and `types.ts` (proposed), and a `README.md` placeholder in `public/models/enparse-tagger/`.
 - Added: header-only files for the full skeleton (`src/`, root config, `public/`). No code yet.
 
-## 2026-11-17T04:00:45Z — Claude Opus 5.5, Approved dev tools; Git LFS for models
+### 2026-11-17T04:00:45Z — Claude Opus 5.5, Approved dev tools; Git LFS for models
 
 - Modified: js-yaml, pyyaml, and ruff approved by owner; proposed marks removed.
 - Added: Git LFS to development tools; *Artifacts* notes that `public/models/` files are tracked with Git LFS.
 - Modified: *Parsing engine* → accuracy source path corrected to `training/scripts/evaluate.py`.
 
-## 2026-11-17T04:21:52Z — Claude Opus 5.5, Bench page in skeleton
+### 2026-11-17T04:21:52Z — Claude Opus 5.5, Bench page in skeleton
 
 - Modified: `training/js/` skeleton note includes `bench-page/` (Phase 10 browser benchmark).
+
+### 2026-11-17T22:14:22Z — Claude Opus 5.5, Training framework and JS versions
+
+- Modified: *Model training* → framework is now Hugging Face `Trainer` (Unsloth ruled out in Phase 0); ONNX export uses `optimum-onnx`.
+- Added: *Technology stack* → version-sync note for `wink-nlp` and `@huggingface/transformers` pinned in `training/js`.
+
+### 2026-11-17T22:20:06Z — Claude Opus 5.5, Heading hierarchy
+
+- Added: H1 document title "Enparse Architecture".
+- Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.
+- Modified: content sections raised one level (H3 → H2, H4 → H3); *Core features* and *Design principles* are H3 under *Project overview*, matching `plan.md`.

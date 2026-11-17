@@ -8,7 +8,7 @@
 #   are not hard-coded (agents.md → Training code). Model-specific values
 #   (checkpoint, base model) come from configs/train_<model>.yaml.
 #
-# Phases: 5 (baselines), 8 (calibration), 9 (export), 10 (benchmark).
+# Phases: 0 (env check), 5 (baselines), 8 (calibration), 9 (export), 10 (benchmark).
 #
 # Tasks:
 #   1. Phase 8: set the ambiguity margin sweep and alternatives cap.
@@ -16,13 +16,13 @@
 #   3. Phase 10: set the benchmark sample and run counts.
 #
 # Dependencies:
-#   Read by: scripts/calibrate.py, scripts/export_onnx.py, scripts/evaluate.py,
+#   Read by: scripts/check_env.py, scripts/calibrate.py, scripts/export_onnx.py, scripts/evaluate.py,
 #            js/benchmark.mjs, js/evaluate_baselines.mjs.
 #   Related: architecture.md → Ambiguity handling (margin, alternatives cap);
 #            agents.md → Parser and worker code (limits live in constants or
 #            labels.json).
 #
-# Planned keys (values to be filled per phase; none set yet):
+# Planned keys (values to be filled per phase):
 #   calibration:
 #     method              — single temperature on dev logits
 #     ece_bins            — bins for expected calibration error
@@ -44,5 +44,13 @@
 #     min_upos_accuracy   — proposed 0.97
 #     min_chunk_f1        — proposed 0.94
 #
-# Status: not populated (header only).
+# Status: env_check set (Phase 0); other keys pending.
 # =============================================================================
+
+# Phase 0 dummy training run (scripts/check_env.py). (proposed)
+env_check:
+  steps: 50
+  batch_size: 8
+  num_dummy_labels: 10
+  learning_rate: 5.0e-5
+  seed: 0

@@ -36,5 +36,9 @@
 #   seeds                 — shared Phase 6 seed
 #   output_subdir         — checkpoint subfolder under data/checkpoints/
 #
-# Status: not populated (header only).
+# Status: Phase 0 keys set (model_name, framework, max_seq_length); rest pending.
 # =============================================================================
+
+model_name: answerdotai/ModernBERT-base
+framework: hf_trainer  # Phase 0 result (check_env.py, 2026-11-18); Unsloth unsupported on MPS
+max_seq_length: 256
