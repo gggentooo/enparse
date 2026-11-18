@@ -148,6 +148,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
 - **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases.
 - **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
+- **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules.
 - **Traceability:** every `ParseResult` carries the model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
 - **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
@@ -499,3 +500,7 @@ enparse/
 ### 2026-11-18T05:38:31Z — Claude Opus 5.5, Word rules for URLs and symbol runs
 
 - Modified: `winkBackend.ts` description — URLs, e-mail addresses, and symbol runs are one word; no sentence break inside a URL (owner decision).
+
+### 2026-11-18T06:38:56Z — Claude Opus 5.5, Tokenizer input contract
+
+- Added: *Model* → tokenizer input (pre-split words, per-word subword cap), set by Phase 4 `labels.json`.

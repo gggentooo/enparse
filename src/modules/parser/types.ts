@@ -19,8 +19,7 @@
  *      probability and reason: probability or attachment).
  *   5. ParseResult: sentences, mode (model | basic), model version from
  *      labels.json; every Token keeps wink character offsets (traceability).
- *   6. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4),
- *      including label groups and dep_encoding.
+ *   6. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4). (done)
  *   7. Worker message types (request/response unions).
  *   8. Errors: ParserLoadError, ParserRuntimeError, TokenizerError (done).
  *
@@ -29,7 +28,8 @@
  *
  * Open items (plan.md → Undecided): module interfaces (parse result types).
  *
- * Status: word and sentence spans implemented (Phase 3 pre-work); tasks 1–8 pending.
+ * Status: word and sentence spans (Phase 3 pre-work) and LabelConfig (Phase 4)
+ *   implemented; other tasks pending.
  */
 
 /** One runtime word: its text and character offsets into the preprocessed text. */
@@ -55,3 +55,53 @@ export class TokenizerError extends Error {
     this.name = "TokenizerError";
   }
 }
+
+/** labels.json schema version this app understands. */
+export const LABEL_SCHEMA_VERSION = 1;
+
+/** Slice of `labels` (and of the model logits) for one label group. */
+export type LabelGroup = {
+  /** First class id of the group (inclusive). */
+  start: number;
+  /** End class id (exclusive). */
+  end: number;
+};
+
+/**
+ * Contents of public/models/enparse-tagger/labels.json, schema v1
+ * (plan-training.md → Phase 4). Field names match the JSON exactly.
+ * Fields written by later training phases are null until then.
+ */
+export type LabelConfig = {
+  schema_version: number;
+  /** Group A labels (`UPOS|CHUNK`) then group B labels (`<offset>@<UPOS>|<relation>`); index = class id. */
+  labels: string[];
+  /** Softmax is applied per group slice. */
+  groups: { chunk: LabelGroup; dep: LabelGroup };
+  /** Head encoding of group B, e.g. "rel_pos_v1". */
+  dep_encoding: string;
+  /** How words are fed to the tokenizer: "pre_split_words" (each word tokenized as if preceded by a space). */
+  tokenizer_input: string;
+  /** The 17 UPOS tags, fixed order. */
+  upos: string[];
+  /** B-/I- x NP, VP, PP, ADJP, ADVP, then O. */
+  chunk_tags: string[];
+  /** Rare labels mapped during training (`null` = ignored). Informational. */
+  label_merges: Record<string, string | null>;
+  window: {
+    /** Max subword tokens per model window, including special tokens. */
+    max_subword_tokens: number;
+    /** Subwords kept per word; later subwords are dropped before the model. */
+    max_subwords_per_word: number;
+  };
+  versions: {
+    /** Hugging Face id of the base model (tokenizer source). */
+    base_model: string;
+    data: { ud_release: string; ud_commit: string; feedback_batches: string[] };
+    /** wink versions used in training; the app warns if its versions differ. */
+    wink: { "wink-nlp": string; "wink-eng-lite-web-model": string };
+  };
+  calibration: { temperature: number | null; dep_temperature: number | null };
+  ambiguity: { margin: number | null; attachment_margin: number | null };
+  model_version: string | null;
+};

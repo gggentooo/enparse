@@ -175,8 +175,10 @@ training/
 │   ├── export_onnx.py
 │   └── evaluate.py
 ├── js/
-│   ├── package.json
-│   ├── align_tokens.mjs (wink tokenizer vs UD words)
+│   ├── package.json (scripts: align, test)
+│   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
+│   ├── lib/ (conllu.mjs reader, align.mjs label transfer; Phase 3)
+│   ├── tests/ (node:test unit tests, e.g. align.test.mjs)
 │   ├── evaluate_baselines.mjs (wink + chunkPatterns, compromise)
 │   ├── benchmark.mjs (Transformers.js speed and parity)
 │   └── bench-page/ (minimal Vite page for Phase 10: index.html, bench.worker.mjs)
@@ -226,7 +228,7 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 | Phase 7 | `src/modules/parser/treeDecoder.ts` implemented (nested-phrase F1 runs it via `tsx`) | Dev | `architecture.md` → *Logic modules* |
 | Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds*. Nested view thresholds decided: UAS ≥ 97%, LAS ≥ 94% |
 | Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | Done 2026-11-18: Vite 8.3.8 in root and `training/js` |
-| Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | `architecture.md` → *Model* |
+| Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | Done 2026-11-18 (Phase 4 *Outcome*) |
 | Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `plan.md` → *Attribution display*; `architecture.md` → *Model* |
 
 **Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
@@ -357,6 +359,8 @@ At runtime, wink-nlp splits text into words before the model runs. Training word
 | Labels for merged words | A wink word covering several UD words takes the UPOS, chunk type, head, and relation of the span's head word (the UD word whose head lies outside the span). Its chunk tag is `B-` if the span starts a chunk, else `I-`. |
 | Changed sentences | Sentences where `preprocess()` removes text (non-Latin, emoji, control) are dropped from training. |
 | Sentence boundaries | Training keeps UD sentence boundaries. At runtime, trees are built per wink sentence; a head outside the sentence attaches to the sentence root (`treeDecoder.ts`). Effect measured in Phase 7. |
+| Main piece of a split (dev detail) | The first piece with a letter or digit keeps the labels (`'Akkab` → `Akkab`); if none, the first piece. Other pieces: `goeswith`, UPOS `X` (`PUNCT` if no letter or digit), same chunk. |
+| Chunk prefixes (dev detail) | From chunk identity: a runtime word gets `B-` when its chunk (its head word's UD chunk) differs from the previous runtime word's, else `I-`. Merges never join two UD chunks (`I'ma sophomore` → `[NP I'ma] [NP sophomore]`). |
 | Agreement metric | On **each** split (train, dev, test), ≥ 99.5% of counted UD words map to exactly one runtime word. Not counted (by design, still covered by merge rules): UD words merged by the hyphen rule, and UD words inside one written token (no space, no apostrophe) that the runtime keeps whole (`others`, `5pm`, `2/3`, `in.`). Every other mismatch is covered by a documented merge or split rule. |
 
 **Tasks**
@@ -432,6 +436,16 @@ Known weakness (no rule; for Phase 7 error analysis): wink treats some sentence-
 **Deliverables:** alignment script, mismatch report (`reports/alignment.md`), mapping rules for labels and heads.
 **Exit criterion:** agreement metric (*Decisions*) ≥ 99.5% on each split; remaining mismatches documented; every remapped sentence is a valid tree.
 
+**Outcome (2026-11-18): exit criterion met.**
+
+- `js/align_tokens.mjs` (`npm run align` in `training/js`, ~2 s) writes `data/processed/aligned/{train,dev,test}.jsonl`: one record per UD sentence with `doc_id`, `sent_id`, clean `text`, and runtime words (`form`, `start`, `end`, `upos`, `chunk`, `head`, `deprel`, `reviewed`, `wink_sent`, `ud`, `rule`). Every word's offsets slice back to its form; every chunk sequence is valid BIO.
+- Agreement: **train 99.76%, dev 99.56%, test 99.56%** (all-word agreement 98.24% / 97.75% / 97.86%). Full counts and examples: `reports/alignment.md`.
+- Trees: every written sentence is a valid tree (0 invalid, 0 alignment errors). Head remapping: 310 train merges had more than one outside arc (mostly `in.`, `its`); only the head word's arc is kept.
+- Dropped: 1 sentence per split (preprocessing removed text).
+- Runtime sentence split: 306 train UD sentences span more than one wink sentence; 719 train arcs cross wink sentences (attach to the sentence root at runtime; Phase 7 measures it).
+- Tests: 16 `node:test` tests for `js/lib/` (`npm test` in `training/js`).
+
+
 ### Phase 4 — Dataset building
 
 **Tasks**
@@ -459,10 +473,12 @@ Single contract between training and the app. Later phases fill their fields; th
 | `labels` | string[] | `prepare_data.py` (4) | Group A labels (`UPOS\|CHUNK`), then group B labels (`<offset>@<UPOS>\|<relation>`); array index = class id. Must equal the model's `config.json` `id2label` order. |
 | `groups` | object | `prepare_data.py` (4) | Slice of `labels` and logits per group: `{"chunk": {"start": 0, "end": nA}, "dep": {"start": nA, "end": nA+nB}}`. Softmax is applied per slice. |
 | `dep_encoding` | string | `prepare_data.py` (4) | Head encoding id, `rel_pos_v1` (see *Nested phrase structure*). |
+| `tokenizer_input` | string | `prepare_data.py` (4) | `pre_split_words`: the runtime words are fed to the tokenizer as a pre-split list, so each word is tokenized as if preceded by a space (`I'm` → `I` `'m`). The app must do the same. |
 | `upos` | string[] | `prepare_data.py` (4) | The 17 UPOS tags, fixed order (for marginalizing). |
 | `chunk_tags` | string[] | `prepare_data.py` (4) | `B-`/`I-` × NP, VP, PP, ADJP, ADVP, plus `O`. |
 | `label_merges` | object | `prepare_data.py` (4) | Rare combinations mapped to their replacement (`from` → `to`). Informational; the app ignores it. |
 | `window.max_subword_tokens` | int | `prepare_data.py` (4) | `256`; the app uses it for runtime windows. |
+| `window.max_subwords_per_word` | int | `prepare_data.py` (4) | `16`; a word keeps only its first 16 subword tokens (long URLs, symbol runs). The app must do the same. |
 | `versions.base_model` | string | `prepare_data.py` (4) | Hugging Face id of the base model (tokenizer source). |
 | `versions.data` | object | `prepare_data.py` (4) | UD release tag and commit; list of feedback batch ids (empty until Phase 12). |
 | `versions.wink` | object | `prepare_data.py` (4) | `wink-nlp` and `wink-eng-lite-web-model` versions from `training/js/package-lock.json`. The app warns if its versions differ. |
@@ -478,6 +494,19 @@ Single contract between training and the app. Later phases fill their fields; th
 
 **Deliverables:** processed datasets, `labels.json` (schema v1, Phase 4 fields filled), dataset statistics report.
 **Exit criterion:** dataset loads; label and window statistics reviewed; `labels.json` validates against schema v1, and `LabelConfig` matches it.
+
+**Outcome (2026-11-18): exit criterion met.**
+
+- `scripts/prepare_data.py` (~15 s for all four candidates) writes `data/processed/dataset/<model>/`: a `DatasetDict` (`train`, `dev`, `test`) plus that model's `labels.json`. Windows depend on the tokenizer, so there is one dataset per candidate (Phase 6 compares them). Columns: `input_ids`, `attention_mask`, `labels_chunk` and `labels_dep` (group-local class ids, `-100` = ignored), `token_word`, and word-level gold fields (`words`, `word_sent`, `word_index`, `word_context`, `word_reviewed`, `gold_upos`, `gold_chunk`, `gold_head`, `gold_deprel`) for evaluation.
+- Labels (train, reviewed words): group A 78 of 94 labels kept (99.985% of words); group B 632 of 1,202 kept (99.50%). 772 words (0.38%) keep their head with a changed relation; **242 words (0.119%) cannot be encoded** (target < 0.5%) and get `-100` in group B. 710 classes in total. Details: `reports/dataset.md`.
+- Windows: about 10 train sentences per window (mean 190 tokens, max 256 for every model); no sentence needed splitting.
+- Checks: head encoding round-trips on all 203,271 train words; for every labeled word, group A matches gold except the 41 merged rare labels, and group B decodes to the gold head; `labels.json` validates for all four models; a TypeScript check confirms `LabelConfig` matches the generated files (keys both ways, types).
+- Tests: 25 new pytest tests (`tests/test_prepare_data.py`); 73 in total.
+- Dev details (no owner decision needed):
+  - Rare group A labels map to the most frequent kept label with the same chunk tag.
+  - Rare group B labels keep their head (relation changes) or are ignored.
+  - A word keeps at most 16 subword tokens; the cap is in `labels.json` and the app must apply it.
+  - Augmentation (`lowercase_sentence_start`, `drop_final_punct`) is implemented but disabled; Phase 7 decides. `learner_typos` needs a typo list (TODO).
 
 ### Phase 5 — Baseline evaluation
 
@@ -571,7 +600,7 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 ### Phase 11 — Packaging and release
 
 **Tasks**
-1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` is set here.
+1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` is set here. `transformerBackend.ts` feeds words as `tokenizer_input` says and applies `window.max_subwords_per_word`; the Phase 9 parity check covers this.
 2. Write `MODEL_CARD.md`: base model, data and licenses, attribution text, metrics, known weaknesses, intended use.
 3. Tag the release (e.g., `model-v1.0.0`); record config, seed, data version, and checksums for reproducibility.
 4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word, and that every sentence has a valid tree and nested phrases.
@@ -695,3 +724,14 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Added: Phase 3 *Decisions* rows for URLs/e-mail addresses and symbol runs; agreement metric defined (literal by-design exclusions, every split ≥ 99.5%) (owner).
 - Modified: *Pre-flight check 2* — final results (dev 99.59%, train 99.77%, test 99.61%; target met); mismatch table; known weakness (glued sentence-final periods); Phase 3 can start. Exit criterion updated.
 - Modified: Phase 0 note — unshipped weak-copyleft dependencies accepted by owner.
+
+### 2026-11-18T06:27:44Z — Claude Opus 5.5, Phase 3 complete
+
+- Added: Phase 3 *Outcome* (agreement 99.76% / 99.56% / 99.56%; all trees valid; output format); *Decisions* dev details for the main piece of a split and chunk prefixes.
+- Added: `js/lib/` (CoNLL-U reader, alignment logic), `js/tests/` (node:test), `js/package.json` scripts to the directory layout; `configs/data.yaml` → `paths.aligned`, `alignment`.
+
+### 2026-11-18T06:38:56Z — Claude Opus 5.5, Phase 4 complete
+
+- Added: Phase 4 *Outcome* (datasets per candidate, label and window statistics, checks, dev details).
+- Added: `labels.json` schema v1 fields `tokenizer_input` and `window.max_subwords_per_word` (optional additions written in Phase 4; schema version unchanged).
+- Modified: Phase 4 exit gate marked done; Phase 11 task 1 notes the tokenizer contract.

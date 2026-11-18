@@ -214,6 +214,7 @@ Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 
 - Python 3.12 managed with `uv`; dependencies pinned in `requirements.txt`.
 - Format and lint with `ruff`; type hints on all functions; tests with `pytest`.
+- Node tools in `training/js/`: ES modules with JSDoc types; unit tests with Node's built-in `node:test` (`npm test`, no extra dependency).
 - Every script reads settings from `configs/*.yaml`; no hard-coded paths or hyperparameters.
 - Never commit raw or processed datasets, checkpoints, or large ONNX files to `training/` (git-ignored). Shipped model files live in `public/models/` and are tracked with Git LFS (`.gitattributes`); never commit them as regular git blobs.
 - Follow the phase order and exit criteria in `plan-training.md`; record outcomes there.
@@ -296,3 +297,7 @@ Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 ### 2026-11-18T05:38:31Z — Claude Opus 5.5, Unshipped dependency exception
 
 - Added: *Dependency policy* → unshipped weak-copyleft exception (owner decision): `sharp-libvips`, `lightningcss`.
+
+### 2026-11-18T06:27:44Z — Claude Opus 5.5, Node training tests
+
+- Added: *Training code* — `training/js` tests use the built-in `node:test` runner.

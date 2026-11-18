@@ -48,7 +48,7 @@
 #     kinds               — lowercase_sentence_start, drop_final_punct, learner_typos
 #   seed                  — global data seed
 #
-# Status: Phase 1–2 keys set (ud_ewt, gum, paths.raw/chunked, chunks); later keys added per phase.
+# Status: Phase 1–4 keys set; later keys added per phase.
 # =============================================================================
 
 # Phase 1 — UD English EWT (CC BY-SA 4.0). commit/checksums: null until the
@@ -81,6 +81,8 @@ gum:
 paths:
   raw: data/raw
   chunked: data/processed/chunked
+  aligned: data/processed/aligned
+  dataset: data/processed/dataset   # <model_key>/ = save_to_disk dataset + labels.json
 
 # Phase 2 — chunk derivation (scripts/derive_chunks.py).
 chunks:
@@ -90,3 +92,27 @@ chunks:
     sentences: 200
     seed: 13
     sample_path: data/processed/review/chunk_review_sample.md
+
+# Phase 3 — alignment with runtime words (js/align_tokens.mjs).
+alignment:
+  splits: [train, dev, test]
+  report: reports/alignment.md
+  min_agreement: 0.995   # per split (plan-training.md → Phase 3 → Decisions)
+  report_examples: 6     # examples per mismatch type in the report
+
+# Phase 4 — dataset building (scripts/prepare_data.py).
+windows:
+  max_subword_tokens: 256      # incl. special tokens; same as runtime windows
+  long_sentence_overlap: 32    # subword tokens repeated when a sentence is split
+  max_subwords_per_word: 16    # longer words (URLs, symbol runs) keep their first 16 subwords; runtime too
+labels:
+  min_label_count: 5           # rarer labels (train, reviewed words) are merged
+  dep_encoding: rel_pos_v1
+augmentation:                  # Phase 7 experiment; train split only
+  enabled: false
+  max_fraction: 0.15
+  kinds: [lowercase_sentence_start, drop_final_punct]   # TODO(augmentation): learner_typos needs a typo list
+dataset:
+  splits: [train, dev, test]
+  report: reports/dataset.md
+seed: 13

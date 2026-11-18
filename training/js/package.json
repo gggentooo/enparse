@@ -1,6 +1,6 @@
 {
   "//": [
-    "training/js/package.json — Node dependencies for training-side JS tools",
+    "training/js/package.json \u2014 Node dependencies for training-side JS tools",
     "",
     "Description:",
     "  Private package for tokenization alignment, JS baselines, and Transformers.js",
@@ -15,19 +15,23 @@
     "     root package.json so alignment and parity match runtime behavior.",
     "",
     "Dependencies (pinned in Phase 0; exact versions below):",
-    "  wink-nlp, wink-eng-lite-web-model — runtime tokenizer; fallback baseline (MIT)",
-    "  compromise                        — comparison baseline (MIT)",
-    "  @huggingface/transformers         — ONNX parity and speed tests (Apache 2.0)",
-    "  tsx                               — run the app's TypeScript files in Node (MIT)",
-    "  vite (dev)                        — serve bench-page/ for Phase 10 browser benchmarks (MIT; same version as the app)",
-    "  js-yaml                           — read ../configs/*.yaml (MIT)",
+    "  wink-nlp, wink-eng-lite-web-model \u2014 runtime tokenizer; fallback baseline (MIT)",
+    "  compromise                        \u2014 comparison baseline (MIT)",
+    "  @huggingface/transformers         \u2014 ONNX parity and speed tests (Apache 2.0)",
+    "  tsx                               \u2014 run the app's TypeScript files in Node (MIT)",
+    "  vite (dev)                        \u2014 serve bench-page/ for Phase 10 browser benchmarks (MIT; same version as the app)",
+    "  js-yaml                           \u2014 read ../configs/*.yaml (MIT)",
     "  System: Node.js 20+.",
     "",
-    "Status: dependencies pinned (Phase 0, 2026-11-18); scripts added per phase."
+    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), test."
   ],
   "name": "enparse-training-js",
   "private": true,
   "type": "module",
+  "scripts": {
+    "align": "tsx align_tokens.mjs",
+    "test": "node --test tests/"
+  },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
     "compromise": "14.20.0",

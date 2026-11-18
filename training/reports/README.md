@@ -12,7 +12,7 @@ Tasks:
 Dependencies:
   Produced by: scripts/*.py, js/*.mjs, and manual review (see table).
 
-Status: Phase 2 reports written (`chunks.md`, `chunk_review.md`).
+Status: Phase 2–4 reports written (`chunks.md`, `chunk_review.md`, `alignment.md`, `dataset.md`).
 -->
 
 # Training reports

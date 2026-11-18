@@ -15,7 +15,7 @@ Dependencies:
     Python: pytest, conllu. Config: training/pyproject.toml (pythonpath = scripts).
     Used by: tests/test_derive_chunks.py (Phase 2), tests/test_prepare_data.py (Phase 4).
 
-Status: Phase 2 fixtures implemented; Phase 4 fixtures (in-memory config) pending.
+Status: implemented (Phase 2). Phase 4 tests build their fixtures inline (test_prepare_data.py).
 """
 
 from __future__ import annotations

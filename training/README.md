@@ -66,4 +66,10 @@ Run from `training/` with the venv active.
 | 2 | `python scripts/derive_chunks.py [--review]` | Writes `data/processed/chunked/*.conllu` (`Chunk=` in MISC) and `reports/chunks.md`; `--review` writes the 200-sentence dev sample (git-ignored). |
 | 2 | `python -m pytest tests/test_derive_chunks.py` | Chunk rule tests. |
 
-TODO(training-setup): commands for Phases 3–11, added as scripts are implemented.
+| 3 | `(cd js && npm run align)` | Runs the app's `preprocess()` + `tokenize()` via `tsx`; writes `data/processed/aligned/*.jsonl` and `reports/alignment.md`; exits non-zero if a split misses the agreement target or a tree is invalid. Needs the root `npm ci` (app code imports wink from the root `node_modules`). |
+| 3 | `(cd js && npm test)` | Alignment unit tests (`node:test`). |
+
+| 4 | `python scripts/prepare_data.py [--models <key> ...]` | Builds `data/processed/dataset/<model>/` (train/dev/test windows + `labels.json`) for each `configs/train_<key>.yaml`, and `reports/dataset.md`. |
+| 4 | `python -m pytest tests/test_prepare_data.py` | Dataset tests (tokenizer tests use the local Hugging Face cache). |
+
+TODO(training-setup): commands for Phases 5–11, added as scripts are implemented.

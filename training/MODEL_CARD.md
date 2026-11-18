@@ -68,6 +68,15 @@ Text shown in the app (location: `plan.md` → *Attribution display*) and here. 
 
 ## Labels
 
+Two label groups per word, predicted together (`plan-training.md` → *Nested phrase structure*):
+
+| Group | Labels | Meaning |
+|-------|--------|---------|
+| A | 78 `UPOS\|CHUNK` | UPOS tag and BIO chunk (NP, VP, PP, ADJP, ADVP) |
+| B | 632 `rel_pos_v1` | Dependency head (k-th word of the head's UPOS, left or right) and base relation |
+
+Label set built from EWT train (labels seen < 5 times merged; `reports/dataset.md`). The model card is completed in Phase 11.
+
 ## Metrics
 
 ## Calibration and ambiguity
