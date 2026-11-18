@@ -1,10 +1,10 @@
 /**
- * src/modules/parser/winkBackend.ts — wink-nlp support and fallback ParserBackend
+ * src/modules/parser/winkBackend.ts — wink-nlp support: sentences, runtime words, lemmas
  *
  * Description:
- *   Always used for sentence splitting, word tokenization, and lemmas.
- *   Also the fallback ParserBackend: wink POS tags + chunkPatterns.ts chunks,
- *   used while the model loads, if it fails, or on low-memory devices.
+ *   Used for sentence splitting, word tokenization, and lemmas. Not a
+ *   ParserBackend and not used for tagging: the app parses only with the
+ *   model (architecture.md → Model readiness).
  *
  * Layer: modules/ (parser). Runs only inside parser.worker.ts at runtime.
  *   Training tools run tokenize() directly via tsx (training/js/align_tokens.mjs),
@@ -27,18 +27,15 @@
  *   1. Load wink-nlp with wink-eng-lite-web-model once. (done)
  *   2. tokenize(text) → sentences and words with character offsets. (done)
  *      TODO(lemma): lemmas per word, including split contraction pieces.
- *   3. Map wink POS tags to UPOS.
- *   4. tag(): fallback tagging with probability 1.0 per label (no
- *      probability-based alternatives in basic mode).
- *   5. Unit tests in winkBackend.test.ts. (tokenization done)
+ *   3. Unit tests in winkBackend.test.ts. (tokenization done)
  *
  * Dependencies:
  *   External: wink-nlp 2.4.0, wink-eng-lite-web-model 1.8.1.
- *   Internal: ./types.ts; later ./parser.ts (ParserBackend), ./chunkPatterns.ts.
+ *   Internal: ./types.ts.
  *   Used by: ./parser.worker.ts, ./parser.ts; training/js/align_tokens.mjs and
  *            training/js/evaluate_baselines.mjs (via tsx).
  *
- * Status: tokenization implemented (Phase 3 pre-work); tasks 2 (lemmas), 3, 4 pending.
+ * Status: tokenization implemented (Phase 3 pre-work); lemmas pending.
  */
 
 import winkNLP, { type ItemSentence, type WinkMethods } from "wink-nlp";

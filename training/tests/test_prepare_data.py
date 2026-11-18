@@ -337,6 +337,7 @@ def test_labels_json_validates() -> None:
     assert lab["labels"][n_a:] == maps.dep_labels
     assert lab["calibration"] == {"temperature": None, "dep_temperature": None}
     assert lab["model_version"] is None
+    assert lab["files"] is None
 
 
 @pytest.mark.parametrize(
@@ -349,6 +350,7 @@ def test_labels_json_validates() -> None:
         (lambda d: d["upos"].reverse(), "upos"),
         (lambda d: d["calibration"].__setitem__("temperature", "hot"), "calibration.temperature"),
         (lambda d: d["versions"].__setitem__("base_model", ""), "base_model"),
+        (lambda d: d.__setitem__("files", {"onnx/model.onnx": {"bytes": 1}}), "files"),
     ],
 )
 def test_labels_json_rejects_invalid(

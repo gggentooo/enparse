@@ -15,7 +15,7 @@
     "     root package.json so alignment and parity match runtime behavior.",
     "",
     "Dependencies (pinned in Phase 0; exact versions below):",
-    "  wink-nlp, wink-eng-lite-web-model \u2014 runtime tokenizer; fallback baseline (MIT)",
+    "  wink-nlp, wink-eng-lite-web-model \u2014 runtime tokenizer (via app code); POS baseline (MIT)",
     "  compromise                        \u2014 comparison baseline (MIT)",
     "  @huggingface/transformers         \u2014 ONNX parity and speed tests (Apache 2.0)",
     "  tsx                               \u2014 run the app's TypeScript files in Node (MIT)",

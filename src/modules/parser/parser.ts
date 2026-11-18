@@ -11,15 +11,17 @@
  * Tasks:
  *   1. interface ParserBackend { name; load(): Promise<void>; isReady();
  *      tag(sentences): Promise<TaggedSentence[]> }.
- *   2. Shared parse flow: sentence split + lemmas (winkBackend) → tagging
- *      (active backend) → BIO decoding into chunks → ambiguity.ts alternatives.
- *   3. BIO repair: fix invalid sequences (I- without B-) consistently for all backends.
- *   4. Mark results with the backend used (model vs basic/fallback mode).
- *   5. Typed errors: ParserLoadError, ParserRuntimeError.
+ *   2. Parse flow: sentence split + words + lemmas (winkBackend) → tagging
+ *      (transformerBackend; must be ready) → BIO decoding into chunks →
+ *      treeDecoder.ts nested phrases → ambiguity.ts alternatives.
+ *   3. BIO repair: fix invalid sequences (I- without B-).
+ *   4. Refuse to parse if the backend is not ready (ParserNotReadyError); no
+ *      fallback backend (architecture.md → Model readiness).
+ *   5. Typed errors: ParserLoadError, ParserNotReadyError, ParserRuntimeError.
  *   6. Unit tests in parser.test.ts with mocked backends.
  *
  * Dependencies:
- *   Internal: ./types.ts, ./ambiguity.ts, ./winkBackend.ts (sentence split, lemmas).
+ *   Internal: ./types.ts, ./ambiguity.ts, ./treeDecoder.ts, ./winkBackend.ts (sentence split, words, lemmas).
  *   External: none directly.
  *   Used by: ./parser.worker.ts.
  *

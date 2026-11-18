@@ -17,9 +17,17 @@
  *   4. Apply calibration temperature from labels.json; softmax.
  *   5. Decode: top combined label per word; UPOS and chunk probabilities by
  *      summing combined-label probabilities; keep top-k for ambiguity.ts.
- *   6. Report load progress (for the UI) and memory/device capability for
- *      fallback decisions.
- *   7. Tests: decoding with fixed logits; integration test on 20 fixed
+ *   6. Report load progress per phase (download, initialize) for the UI.
+ *   7. Self-test after loading: parse a fixed sentence and compare with the
+ *      expected labels; failure → ParserLoadError (`invalid-model`). The
+ *      backend is ready only after it passes.
+ *   8. Map load failures to typed reasons (network, unsupported,
+ *      out-of-memory, invalid-model) for the `failed` status.
+ *   Device capability and file-integrity checks are not done here: they run
+ *   in modules/preflight before and after loading (architecture.md → Model
+ *   readiness → Pre-flight checks). This backend still validates the full
+ *   labels.json against LabelConfig.
+ *   9. Tests: decoding with fixed logits; integration test on 20 fixed
  *      sentences vs Phase 9 outputs (plan-training.md Phase 11).
  *
  * Dependencies:

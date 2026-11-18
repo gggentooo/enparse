@@ -10,7 +10,9 @@
  *
  * Tasks:
  *   1. Export createParserWorker(): constructs the module worker from
- *      ./parser.worker.ts and returns a typed client (parse, status, onProgress).
+ *      ./parser.worker.ts and returns a typed client (load, retry, parse,
+ *      status, onStatus). parse() rejects with ParserNotReadyError unless the
+ *      status is `ready`.
  *   2. Re-export public types and errors from ./types.ts.
  *   3. Export MAX_ALTERNATIVES from ./ambiguity.ts.
  *   4. Do not export backends directly (they run only inside the worker).

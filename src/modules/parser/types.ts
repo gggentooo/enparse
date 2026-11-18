@@ -9,19 +9,25 @@
  * Tasks:
  *   1. Token: text, offsets, lemma, UPOS, chunk tag, label probabilities;
  *      head (token index in the sentence, -1 for root), relation, and head
- *      probability (model mode; null in basic mode).
+ *      probability.
  *   2. Chunk: type (NP, VP, PP, ADJP, ADVP), token range (flat view).
  *   3. PhraseNode (proposed): type, token range, head token, children
  *      (nested view; built by treeDecoder.ts; plan-training.md → Nested
  *      phrase structure).
  *   4. SentenceParse: tokens, primary chunks, phrases (root PhraseNode, or
- *      null in basic mode), treeRepaired flag, alternatives (ranked, with
- *      probability and reason: probability or attachment).
- *   5. ParseResult: sentences, mode (model | basic), model version from
- *      labels.json; every Token keeps wink character offsets (traceability).
+ *      null when the nested view is not shipped), treeRepaired flag,
+ *      alternatives (ranked, with probability and reason: probability or
+ *      attachment).
+ *   5. ParseResult: sentences, model version from labels.json, backend
+ *      (webgpu | wasm); every Token keeps wink character offsets (traceability).
+ *      No mode field: results always come from the model.
  *   6. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4). (done)
- *   7. Worker message types (request/response unions).
- *   8. Errors: ParserLoadError, ParserRuntimeError, TokenizerError (done).
+ *   7. Worker message types (request/response unions) and ParserStatus
+ *      (idle | loading + phase/progress | ready + backend/modelVersion |
+ *      failed + reason; architecture.md → Model readiness). The `checking`
+ *      status is added by parserService (pre-flight runs outside the worker).
+ *   8. Errors: ParserLoadError (with reason), ParserNotReadyError,
+ *      ParserRuntimeError, TokenizerError (done).
  *
  * Dependencies:
  *   None. Used by: all files in modules/parser/.
@@ -104,4 +110,6 @@ export type LabelConfig = {
   calibration: { temperature: number | null; dep_temperature: number | null };
   ambiguity: { margin: number | null; attachment_margin: number | null };
   model_version: string | null;
+  /** Model files (path relative to the model folder) with size and SHA-256; written by export_onnx.py (Phase 11). Used by pre-flight integrity checks. */
+  files: Record<string, { bytes: number; sha256: string }> | null;
 };

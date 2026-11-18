@@ -534,6 +534,7 @@ def make_labels_json(
         "calibration": {"temperature": None, "dep_temperature": None},
         "ambiguity": {"margin": None, "attachment_margin": None},
         "model_version": None,
+        "files": None,
     }
 
 
@@ -548,7 +549,7 @@ def validate_labels_json(obj: dict[str, Any]) -> list[str]:
     expected = {
         "schema_version", "labels", "groups", "dep_encoding", "tokenizer_input", "upos",
         "chunk_tags", "label_merges", "window", "versions", "calibration", "ambiguity",
-        "model_version",
+        "model_version", "files",
     }  # fmt: skip
     need(set(obj) == expected, f"top-level keys differ: {sorted(set(obj) ^ expected)}")
     if problems:
@@ -610,6 +611,16 @@ def validate_labels_json(obj: dict[str, Any]) -> list[str]:
         obj["model_version"] is None or isinstance(obj["model_version"], str),
         "model_version must be string or null",
     )
+    files = obj["files"]
+    if files is not None:
+        ok = isinstance(files, dict) and all(
+            isinstance(f, dict)
+            and isinstance(f.get("bytes"), int)
+            and isinstance(f.get("sha256"), str)
+            and len(f["sha256"]) == 64
+            for f in files.values()
+        )
+        need(ok, "files must be null or {path: {bytes: int, sha256: hex}}")
     return problems
 
 

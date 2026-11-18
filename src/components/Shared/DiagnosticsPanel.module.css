@@ -1,0 +1,8 @@
+/*
+ * src/components/Shared/DiagnosticsPanel.module.css — styles for DiagnosticsPanel.tsx
+ *
+ * Description: check list layout and status styles (pass, warn, fail, skipped).
+ * Tasks: 1. Grouped list. 2. Status icons plus text (not color alone). 3. Retry action placement.
+ * Dependencies: src/css/tokens.css. Used by: DiagnosticsPanel.tsx.
+ * Status: header only; not implemented.
+ */

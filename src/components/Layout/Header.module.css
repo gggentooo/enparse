@@ -2,7 +2,7 @@
  * src/components/Layout/Header.module.css — styles for Header.tsx
  *
  * Description: header bar, branding, status badge.
- * Tasks: 1. Header bar. 2. Mode badge (model vs basic). 3. Progress indicator placement.
+ * Tasks: 1. Header bar. 2. Model status badge (checking, loading, ready, warning, failed). 3. Progress indicator placement.
  * Dependencies: src/css/tokens.css. Used by: Header.tsx.
  * Status: header only; not implemented.
  */

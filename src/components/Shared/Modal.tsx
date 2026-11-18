@@ -13,7 +13,7 @@
  * Dependencies:
  *   External: react.
  *   Internal: ./Button.tsx, ./Modal.module.css.
- *   Used by: VocabPage and other pages.
+ *   Used by: VocabPage, Layout/Header (DiagnosticsPanel), and other pages.
  *
  * Status: header only; not implemented.
  */

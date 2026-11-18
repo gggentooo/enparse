@@ -56,7 +56,7 @@ This guide applies to all contributors (human and AI) editing this file.
 | Vite 8.3.8   | Build tool (static server, bundler); same version as `training/js` |
 | CSS Modules  | Scoped, maintainable styling per component       |
 | Transformers.js 4.3.2 (`@huggingface/transformers`) | Runs the in-house ONNX tagger in the browser (WebGPU/WASM) (Apache 2.0) |
-| wink-nlp 2.4.0 + wink-eng-lite-web-model 1.8.1 | Sentence split, word tokenization, lemmas, and fallback POS tagging/chunking (MIT) |
+| wink-nlp 2.4.0 + wink-eng-lite-web-model 1.8.1 | Sentence split, word tokenization, and lemmas (MIT). Not used for tagging or chunking. |
 | jszip        | Archive export format (optional)                 |
 | csv-stringify + csv-parse | CSV import/export (optional)        |
 
@@ -68,14 +68,14 @@ This guide applies to all contributors (human and AI) editing this file.
 
 | Tool | Role |
 |------|------|
-| tsx | Runs the app's TypeScript (e.g., `chunkPatterns.ts`) from Node scripts in `training/js/` (MIT) |
+| tsx | Runs the app's TypeScript (e.g., `winkBackend.ts`, `treeDecoder.ts`) from Node scripts in `training/js/` (MIT) |
 | js-yaml | Reads `training/configs/*.yaml` from Node scripts (MIT) |
 | pyyaml | Reads `training/configs/*.yaml` from Python scripts (MIT) |
 | ruff | Python format and lint for `training/` (MIT) |
 | Git LFS | Stores shipped model files in `public/models/` (see *Model training* → *Artifacts*) |
 
 - **Version sync:** root `package.json` and `training/js/package.json` pin the same `wink-nlp` 2.4.0, `wink-eng-lite-web-model` 1.8.1, `@huggingface/transformers` 4.3.2, and `vite` 8.3.8. Change them together.
-- **Training tools import app code:** `training/js` scripts run app module files directly through `tsx` (`input/index.ts`, `parser/winkBackend.ts`, `parser/chunkPatterns.ts`, `parser/treeDecoder.ts`), so training and runtime share one implementation.
+- **Training tools import app code:** `training/js` scripts run app module files directly through `tsx` (`input/index.ts`, `parser/winkBackend.ts`, `parser/treeDecoder.ts`), so training and runtime share one implementation.
 
 No separate state-management library. Shared state lives in services and is exposed through hooks (see *Layer communication*).
 
@@ -103,15 +103,18 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Module                       | Description                                                                                       |
 |------------------------------|---------------------------------------------------------------------------------------------------|
 | `core/storage.ts`            | Persistent state wrapper (LocalStorage for small data, IndexedDB for larger datasets).             |
+| `core/environment.ts`        | Browser capability probes (workers, WebAssembly SIMD/threads, WebGPU limits, device memory, storage quota) and model-file cache access (read, SHA-256, delete). Returns data only; no decisions. |
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
 | `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
 | `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, chunk parses, and (model mode) dependency trees with nested phrases. Pluggable backend. |
 | `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX tagger via Transformers.js; splits logits into label groups (`labels.json` → `groups`); decodes UPOS, chunk, and head labels with probabilities. |
 | `parser/treeDecoder.ts`      | Decodes head labels into a valid dependency tree (repairs cycles and extra roots), then builds nested phrases by a fixed bracketing order. No grammar rules. |
-| `parser/winkBackend.ts`      | Sentence split and runtime words: hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL. Lemmas; fallback `ParserBackend` (POS tags + `chunkPatterns`). |
-| `parser/chunkPatterns.ts`    | Fallback POS patterns defining NP, VP, PP, and ADJP chunks.                                       |
+| `preflight/preflight.ts`     | Runs pre-flight stages (device, model, post-load file verification) through `core/environment` and combines results into a `PreflightReport` with a verdict (`ok`, `warn`, `blocked`). |
+| `preflight/checks.ts`        | One pure function per check (pass, warn, fail, skip); unit-testable without browser APIs. |
+| `preflight/requirements.ts`  | Minimum requirements and check severity (which checks block); values from `plan-training.md` Phase 10. |
+| `parser/winkBackend.ts`      | wink-nlp support (not a `ParserBackend`): sentence split and runtime words (hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL) and lemmas. |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
-| `parser/parser.worker.ts`    | Web Worker entry: loads backends once, switches to fallback mode if needed, parses off the main thread. |
+| `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. |
 | `output/annotator.ts`        | Converts parse results into an annotation model (flat chunks, nested phrases, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
@@ -126,7 +129,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 **Priority:** accuracy before speed. Up to ~5 s per 5,000 characters on a typical laptop is acceptable.
 
 **Primary engine:** an in-house transformer tagger, run in the browser with [Transformers.js](https://github.com/huggingface/transformers.js) (Apache 2.0).
-**Support / fallback:** [wink-nlp](https://github.com/winkjs/wink-nlp) + [wink-eng-lite-web-model](https://github.com/winkjs/wink-eng-lite-web-model) (MIT).
+**Support:** [wink-nlp](https://github.com/winkjs/wink-nlp) + [wink-eng-lite-web-model](https://github.com/winkjs/wink-eng-lite-web-model) (MIT).
 
 | Criterion        | How it is met                                                                 |
 |------------------|-------------------------------------------------------------------------------|
@@ -135,7 +138,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Speed / size     | Quantized model ~65–80 MB (proposed cap 80 MB), downloaded once and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Expected to fit the 5 s budget; to be confirmed by benchmark. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
-| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Ships only if UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without the nested view. Not available in fallback mode. |
+| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Ships only if UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without the nested view. |
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
@@ -159,7 +162,7 @@ Full plan: [plan-training.md](plan-training.md).
 
 - **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
 - **Framework:** Hugging Face `Trainer` on Apple Silicon (MPS). Unsloth was ruled out in Phase 0. Optimum (`optimum-onnx`) handles ONNX export and quantization.
-- **Evaluation:** UPOS accuracy, chunk F1, UAS/LAS, nested-phrase F1, calibration, and speed on the EWT test split. Flat outputs are compared with the wink-nlp fallback and compromise.
+- **Evaluation:** UPOS accuracy, chunk F1, UAS/LAS, nested-phrase F1, calibration, and speed on the EWT test split. Flat outputs are compared with baselines: wink-nlp POS (UPOS only) and compromise (UPOS and chunks).
 - **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`, tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
 
 ### Pipeline
@@ -178,11 +181,68 @@ raw text
 - `parserService` runs this chain.
 - Subword segmentation runs on demand: `subwordService` receives a word and its lemma from the parse result.
 
-### Fallback mode
+### Model readiness (no fallback)
 
-- Used while the model downloads, if model loading fails, or on devices without enough memory.
-- `winkBackend` provides POS tags, and `chunkPatterns.ts` builds chunks from them. Ambiguity uses rule-based patterns only. The nested phrase view is unavailable (no dependency parser).
-- The UI shows that results come from basic mode and offers re-parsing once the model is ready.
+The app parses only with the model. There is no rule-based fallback (owner decision, 2026-11-18).
+
+| Status | Meaning | UI |
+|--------|---------|----|
+| `idle` | App started; nothing checked yet | Parse disabled |
+| `checking` | Pre-flight checks running (see *Pre-flight checks*) | Parse disabled; "checking" shown |
+| `loading` | Downloading model files, then initializing (progress 0–1 per phase) | Parse disabled; progress shown |
+| `ready` | Model fully loaded (see below); records backend (`webgpu` or `wasm`) and `model_version` | Parse enabled |
+| `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
+
+- **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v1, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
+- Parse requests are refused unless the status is `ready`: `parserService.parseText()` rejects with `ParserNotReadyError` without contacting the worker, and the worker also rejects parse messages before `ready`.
+- Input entered while loading is kept; the user starts parsing once the model is ready.
+- WebGPU → WASM is a device choice inside model loading, not a fallback parser: both run the same model.
+
+### Pre-flight checks
+
+Client-side checks that decide, before the ~70 MB download where possible, whether this browser and device can run the model, and whether the model files are complete and correct. Everything stays local (no telemetry). Open policies: `plan.md` → *Undecided* → *Pre-flight checks*.
+
+**Layout**
+
+| File | Layer | Role |
+|------|-------|------|
+| `core/environment.ts` | core | Browser API probes and Cache Storage access (read, SHA-256, delete). No decisions. |
+| `modules/preflight/checks.ts` | modules | Pure check functions. |
+| `modules/preflight/requirements.ts` | modules | Thresholds and severity (fail = blocks, warn = allowed). |
+| `modules/preflight/preflight.ts` | modules | Stage runners and verdict; calls `core/environment`. |
+| `modules/preflight/types.ts`, `index.ts` | modules | `PreflightReport`, `CheckResult`, structural `ModelManifest`; public API. |
+| `services/parserService.ts` | services | Runs the stages in order; maps verdicts to model status. |
+| `components/Shared/DiagnosticsPanel.tsx` | components | Shows the report; retry. |
+
+- `modules/preflight` does not import `modules/parser`: it reads `labels.json` through its own structural `ModelManifest` type (same approach as `modules/output`). A test keeps its supported schema version equal to the parser's `LABEL_SCHEMA_VERSION`.
+
+**Flow** (run by `parserService.start()`; `retryLoad()` repeats it)
+
+```
+checking ─► 1. device checks ──blocked──► failed: unsupported (no download)
+        └─► 2. model checks (labels.json, cached files) ──blocked──► failed: invalid-model / unsupported
+loading ─► 3. worker loads model + self-test ──error──► failed: <reason>
+        └─► 4. verify files after a fresh download ──mismatch──► failed: invalid-model
+ready
+```
+
+**Checks** (severity proposed; `requirements.ts`)
+
+| Stage | Check | Source | Severity |
+|-------|-------|--------|----------|
+| Device | `module-workers` | Module Web Workers | Fail |
+| Device | `wasm`, `wasm-simd` | `WebAssembly`, `WebAssembly.validate` (ONNX Runtime Web ships SIMD builds only) | Fail |
+| Device | `wasm-threads` | `crossOriginIsolated` + `SharedArrayBuffer` (needs COOP/COEP headers from the host) | Warn (slower) |
+| Device | `webgpu` | `navigator.gpu.requestAdapter()`, buffer limits | Info (missing → WASM) |
+| Device | `cache-storage` | Cache API | Warn (re-download every visit) |
+| Device | `memory-hint` | `navigator.deviceMemory` (Chromium only; skipped elsewhere) | Warn |
+| Model | `manifest-schema` | `labels.json`: supported `schema_version`; needed fields not `null` | Fail |
+| Model | `wink-versions` | `labels.json` → `versions.wink` vs the app's pinned versions | Warn |
+| Model | `storage-quota`, `model-size` | `navigator.storage.estimate()` vs `labels.json` → `files` sizes | Warn |
+| Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256); skipped while `files` is `null` | Mismatch: delete and re-download once; then fail |
+
+- Memory cannot be measured reliably in browsers, so low memory only warns; the real test is the model load and self-test (out-of-memory → `failed: out-of-memory`).
+- Thresholds are placeholders until Phase 10 measures peak memory and load times (`TODO(preflight-thresholds)`).
 
 ### Preprocessor (`input/textInput.ts`)
 
@@ -198,8 +258,7 @@ raw text
 1. **Primary parse (context-selected):** the highest-probability label for each word, chosen by the model using surrounding context. Marked "most likely".
 2. **Probability-based alternatives:** words whose top two labels are close (margin below a threshold, e.g. 0.2) are treated as ambiguous. `ambiguity.ts` builds alternative label sequences from them, keeps only valid ones (consistent BIO chunks), and ranks them by joint probability.
 3. **Attachment alternatives:** flat chunks do not encode where a prepositional phrase attaches.
-   - Model mode: the structure output does. When a phrase's top-two head labels are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
-   - Fallback mode: rule-based. `ambiguity.ts` flags `VP NP PP` sequences and offers both readings (PP modifies the verb or the noun).
+   The structure output does: when a phrase's top-two head labels are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
 4. **Cap:** at most 5 alternatives per sentence (configurable).
 
 ### Subword segmentation
@@ -212,7 +271,7 @@ raw text
 
 | Option                         | Status                                                                                  |
 |--------------------------------|-----------------------------------------------------------------------------------------|
-| wink-nlp + `chunkPatterns.ts`  | Kept as fallback. Fast and tiny, but lower tagging accuracy and hand-written chunk rules. |
+| wink-nlp + `chunkPatterns.ts`  | Dropped (owner, 2026-11-18): no rule-based fallback; the app parses only with the model. wink-nlp stays for sentence split, words, and lemmas. |
 | compromise (MIT, ~250 KB)      | Not used. No published tagging accuracy, and a second tagger can disagree with the primary one. Included in evaluation for comparison only. |
 | Off-the-shelf chunking models  | Not used. Licenses are non-commercial (QCRI) or unstated (vblagoje, AdapterHub); CoNLL-2000 data has no clear license. |
 | spaCy / Stanza via Pyodide     | Not used. spaCy in the browser is experimental only; Stanza needs PyTorch, which does not run in the browser. |
@@ -223,11 +282,12 @@ raw text
 ## Dependency graph
 
 ```
-components/  ──►  hooks/  ──►  services/  ──►  modules/  ──►  core/storage.ts
+components/  ──►  hooks/  ──►  services/  ──►  modules/  ──►  core/storage.ts, core/environment.ts
                                                          └──►  utils/helpers.ts
 
-parserService      ──► input/textInput ─► parser/parser.worker ─► output/annotator   (called in sequence by the service)
-                                           └─► parser/transformerBackend, winkBackend, chunkPatterns, ambiguity
+parserService      ──► preflight/preflight ──► core/environment                       (before and after model load)
+                   ──► input/textInput ─► parser/parser.worker ─► output/annotator   (called in sequence by the service)
+                                           └─► parser/transformerBackend, winkBackend, treeDecoder, ambiguity
 dictionaryService  ──► dictionary/dictionary ──► dictionary/staticDb
 subwordService     ──► subword/subwordParser
 vocabService       ──► vocab/vocabManager ──► core/storage
@@ -277,14 +337,15 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
           ├── Button.tsx
           ├── Modal.tsx
           ├── Tooltip.tsx
-          └── LoadingSpinner.tsx
+          ├── LoadingSpinner.tsx
+          └── DiagnosticsPanel.tsx (pre-flight report and model status; used by Header, InputPage)
 ```
 
 ### Services and hooks
 
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
-| `parserService.ts`     | `textInput`, `parser`, `annotator`                 | `useParser`     |
+| `parserService.ts`     | `preflight`, `textInput`, `parser`, `annotator`    | `useParser`     |
 | `dictionaryService.ts` | `dictionary`, `staticDb`                           | `useDictionary` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
@@ -334,7 +395,8 @@ enparse/
 │   │       ├── Button.tsx + Button.module.css
 │   │       ├── Modal.tsx + Modal.module.css
 │   │       ├── Tooltip.tsx + Tooltip.module.css
-│   │       └── LoadingSpinner.tsx + LoadingSpinner.module.css
+│   │       ├── LoadingSpinner.tsx + LoadingSpinner.module.css
+│   │       └── DiagnosticsPanel.tsx + DiagnosticsPanel.module.css
 │   ├── hooks/
 │   │   ├── useParser.ts
 │   │   ├── useDictionary.ts
@@ -346,15 +408,19 @@ enparse/
 │   │   ├── subwordService.ts
 │   │   └── vocabService.ts
 │   ├── core/
-│   │   └── storage.ts
+│   │   ├── storage.ts
+│   │   └── environment.ts
 │   ├── modules/ (each module also has index.ts (public API) and types.ts)
 │   │   ├── input/
 │   │   │   └── textInput.ts
+│   │   ├── preflight/
+│   │   │   ├── preflight.ts
+│   │   │   ├── checks.ts
+│   │   │   └── requirements.ts
 │   │   ├── parser/
 │   │   │   ├── parser.ts
 │   │   │   ├── transformerBackend.ts
 │   │   │   ├── winkBackend.ts
-│   │   │   ├── chunkPatterns.ts
 │   │   │   ├── ambiguity.ts
 │   │   │   ├── treeDecoder.ts
 │   │   │   └── parser.worker.ts
@@ -504,3 +570,15 @@ enparse/
 ### 2026-11-18T06:38:56Z — Claude Opus 5.5, Tokenizer input contract
 
 - Added: *Model* → tokenizer input (pre-split words, per-word subword cap), set by Phase 4 `labels.json`.
+
+### 2026-11-18T06:56:29Z — Claude Opus 5.5, No fallback mode
+
+- Removed: rule-based fallback mode and `parser/chunkPatterns.ts` (owner decision): from the modules table, skeleton, dependency graph, stack, evaluation, and ambiguity handling (rule-based attachment alternatives).
+- Added: *Model readiness (no fallback)* — status values, definition of "fully loaded" (files, `labels.json`, ONNX session, self-test), parse refused unless `ready` (`ParserNotReadyError`).
+- Modified: `winkBackend.ts` is wink-nlp support only (sentence split, words, lemmas), not a `ParserBackend`; `parser.worker.ts` description; baselines are wink-nlp POS and compromise.
+
+### 2026-11-18T07:06:28Z — Claude Opus 5.5, Pre-flight checker module planned
+
+- Added: *Model readiness* → `checking` status and *Pre-flight checks* (layout, flow, checks with proposed severity, memory limits of browser APIs).
+- Added: `core/environment.ts`, `modules/preflight/` (`preflight.ts`, `checks.ts`, `requirements.ts`, `types.ts`, `index.ts`), `components/Shared/DiagnosticsPanel.tsx` to the modules table, skeleton, component hierarchy, and dependency graph.
+- Modified: `parserService` wraps `preflight`; `failed` status shows `DiagnosticsPanel`.

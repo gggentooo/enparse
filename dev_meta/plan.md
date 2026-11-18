@@ -35,15 +35,26 @@ Open details and decisions required before development can proceed. Remove items
 
 ### Parser
 
-Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, lemmas, and fallback (see *Parsing engine* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
+Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, words, and lemmas; no rule-based fallback, so the app parses only once the model is loaded (see *Parsing engine* → *Model readiness* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
 
 - **Base model:** `distilbert-base-cased` or `deberta-v3-xsmall` (references: `bert-base-cased`, `ModernBERT-base`); pick by benchmark. Training plan: `plan-training.md`.
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
 - **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.)
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
-- **Fallback chunk patterns:** exact POS patterns in `chunkPatterns.ts`.
 
+
+### Pre-flight checks
+
+Client-side checks before and after the model loads (`architecture.md` → *Model readiness* → *Pre-flight checks*; source headers in `src/modules/preflight/`, `src/core/environment.ts`). Open:
+
+- **Scope:** confirm the proposed checks (workers, WebAssembly SIMD/threads, WebGPU, Cache Storage, memory hint, `labels.json` schema, wink versions, storage quota, cached-file integrity).
+- **Memory policy:** low device memory warns (proposed) or blocks. Browsers expose memory only roughly (Chromium) or not at all (Safari, Firefox), so blocking would turn some capable devices away.
+- **Thresholds:** minimum device memory hint, free-storage margin, minimum WebGPU buffer size. Placeholders until `plan-training.md` Phase 10 measures peak memory and load times.
+- **Storage policy:** warn (proposed) or block when free quota is below the model size; whether to request persistent storage (`navigator.storage.persist()`; Firefox asks the user).
+- **Integrity failures:** delete bad cached files and re-download once (proposed), then fail.
+- **Multi-threaded WASM:** needs COOP/COEP headers from the static host (depends on *Deployment target*); whether single-threaded WASM (warning only) is acceptable for the 5 s budget.
+- **Diagnostics display:** how much detail `DiagnosticsPanel` shows, and whether it is reachable when nothing failed (proposed: from the Header status badge).
 
 ### Dictionary
 
@@ -222,3 +233,11 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 ### 2026-11-18T05:38:31Z — Claude Opus 5.5, Unshipped dependency licenses decided
 
 - Removed: 'Undecided' → *Dev-only dependency licenses*. Decision (owner): weak-copyleft transitive dependencies that are never shipped in the app bundle are allowed — `sharp-libvips` (LGPL-3.0, Node-only part of Transformers.js) and `lightningcss` (MPL-2.0, Vite). Recorded in `agents.md` → *Dependency policy*.
+
+### 2026-11-18T06:56:29Z — Claude Opus 5.5, No fallback mode
+
+- Removed: 'Undecided' → 'Parser' → *Fallback chunk patterns*. Decision (owner): no rule-based fallback; the app refuses to parse until the model is fully loaded (`architecture.md` → *Model readiness*).
+
+### 2026-11-18T07:06:28Z — Claude Opus 5.5, Pre-flight checks
+
+- Added: 'Undecided' → *Pre-flight checks* (scope, memory and storage policies, thresholds, integrity failures, multi-threaded WASM, diagnostics display).

@@ -94,7 +94,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 - Files inside one module may import each other.
 - **Module public API:** each module exposes its public functions and types through `modules/<name>/index.ts`. Other layers import only from that file, never from internal files.
-- **Exception — training tools:** `training/js` scripts may run a module's internal file through `tsx` (e.g., `parser/winkBackend.ts`, `parser/chunkPatterns.ts`) so training uses the exact runtime code. They are not an app layer.
+- **Exception — training tools:** `training/js` scripts may run a module's internal file through `tsx` (e.g., `parser/winkBackend.ts`, `parser/treeDecoder.ts`) so training uses the exact runtime code. They are not an app layer.
 - No event bus. Cross-component updates go through service subscriptions; parent/child data goes through props.
 
 ---
@@ -170,7 +170,8 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 - Implement the `ParserBackend` interface in `modules/parser/<name>Backend.ts`.
 - Register it in `parser.worker.ts`. Do not change other parser files unless the interface changes.
-- Add it to `evaluate_baselines.mjs` or `evaluate.py` so its accuracy is measured on the same test set.
+- Add it to `evaluate.py` so its accuracy is measured on the same test set.
+- There is no rule-based fallback backend: a backend must load the model fully before it accepts parse requests (`architecture.md` → *Model readiness*).
 
 ---
 
@@ -181,7 +182,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 - **Modules:** unit tests for every public function, including edge cases (empty input, max length, non-Latin text).
 - **Services:** test composition and subscription behavior with mocked modules.
 - **Components:** test rendering and user interactions through hooks with mocked services.
-- **Parser:** a fixed regression set of sentences with expected chunks; run against the shipped model and the fallback backend.
+- **Parser:** a fixed regression set of sentences with expected chunks; run against the shipped model. Test that parsing is refused before the model is ready.
 - **End-to-end:** paste text → see chunks → look up a word → add to vocab list → export.
 - A change is not done until related tests exist and pass.
 
@@ -301,3 +302,7 @@ Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 ### 2026-11-18T06:27:44Z — Claude Opus 5.5, Node training tests
 
 - Added: *Training code* — `training/js` tests use the built-in `node:test` runner.
+
+### 2026-11-18T06:56:29Z — Claude Opus 5.5, No fallback mode
+
+- Modified: testing guide and *Adding a parser backend* — no fallback backend; parsing refused before the model is ready.

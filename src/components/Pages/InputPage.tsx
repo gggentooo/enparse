@@ -11,12 +11,16 @@
  *   1. Labeled <textarea> with live character count vs the max length.
  *   2. Drag-and-drop of plain-text files.
  *   3. Parse button → useParser().parseText; navigate to #/output on success.
+ *      The button is disabled unless useParser().canParse (model ready); show
+ *      why (checking, loading progress, or failure reason with
+ *      DiagnosticsPanel). Typed text is kept while the model loads.
  *   4. Show too-long errors (with count) and the removed-text notice.
  *   5. `strings` constant for user-facing text.
  *
  * Dependencies:
  *   External: react, react-router-dom (navigation).
  *   Internal: hooks/useParser.ts, components/Shared/Button.tsx,
+ *             components/Shared/DiagnosticsPanel.tsx,
  *             components/Shared/LoadingSpinner.tsx, ./InputPage.module.css.
  *   Used by: src/routes.tsx.
  *

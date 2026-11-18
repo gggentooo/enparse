@@ -72,7 +72,6 @@ The app shows two views of each sentence:
   5. Each phrase is labeled from its head word (noun → NP, verb → VP, adjective → ADJP, adverb → ADVP; a noun phrase with a `case` dependent → PP).
 - **Why decoding is still needed:** a neural network outputs scores for each word, not brackets. Turning per-word head labels into a valid tree and then into brackets is a fixed procedure (like BIO decoding for chunks). It holds no grammar rules, so it is not a separate nesting module.
 - **Flat and nested views can differ:** the views use different conventions (for example, `[NP the man] [PP in] [NP the car]` versus `[the [[man] [in [the [car]]]]]`). Both are shown as-is; the UI does not force one to match the other.
-- **Fallback mode:** wink-nlp has no dependency parser, so the nested view is unavailable in basic mode.
 - **Expected accuracy:** sequence-labeling parsers on EWT score slightly below biaffine parsers, and small models score lower than large ones. Actual UAS/LAS come from Phase 7. If they miss the thresholds (UAS 97% / LAS 94%), try a biaffine head in Phase 7 (needs a custom export and runtime model class); if that also misses, ship without the nested view.
 
 ### Open questions
@@ -125,10 +124,10 @@ The app shows two views of each sentence:
 
 | Library | Purpose |
 |---------|---------|
-| `wink-nlp`, `wink-eng-lite-web-model` | Runtime tokenizer for alignment; fallback baseline |
+| `wink-nlp`, `wink-eng-lite-web-model` | Runtime tokenizer for alignment; POS baseline (Phase 5) |
 | `compromise` | Comparison baseline |
 | `@huggingface/transformers` (Transformers.js) | ONNX parity and speed tests outside the browser |
-| `tsx` | Runs the app's TypeScript (e.g., `chunkPatterns.ts`) from Node scripts |
+| `tsx` | Runs the app's TypeScript (e.g., `winkBackend.ts`, `treeDecoder.ts`) from Node scripts |
 | `js-yaml` | Reading `../configs/*.yaml` |
 
 ### Data
@@ -179,7 +178,7 @@ training/
 │   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
 │   ├── lib/ (conllu.mjs reader, align.mjs label transfer; Phase 3)
 │   ├── tests/ (node:test unit tests, e.g. align.test.mjs)
-│   ├── evaluate_baselines.mjs (wink + chunkPatterns, compromise)
+│   ├── evaluate_baselines.mjs (wink-nlp POS, compromise)
 │   ├── benchmark.mjs (Transformers.js speed and parity)
 │   └── bench-page/ (minimal Vite page for Phase 10: index.html, bench.worker.mjs)
 ├── tests/ (pytest for derive_chunks and prepare_data; conftest.py)
@@ -223,11 +222,11 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 |---------------|------|-------------------|------------|
 | Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | Done: Phase 1 *Outcome* |
 | Phase 3 | `src/modules/parser/winkBackend.ts` tokenization and `src/modules/input/textInput.ts` preprocessing implemented (alignment runs them via `tsx`); root `package.json` pins the same `wink-nlp` and `@huggingface/transformers` versions as `training/js/` | Dev | Done 2026-11-18 (Phase 3 *Pre-flight check 2*) |
-| Phase 5 | `src/modules/parser/chunkPatterns.ts` implemented (run via `tsx`) | Owner (patterns), dev | `plan.md` → *Fallback chunk patterns* |
 | Phase 6 | Model size cap | Owner | `plan.md` → *Model size cap* |
 | Phase 7 | `src/modules/parser/treeDecoder.ts` implemented (nested-phrase F1 runs it via `tsx`) | Dev | `architecture.md` → *Logic modules* |
 | Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds*. Nested view thresholds decided: UAS ≥ 97%, LAS ≥ 94% |
 | Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | Done 2026-11-18: Vite 8.3.8 in root and `training/js` |
+| Phase 10 exit | Pre-flight policies (memory, storage, multi-threaded WASM) | Owner | `plan.md` → *Pre-flight checks* |
 | Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | Done 2026-11-18 (Phase 4 *Outcome*) |
 | Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `plan.md` → *Attribution display*; `architecture.md` → *Model* |
 
@@ -351,7 +350,7 @@ At runtime, wink-nlp splits text into words before the model runs. Training word
 
 | Topic | Decision |
 |-------|----------|
-| One implementation | `align_tokens.mjs` runs the app's `preprocess()` (`src/modules/input`) and `tokenize()` (`src/modules/parser/winkBackend.ts`) through `tsx`, as planned for `chunkPatterns.ts`. No copied settings. |
+| One implementation | `align_tokens.mjs` runs the app's `preprocess()` (`src/modules/input`) and `tokenize()` (`src/modules/parser/winkBackend.ts`) through `tsx`. No copied settings. |
 | Contractions | Always separate words: `'m`, `'s`, `'re`, `'ve`, `'ll`, `'d`, `n't` (`I'm` → `I` + `'m`). Done in `winkBackend.ts`, because wink is inconsistent (`it's` split, `I'm` not). |
 | Hyphenated words | Always one word (`well-known`, `F-16-launched`), even where wink or UD splits them. |
 | URLs and e-mail addresses | One word; a sentence never ends inside one (`www.juancole.com`, `Warner@ENRON`). Trailing sentence punctuation stays separate. |
@@ -487,6 +486,7 @@ Single contract between training and the app. Later phases fill their fields; th
 | `ambiguity.margin` | number \| null | `calibrate.py` (8) | Top-two probability margin for alternatives. |
 | `ambiguity.attachment_margin` | number \| null | `calibrate.py` (8) | Top-two head-label margin for attachment alternatives. |
 | `model_version` | string \| null | `export_onnx.py` (11) | Semantic version matching the release tag (e.g., `1.0.0`). |
+| `files` | object \| null | `export_onnx.py` (11) | Shipped model files (path relative to the model folder → `{bytes, sha256}`), excluding `labels.json`. Used by the app's pre-flight integrity check (`architecture.md` → *Pre-flight checks*). |
 
 - Fields are `null` until their phase writes them. The app throws `ParserLoadError` if a field it needs is `null`.
 - Adding an optional field does not change `schema_version`; anything else does.
@@ -513,8 +513,8 @@ Single contract between training and the app. Later phases fill their fields; th
 Sets the bar the model must beat.
 
 **Tasks**
-1. `evaluate_baselines.mjs`: run wink-nlp + `chunkPatterns.ts` and compromise on the EWT dev and test splits using the Phase 3 word segmentation.
-2. Map each baseline's tags to UPOS and chunk tags; report UPOS accuracy and chunk F1 (overall and per type).
+1. `evaluate_baselines.mjs`: run wink-nlp (POS tags) and compromise (POS tags and chunks) on the EWT dev and test splits using the Phase 3 word segmentation. There is no rule-based chunker for wink-nlp (no fallback mode; owner decision 2026-11-18).
+2. Map each baseline's tags to UPOS (both) and chunk tags (compromise); report UPOS accuracy for both and chunk F1 (overall and per type) for compromise.
 3. No baseline exists for the structure output (wink-nlp and compromise have no dependency parser); record it as not applicable.
 
 **Deliverables:** `reports/baselines.md`.
@@ -555,7 +555,7 @@ Sets the bar the model must beat.
 5. Error analysis: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`.
 
 **Deliverables:** best checkpoint, `reports/training.md`, `reports/errors.md`.
-**Exit criterion:** test metrics meet the acceptance thresholds and beat both baselines. UAS ≥ 97% and LAS ≥ 94% decide whether the nested view ships; missing them does not block Phase 7 exit (the app ships without the nested view).
+**Exit criterion:** test metrics meet the acceptance thresholds and beat the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). UAS ≥ 97% and LAS ≥ 94% decide whether the nested view ships; missing them does not block Phase 7 exit (the app ships without the nested view).
 
 ### Phase 8 — Calibration and ambiguity threshold
 
@@ -591,19 +591,21 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 2. Measure in Chrome, Safari, and Firefox, with WebGPU (where available) and WASM:
    - First load time (download + initialization), cached load time.
    - Parse time for 5,000 characters, including tree decoding (median of 10 runs).
-   - Peak memory.
-3. Test on at least one lower-end device (e.g., older laptop or recent phone) to set fallback-mode rules.
+   - Peak memory (and memory after loading) per backend.
+3. Test on at least one lower-end device (e.g., older laptop or recent phone) to set minimum device requirements (memory, WebGPU/WASM support); the app has no fallback, so devices below them cannot parse.
 
-**Deliverables:** `reports/benchmark.md`.
-**Exit criterion:** ≤ 5 s per 5,000 characters on a typical laptop with WASM; fallback rules defined for devices that miss it.
+4. Set the pre-flight thresholds in `src/modules/preflight/requirements.ts` from these measurements (memory hint, storage margin, WebGPU buffer size); check single-threaded WASM against the 5 s budget.
+
+**Deliverables:** `reports/benchmark.md`; pre-flight threshold values.
+**Exit criterion:** ≤ 5 s per 5,000 characters on a typical laptop with WASM; minimum device requirements defined and set in `requirements.ts`.
 
 ### Phase 11 — Packaging and release
 
 **Tasks**
-1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` is set here. `transformerBackend.ts` feeds words as `tokenizer_input` says and applies `window.max_subwords_per_word`; the Phase 9 parity check covers this.
+1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` and `files` (sizes and SHA-256 of the shipped files) are set here. `transformerBackend.ts` feeds words as `tokenizer_input` says and applies `window.max_subwords_per_word`; the Phase 9 parity check covers this.
 2. Write `MODEL_CARD.md`: base model, data and licenses, attribution text, metrics, known weaknesses, intended use.
 3. Tag the release (e.g., `model-v1.0.0`); record config, seed, data version, and checksums for reproducibility.
-4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word, and that every sentence has a valid tree and nested phrases.
+4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word, and that every sentence has a valid tree and nested phrases. The pre-flight checks pass on the shipped files (including `files-integrity`).
 
 **Deliverables:** shipped model files, model card, release tag.
 **Exit criterion:** app integration test passes.
@@ -735,3 +737,13 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 - Added: Phase 4 *Outcome* (datasets per candidate, label and window statistics, checks, dev details).
 - Added: `labels.json` schema v1 fields `tokenizer_input` and `window.max_subwords_per_word` (optional additions written in Phase 4; schema version unchanged).
 - Modified: Phase 4 exit gate marked done; Phase 11 task 1 notes the tokenizer contract.
+
+### 2026-11-18T06:56:29Z — Claude Opus 5.5, No fallback mode
+
+- Removed: `chunkPatterns.ts` from baselines, layout, libraries, and the Phase 5 gate; nested-view fallback note (owner decision: no rule-based fallback).
+- Modified: Phase 5 baselines are wink-nlp POS (UPOS only) and compromise (UPOS and chunks); Phase 7 exit criterion names them. Phase 10 sets minimum device requirements instead of fallback rules.
+
+### 2026-11-18T07:06:28Z — Claude Opus 5.5, Pre-flight integration
+
+- Added: `labels.json` schema v1 field `files` (written by `export_onnx.py`, Phase 11; `null` until then; optional addition, schema version unchanged). `prepare_data.py` writes `null` and validates it.
+- Modified: Phase 10 measures memory per backend and sets the pre-flight thresholds; Phase 11 writes `files` and checks pre-flight on the shipped files; gate for pre-flight policies before Phase 10 exit.
