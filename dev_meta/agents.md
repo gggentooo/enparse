@@ -93,7 +93,8 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 | `core/`, `utils/` | Infrastructure helpers | Importing any other layer |
 
 - Files inside one module may import each other.
-- **Module public API (proposed):** each module exposes its public functions and types through `modules/<name>/index.ts`. Other layers import only from that file, never from internal files.
+- **Module public API:** each module exposes its public functions and types through `modules/<name>/index.ts`. Other layers import only from that file, never from internal files.
+- **Exception — training tools:** `training/js` scripts may run a module's internal file through `tsx` (e.g., `parser/winkBackend.ts`, `parser/chunkPatterns.ts`) so training uses the exact runtime code. They are not an app layer.
 - No event bus. Cross-component updates go through service subscriptions; parent/child data goes through props.
 
 ---
@@ -175,7 +176,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ## Testing guide
 
-**Tooling (proposed):** Vitest for unit tests, React Testing Library for components, Playwright for end-to-end browser tests.
+**Tooling:** Vitest 5.1.0 for unit tests (approved). React Testing Library for components and Playwright for end-to-end browser tests (proposed).
 
 - **Modules:** unit tests for every public function, including edge cases (empty input, max length, non-Latin text).
 - **Services:** test composition and subscription behavior with mocked modules.
@@ -186,25 +187,28 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ---
 
-## Tooling and commands (proposed)
+## Tooling and commands
 
-Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
+Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 
-| Item | Proposed |
-|------|----------|
-| Node.js | 20 LTS or newer |
-| Package manager | npm (lockfile committed) |
-| Lint / format | ESLint (typescript-eslint, react-hooks plugin) + Prettier |
-| Tests | Vitest, React Testing Library, Playwright |
+| Item | Choice | Status |
+|------|--------|--------|
+| Node.js | 20 LTS or newer | Approved |
+| Package manager | npm (lockfile committed; exact versions) | Approved |
+| Language | TypeScript 7.0.2 (`strict`) | Approved |
+| Build | Vite 8.3.8 (same version as `training/js`) | Approved |
+| Unit tests | Vitest 5.1.0 | Approved |
+| Component / end-to-end tests | React Testing Library, Playwright | Proposed |
+| Lint / format | ESLint (typescript-eslint, react-hooks plugin) + Prettier | Proposed |
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Start the Vite dev server |
-| `npm run build` | Production build into `dist/` |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint + Prettier check |
-| `npm test` | Unit and component tests |
-| `npm run test:e2e` | Playwright tests |
+| Command | Purpose | Status |
+|---------|---------|--------|
+| `npm run dev` | Start the Vite dev server | Available |
+| `npm run build` | Production build into `dist/` | Available |
+| `npm run typecheck` | `tsc --noEmit` | Available |
+| `npm test` | Unit tests (`vitest run`) | Available |
+| `npm run lint` | ESLint + Prettier check | Not set up |
+| `npm run test:e2e` | Playwright tests | Not set up |
 
 ### Training code (`training/`)
 
@@ -219,6 +223,7 @@ Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
 ## Dependency policy
 
 - **Licenses:** only permissive licenses that allow commercial use (MIT, Apache 2.0, BSD, ISC). No GPL/AGPL, no non-commercial (CC BY-NC) code, models, or data.
+- **Unshipped exceptions:** weak-copyleft (LGPL, MPL) transitive dependencies are allowed only if they never reach the app bundle (install-time or Node-only code). Accepted: `sharp-libvips` (LGPL-3.0, via the Node build of Transformers.js) and `lightningcss` (MPL-2.0, via Vite). Re-check with a license scan of `package-lock.json` when dependencies change.
 - **Approval:** new runtime dependencies require owner approval and an entry in `architecture.md` → *Technology stack*.
 - **Versions:** pin exact versions in the lockfile; note major-version upgrades in the changelog.
 - **Size:** report the bundle size impact of any new runtime dependency.
@@ -282,3 +287,12 @@ Not set up yet. Tracked under *Tooling* in `plan.md` → *Undecided*.
 
 - Added: H1 document title "Enparse Agent Development Guide".
 - Modified: *Document Maintaining Guide* is now an H2 section (*Rules*, *Format template* are H3); changelog entries are H3 under *Changelog*, and the format template matches.
+
+### 2026-11-18T05:29:52Z — Claude Opus 5.5, Tool stack approved; module public API confirmed
+
+- Modified: *Tooling and commands* — npm, Node 20+, TypeScript 7.0.2, Vite 8.3.8, Vitest 5.1.0 approved by owner; `dev`, `build`, `typecheck`, `test` available. ESLint + Prettier, RTL, Playwright still proposed.
+- Modified: *Module public API* confirmed by owner (proposed mark removed); added the training-tools exception (`tsx` may run internal module files).
+
+### 2026-11-18T05:38:31Z — Claude Opus 5.5, Unshipped dependency exception
+
+- Added: *Dependency policy* → unshipped weak-copyleft exception (owner decision): `sharp-libvips`, `lightningcss`.

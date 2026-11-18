@@ -1,6 +1,6 @@
 {
   "//": [
-    "package.json — Enparse web app manifest",
+    "package.json \u2014 Enparse web app manifest",
     "",
     "Description:",
     "  npm manifest for the client-side app (src/). Training tools have their own",
@@ -14,18 +14,33 @@
     "     training/js/package.json.",
     "  4. Report bundle-size impact for every new runtime dependency.",
     "",
-    "Dependencies (planned; versions unpinned):",
-    "  Runtime: react, react-dom (18+), react-router-dom, @huggingface/transformers,",
-    "           wink-nlp, wink-eng-lite-web-model, jszip (optional),",
-    "           csv-stringify + csv-parse (optional).",
-    "  Dev:     typescript, vite, @vitejs/plugin-react, @types/react, @types/react-dom,",
-    "           vitest, @testing-library/react, @playwright/test,",
-    "           eslint, typescript-eslint, eslint-plugin-react-hooks, prettier (proposed).",
-    "  System:  Node.js 20+ (proposed).",
+    "Dependencies (exact pins in package-lock.json):",
+    "  Runtime (approved 2026-11-18): wink-nlp 2.4.0, wink-eng-lite-web-model 1.8.1,",
+    "           @huggingface/transformers 4.3.2 (same as training/js).",
+    "  Dev (approved 2026-11-18): typescript 7.0.2, vite 8.3.8, vitest 5.1.0.",
+    "  Planned (not yet approved): react, react-dom, react-router-dom,",
+    "           @vitejs/plugin-react, RTL, Playwright, ESLint, Prettier; jszip, csv-* (optional).",
+    "  System:  Node.js 20+.",
     "",
-    "Status: header only; not populated."
+    "Status: Phase 3 pre-work dependencies installed; scripts: dev, build, typecheck, test."
   ],
   "name": "enparse",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "wink-eng-lite-web-model": "1.8.1",
+    "wink-nlp": "2.4.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
 }

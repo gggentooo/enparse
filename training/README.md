@@ -63,4 +63,7 @@ Run from `training/` with the venv active.
 |-------|---------|-------|
 | 1 | `sh scripts/fetch_data.sh` | Clones UD EWT at the tag in `configs/data.yaml` into `data/raw/`; verifies commit and SHA-256. Exit 2 = unpinned values printed for recording. |
 
-TODO(training-setup): commands for Phases 2–11, added as scripts are implemented.
+| 2 | `python scripts/derive_chunks.py [--review]` | Writes `data/processed/chunked/*.conllu` (`Chunk=` in MISC) and `reports/chunks.md`; `--review` writes the 200-sentence dev sample (git-ignored). |
+| 2 | `python -m pytest tests/test_derive_chunks.py` | Chunk rule tests. |
+
+TODO(training-setup): commands for Phases 3–11, added as scripts are implemented.

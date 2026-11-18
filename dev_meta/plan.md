@@ -39,7 +39,6 @@ Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp 
 
 - **Base model:** `distilbert-base-cased` or `deberta-v3-xsmall` (references: `bert-base-cased`, `ModernBERT-base`); pick by benchmark. Training plan: `plan-training.md`.
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
-- **Chunk derivation rules:** how NP/VP/PP/ADJP/ADVP spans are derived from UD dependency trees.
 - **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.)
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
@@ -88,10 +87,8 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 - **MVP scope:** which features ship first and milestone order.
 - **Deployment target:** static host (e.g., GitHub Pages, Netlify, Cloudflare Pages).
 - **Offline/PWA:** whether the app should work offline.
-- **Tooling:** confirm proposals in `agents.md` → *Tooling and commands* (npm, Node 20+, ESLint + Prettier, Vitest/RTL/Playwright); choose CI.
-- **Module public API:** confirm `agents.md` proposal that each module exposes its API via `modules/<name>/index.ts`.
+- **Tooling:** confirm remaining proposals in `agents.md` → *Tooling and commands* (ESLint + Prettier, React Testing Library, Playwright); choose CI. (npm, Node 20+, TypeScript, Vite, Vitest approved.)
 - **Project license.**
-- **Dev-only dependency licenses:** the dependency policy allows permissive licenses only. `training/js` pulls in `sharp-libvips` (LGPL-3.0, via Transformers.js) and `lightningcss` (MPL-2.0, via Vite). Neither is shipped. Decide whether weak-copyleft dev-only transitive dependencies are acceptable (see `plan-training.md` → Phase 0 *Outcome*).
 - **Analytics/privacy:** whether any usage tracking is collected.
 
 ---
@@ -105,7 +102,7 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 
 ### Core features
 
-- **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Ambiguous sentences display multiple valid parses.
+- **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Two views: flat phrases and nested phrases grouped by level (e.g., `[[The [red [dog]]] [rarely [[barks] loudly]]]`). Ambiguous sentences display multiple valid parses.
 - **Automatic dictionary lookup:** Highlighting a word shows its English and Korean definitions and example usages. Dictionary data is compiled into a static local database (hosted via raw content URLs), avoiding live API calls.
 - **Subword parsing:** Frequently occurring prefixes, bases, and suffixes (e.g., *un-*, *-ism*) are parsed and treated as vocabulary items.
 - **Vocabulary list export:** Users create custom vocab lists within the app and can export/import them in a portable file format.
@@ -202,3 +199,26 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 ### 2026-11-17T23:17:31Z — Claude Opus 5.5, Training data licensing decided
 
 - Removed: 'Undecided' → 'Parser' → *Training data licensing*. Decision (owner): UD EWT only; weights shipped under CC BY-SA 4.0 with attribution, legal advice before commercial release; GUM excluded. Recorded in `plan-training.md` → Phase 1 *Outcome* and `training/MODEL_CARD.md`.
+
+### 2026-11-17T23:31:07Z — Claude Opus 5.5, Chunk derivation implemented
+
+- Modified: 'Undecided' → 'Parser' → *Chunk derivation rules* now asks the owner to confirm the proposed rule details and the agent-run review.
+
+### 2026-11-17T23:33:33Z — Claude Opus 5.5, Chunk derivation rules decided
+
+- Removed: 'Undecided' → 'Parser' → *Chunk derivation rules*. Decision (owner): rules and *Rule details* in `plan-training.md` → Phase 2 accepted, with the agent-run review.
+
+### 2026-11-18T04:09:46Z — Claude Opus 5.5, Nested phrase view
+
+- Modified: *Core features* → *Sentence structure breakdown* lists flat and nested views.
+- Added: 'Undecided' → 'Parser' → *Nested phrase view* (design confirmation, UAS/LAS thresholds, convention).
+
+### 2026-11-18T05:29:52Z — Claude Opus 5.5, Nested view, module API, and tooling decided
+
+- Removed: 'Undecided' → *Nested phrase view* (owner: two-view design confirmed; ships only with UAS ≥ 97% and LAS ≥ 94%, otherwise the app ships without it; bracketing and labels as in `plan-training.md` → *Nested phrase structure*).
+- Removed: 'Undecided' → *Module public API* (owner approved `index.ts` per module).
+- Modified: 'Undecided' → *Tooling* — npm, Node 20+, TypeScript, Vite, Vitest approved; ESLint/Prettier, RTL, Playwright, CI remain.
+
+### 2026-11-18T05:38:31Z — Claude Opus 5.5, Unshipped dependency licenses decided
+
+- Removed: 'Undecided' → *Dev-only dependency licenses*. Decision (owner): weak-copyleft transitive dependencies that are never shipped in the app bundle are allowed — `sharp-libvips` (LGPL-3.0, Node-only part of Transformers.js) and `lightningcss` (MPL-2.0, Vite). Recorded in `agents.md` → *Dependency policy*.

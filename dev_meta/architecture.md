@@ -52,13 +52,17 @@ This guide applies to all contributors (human and AI) editing this file.
 |--------------|-------------------------------------------------|
 | React 18+    | UI library with hooks and functional components  |
 | React Router | Hash-based routing (`createHashRouter`); no server dependency |
-| TypeScript   | Type safety across all layers                    |
-| Vite         | Build tool (static server, bundler)              |
+| TypeScript 7.0.2 | Type safety across all layers (`strict`)     |
+| Vite 8.3.8   | Build tool (static server, bundler); same version as `training/js` |
 | CSS Modules  | Scoped, maintainable styling per component       |
-| Transformers.js | Runs the in-house ONNX tagger in the browser (WebGPU/WASM) (Apache 2.0) |
-| wink-nlp + wink-eng-lite-web-model | Sentence split, lemmas, and fallback POS tagging/chunking (MIT) |
+| Transformers.js 4.3.2 (`@huggingface/transformers`) | Runs the in-house ONNX tagger in the browser (WebGPU/WASM) (Apache 2.0) |
+| wink-nlp 2.4.0 + wink-eng-lite-web-model 1.8.1 | Sentence split, word tokenization, lemmas, and fallback POS tagging/chunking (MIT) |
 | jszip        | Archive export format (optional)                 |
 | csv-stringify + csv-parse | CSV import/export (optional)        |
+
+**Tool stack (approved 2026-11-18):** npm (lockfile committed), Node.js 20+, TypeScript 7.0.2, Vite 8.3.8, Vitest 5.1.0 (unit tests). ESLint + Prettier, React Testing Library, and Playwright are still proposed (`agents.md` → *Tooling and commands*).
+
+**Bundle size (measured 2026-11-18):** wink-nlp + model ≈ 1.0 MB gzipped (3.5 MB minified), in the parser worker chunk. Transformers.js ≈ 125 KB gzipped JS, plus the ONNX Runtime WASM binary (≈ 3.6 MB gzipped), fetched when the model loads. React and the model file are not included.
 
 **Development only (not shipped):** Python, Hugging Face Transformers, and Optimum for model training and ONNX export (see *Parsing engine*). Supporting tools:
 
@@ -70,7 +74,8 @@ This guide applies to all contributors (human and AI) editing this file.
 | ruff | Python format and lint for `training/` (MIT) |
 | Git LFS | Stores shipped model files in `public/models/` (see *Model training* → *Artifacts*) |
 
-- **Version sync:** `training/js/package.json` pins `wink-nlp` 2.4.0, `wink-eng-lite-web-model` 1.8.1, and `@huggingface/transformers` 4.3.2 (Phase 0). The app's root `package.json` must use the same versions.
+- **Version sync:** root `package.json` and `training/js/package.json` pin the same `wink-nlp` 2.4.0, `wink-eng-lite-web-model` 1.8.1, `@huggingface/transformers` 4.3.2, and `vite` 8.3.8. Change them together.
+- **Training tools import app code:** `training/js` scripts run app module files directly through `tsx` (`input/index.ts`, `parser/winkBackend.ts`, `parser/chunkPatterns.ts`, `parser/treeDecoder.ts`), so training and runtime share one implementation.
 
 No separate state-management library. Shared state lives in services and is exposed through hooks (see *Layer communication*).
 
@@ -100,13 +105,14 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `core/storage.ts`            | Persistent state wrapper (LocalStorage for small data, IndexedDB for larger datasets).             |
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
 | `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
-| `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, and chunk parses. Pluggable backend. |
-| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX tagger via Transformers.js; decodes UPOS and chunk labels with probabilities. |
-| `parser/winkBackend.ts`      | Sentence split and lemmas; fallback `ParserBackend` (POS tags + `chunkPatterns`).                  |
+| `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, chunk parses, and (model mode) dependency trees with nested phrases. Pluggable backend. |
+| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX tagger via Transformers.js; splits logits into label groups (`labels.json` → `groups`); decodes UPOS, chunk, and head labels with probabilities. |
+| `parser/treeDecoder.ts`      | Decodes head labels into a valid dependency tree (repairs cycles and extra roots), then builds nested phrases by a fixed bracketing order. No grammar rules. |
+| `parser/winkBackend.ts`      | Sentence split and runtime words: hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL. Lemmas; fallback `ParserBackend` (POS tags + `chunkPatterns`). |
 | `parser/chunkPatterns.ts`    | Fallback POS patterns defining NP, VP, PP, and ADJP chunks.                                       |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads backends once, switches to fallback mode if needed, parses off the main thread. |
-| `output/annotator.ts`        | Converts parse results into an annotation model (chunks, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
+| `output/annotator.ts`        | Converts parse results into an annotation model (flat chunks, nested phrases, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
@@ -129,14 +135,18 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Speed / size     | Quantized model ~65–80 MB (proposed cap 80 MB), downloaded once and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Expected to fit the 5 s budget; to be confirmed by benchmark. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
+| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Ships only if UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without the nested view. Not available in fallback mode. |
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
 ### Model
 
-- **Architecture:** standard token classifier with one combined label per word, `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing combined-label probabilities. A two-head variant is an optional training experiment.
+- **Architecture:** standard token classifier with two label groups packed into one `logits` output:
+  - Group A: `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing group-A probabilities.
+  - Group B: head and relation (`<offset>@<head UPOS>|<relation>`).
+  - Softmax is applied per group. One output is used because Transformers.js token-classification models return only `logits`.
 - **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
-- **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` applies the calibration temperature and decodes logits into labels and probabilities.
+- **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases.
 - **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
 - **Traceability:** every `ParseResult` carries the model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
@@ -148,7 +158,7 @@ Full plan: [plan-training.md](plan-training.md).
 
 - **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
 - **Framework:** Hugging Face `Trainer` on Apple Silicon (MPS). Unsloth was ruled out in Phase 0. Optimum (`optimum-onnx`) handles ONNX export and quantization.
-- **Evaluation:** UPOS accuracy, chunk F1, calibration, and speed on the EWT test split, compared with the wink-nlp fallback and compromise.
+- **Evaluation:** UPOS accuracy, chunk F1, UAS/LAS, nested-phrase F1, calibration, and speed on the EWT test split. Flat outputs are compared with the wink-nlp fallback and compromise.
 - **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`, tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
 
 ### Pipeline
@@ -158,7 +168,8 @@ raw text
   └─► input/textInput.ts (preprocessor)
         └─► parser.worker.ts
               ├─► winkBackend: sentence split, lemmas
-              ├─► transformerBackend: windows → UPOS + chunk labels with probabilities
+              ├─► transformerBackend: windows → UPOS + chunk + head labels with probabilities
+              ├─► treeDecoder.ts: head labels → dependency tree → nested phrases
               └─► ambiguity.ts: alternative parses
         └─► output/annotator.ts → annotation model → OutputPage
 ```
@@ -169,22 +180,25 @@ raw text
 ### Fallback mode
 
 - Used while the model downloads, if model loading fails, or on devices without enough memory.
-- `winkBackend` provides POS tags, and `chunkPatterns.ts` builds chunks from them. Ambiguity uses rule-based patterns only.
+- `winkBackend` provides POS tags, and `chunkPatterns.ts` builds chunks from them. Ambiguity uses rule-based patterns only. The nested phrase view is unavailable (no dependency parser).
 - The UI shows that results come from basic mode and offers re-parsing once the model is ready.
 
 ### Preprocessor (`input/textInput.ts`)
 
-- Unicode NFKC normalization; curly quotes and dashes converted to ASCII equivalents.
+- Unicode NFKC normalization; curly quotes → ASCII quotes; en dash and minus → `-`; em dash → `--`.
 - Strips control characters, zero-width characters, and emoji.
 - Hangul/CJK and other non-Latin text are removed; the UI shows a notice listing what was removed.
-- Collapses repeated whitespace; keeps paragraph breaks.
-- **Max length:** 5,000 characters (configurable). Longer input is rejected with a character count; it is not silently truncated.
+- Collapses repeated whitespace; a single line break becomes a space; two or more line breaks become one paragraph break.
+- **Max length:** 5,000 characters (configurable), counted in code points on the raw input. Longer input is rejected with a character count; it is not silently truncated.
+- The same code normalizes training text (`plan-training.md` → Phase 3).
 
 ### Ambiguity handling
 
 1. **Primary parse (context-selected):** the highest-probability label for each word, chosen by the model using surrounding context. Marked "most likely".
 2. **Probability-based alternatives:** words whose top two labels are close (margin below a threshold, e.g. 0.2) are treated as ambiguous. `ambiguity.ts` builds alternative label sequences from them, keeps only valid ones (consistent BIO chunks), and ranks them by joint probability.
-3. **Attachment alternatives (rule-based):** flat chunks do not encode where a prepositional phrase attaches. `ambiguity.ts` flags `VP NP PP` sequences and offers both readings (PP modifies the verb or the noun).
+3. **Attachment alternatives:** flat chunks do not encode where a prepositional phrase attaches.
+   - Model mode: the structure output does. When a phrase's top-two head labels are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
+   - Fallback mode: rule-based. `ambiguity.ts` flags `VP NP PP` sequences and offers both readings (PP modifies the verb or the noun).
 4. **Cap:** at most 5 alternatives per sentence (configurable).
 
 ### Subword segmentation
@@ -332,7 +346,7 @@ enparse/
 │   │   └── vocabService.ts
 │   ├── core/
 │   │   └── storage.ts
-│   ├── modules/ (each module also has index.ts (public API) and types.ts (proposed))
+│   ├── modules/ (each module also has index.ts (public API) and types.ts)
 │   │   ├── input/
 │   │   │   └── textInput.ts
 │   │   ├── parser/
@@ -341,6 +355,7 @@ enparse/
 │   │   │   ├── winkBackend.ts
 │   │   │   ├── chunkPatterns.ts
 │   │   │   ├── ambiguity.ts
+│   │   │   ├── treeDecoder.ts
 │   │   │   └── parser.worker.ts
 │   │   ├── output/
 │   │   │   └── annotator.ts
@@ -467,3 +482,20 @@ enparse/
 ### 2026-11-17T22:43:29Z — Claude Opus 5.5, labels.json schema and ParseResult traceability
 
 - Added: *Model* → `labels.json` schema reference (`plan-training.md` Phase 4) and `ParseResult` traceability (model version, wink offsets).
+
+### 2026-11-18T04:09:46Z — Claude Opus 5.5, Nested phrase structure output
+
+- Added: `parser/treeDecoder.ts` (proposed) to modules table, pipeline, and skeleton; *Nested phrases* row in *Parsing engine*.
+- Modified: *Model* — two label groups (flat `UPOS|CHUNK`, structure head/relation) packed in one `logits` output; runtime splits logits per group.
+- Modified: `parser.ts`, `transformerBackend.ts`, `annotator.ts` descriptions; evaluation metrics; fallback mode (no nested view); *Ambiguity handling* item 3 uses head probabilities in model mode.
+
+### 2026-11-18T05:29:35Z — Claude Opus 5.5, Tool stack, pinned runtime versions, nested view confirmed
+
+- Added: tool stack (npm, Node 20+, TypeScript 7.0.2, Vite 8.3.8, Vitest 5.1.0; owner-approved); measured bundle sizes; training tools importing app code via `tsx`.
+- Modified: *Technology stack* pins runtime versions (wink-nlp 2.4.0, wink-eng-lite-web-model 1.8.1, Transformers.js 4.3.2; owner-approved); version sync covers root and `training/js`.
+- Modified: nested phrase design confirmed by owner (proposed marks removed); ships only with UAS ≥ 97% and LAS ≥ 94%. Module public API (`index.ts`, `types.ts`) confirmed.
+- Modified: `winkBackend.ts` word rules; *Preprocessor* dash mapping, line breaks, and length counting.
+
+### 2026-11-18T05:38:31Z — Claude Opus 5.5, Word rules for URLs and symbol runs
+
+- Modified: `winkBackend.ts` description — URLs, e-mail addresses, and symbol runs are one word; no sentence break inside a URL (owner decision).

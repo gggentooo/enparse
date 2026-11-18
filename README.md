@@ -12,7 +12,7 @@ Tasks:
 Dependencies:
   dev_meta/agents.md, dev_meta/architecture.md, training/README.md.
 
-Status: skeleton only.
+Status: setup and available commands written (2026-11-18).
 -->
 
 # Enparse
@@ -25,15 +25,21 @@ Browser-based English grammar and vocabulary study tool for Korean speakers (beg
 
 ## Setup
 
-TODO(tooling): written once tooling is confirmed.
+Requires Node.js 20+ and npm. From the repository root:
 
-## Commands (proposed)
+```bash
+npm ci
+npm run typecheck
+npm test
+```
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Start the Vite dev server |
-| `npm run build` | Production build into `dist/` |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint + Prettier check |
-| `npm test` | Unit and component tests |
-| `npm run test:e2e` | Playwright tests |
+## Commands
+
+| Command | Purpose | Status |
+|---------|---------|--------|
+| `npm run dev` | Start the Vite dev server | Available |
+| `npm run build` | Production build into `dist/` | Available |
+| `npm run typecheck` | `tsc --noEmit` | Available |
+| `npm test` | Unit tests (`vitest run`) | Available |
+| `npm run lint` | ESLint + Prettier check | Not set up |
+| `npm run test:e2e` | Playwright tests | Not set up |

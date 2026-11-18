@@ -48,7 +48,7 @@
 #     kinds               — lowercase_sentence_start, drop_final_punct, learner_typos
 #   seed                  — global data seed
 #
-# Status: Phase 1 keys set (ud_ewt, gum, paths.raw); later keys added per phase.
+# Status: Phase 1–2 keys set (ud_ewt, gum, paths.raw/chunked, chunks); later keys added per phase.
 # =============================================================================
 
 # Phase 1 — UD English EWT (CC BY-SA 4.0). commit/checksums: null until the
@@ -80,3 +80,13 @@ gum:
 # All paths are relative to training/ and git-ignored.
 paths:
   raw: data/raw
+  chunked: data/processed/chunked
+
+# Phase 2 — chunk derivation (scripts/derive_chunks.py).
+chunks:
+  splits: [train, dev, test]
+  report: reports/chunks.md
+  review:
+    sentences: 200
+    seed: 13
+    sample_path: data/processed/review/chunk_review_sample.md
