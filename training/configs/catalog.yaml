@@ -1,0 +1,34 @@
+# =============================================================================
+# training/configs/catalog.yaml — model library texts (owner-editable)
+# =============================================================================
+#
+# Description:
+#   Display names and descriptions shown for each model in the app's model
+#   library (#/models). scripts/package_models.py combines them with measured
+#   facts (size, accuracy, speed, memory) into public/models/catalog.json.
+#   Only models that meet the acceptance thresholds are offered.
+#
+# Phase: 11 — Packaging and release (texts may be edited at any time).
+#
+# Keys: one entry per configs/train_<key>.yaml.
+#   display_name — short name shown on the model card
+#   description  — one or two plain sentences (no numbers: measured values
+#                  are added automatically)
+#
+# Status: proposed texts (English); interface language undecided
+#   (plan.md → Undecided → Interface language, Model library).
+# =============================================================================
+
+models:
+  distilbert_base_cased:
+    display_name: Fast
+    description: Smallest and quickest model. A good choice for older laptops and phones.
+  deberta_v3_xsmall:
+    display_name: Compact
+    description: Small download with strong accuracy for its size.
+  bert_base_cased:
+    display_name: Standard
+    description: Larger model with balanced accuracy and speed on recent laptops.
+  modernbert_base:
+    display_name: Accurate
+    description: Largest download; aims for the best accuracy. Best with a recent laptop and WebGPU.

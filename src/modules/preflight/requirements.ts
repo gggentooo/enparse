@@ -18,10 +18,11 @@
  *        (model re-downloaded every visit), storage-quota, memory-hint,
  *        wink-versions, model-size.
  *      - info only (pass/skip): webgpu (missing → WASM), files-cached.
- *   2. Thresholds (proposed; TODO(preflight-thresholds): set from Phase 10):
- *      MIN_DEVICE_MEMORY_GB (memory-hint), STORAGE_MARGIN_BYTES (free quota
- *      beyond the model size), MIN_WEBGPU_BUFFER_BYTES (largest weight
- *      buffer), MAX_INTEGRITY_RETRIES = 1.
+ *   2. App-wide thresholds (proposed; TODO(preflight-thresholds): set from
+ *      Phase 10): STORAGE_MARGIN_BYTES (free quota beyond a model's size),
+ *      MIN_WEBGPU_BUFFER_BYTES, MAX_INTEGRITY_RETRIES = 1,
+ *      PARSE_BUDGET_SECONDS = 5. Per-model needs (peak memory,
+ *      min_device_memory_gb) come from catalog.json, measured in Phase 10.
  *   3. SUPPORTED_SCHEMA_VERSION (= parser LABEL_SCHEMA_VERSION; kept equal by
  *      a test, since this module cannot import modules/parser).
  *   4. APP_WINK_VERSIONS: wink-nlp and wink-eng-lite-web-model versions

@@ -23,14 +23,16 @@
     "  js-yaml                           \u2014 read ../configs/*.yaml (MIT)",
     "  System: Node.js 20+.",
     "",
-    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), test."
+    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), baselines (Phase 5), benchmark (Phases 7, 9, 10), test."
   ],
   "name": "enparse-training-js",
   "private": true,
   "type": "module",
   "scripts": {
     "align": "tsx align_tokens.mjs",
-    "test": "node --test tests/"
+    "test": "node --test tests/",
+    "baselines": "tsx evaluate_baselines.mjs",
+    "benchmark": "node benchmark.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

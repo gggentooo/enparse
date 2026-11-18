@@ -44,7 +44,8 @@
 #     min_upos_accuracy   — proposed 0.97
 #     min_chunk_f1        — proposed 0.94
 #
-# Status: env_check set (Phase 0); other keys pending.
+# Status: env_check (Phase 0), smoke, export, parity, acceptance (Phase 7/9) set; calibration,
+#   ambiguity, benchmark pending.
 # =============================================================================
 
 # Phase 0 dummy training run (scripts/check_env.py). (proposed)
@@ -54,3 +55,43 @@ env_check:
   num_dummy_labels: 10
   learning_rate: 5.0e-5
   seed: 0
+
+# Phase 7 task 0: smoke test per candidate (train.py --smoke, export_onnx.py, js/benchmark.mjs smoke).
+smoke:
+  train_windows: 64        # first N train windows
+  dev_windows: 32          # first N dev windows (also the parity sample)
+  epochs: 1
+  # Fixed sentences (runtime words, space-separated) for the reference check:
+  # Python tokenization and PyTorch predictions vs Transformers.js.
+  reference_sentences:
+    - "The red dog rarely barks loudly ."
+    - "I 'm sure it 's well-known , is n't it ?"
+    - "She picked it up at www.example.com yesterday ."
+
+# Phase 9 (and the smoke test): ONNX export and variants (export_onnx.py).
+export:
+  task: token-classification
+  opset: 18                           # Optimum's recommended minimum for these architectures
+  variants: [fp32, int8, fp16]        # fp32 for parity only; int8 (WASM) and fp16 (WebGPU) ship
+  int8_per_channel: true              # per-channel scales: ~3x lower int8 error in the smoke test, same size
+  int8_exclude_nodes: []              # filled only if int8 fails parity (e.g., embeddings, classifier)
+  fp16_keep_io_types: true            # fp32 inputs/outputs, fp16 inside
+  report_margin: 0.1                  # export_report.json: also agreement on words with fp32 margin > this
+
+# Phase 9 parity limits (js/benchmark.mjs, scripts/evaluate.py).
+parity:
+  fp32_min_agreement: 0.999           # label agreement vs PyTorch
+  max_f1_drop_points: 0.3             # chunk F1 and LAS, int8/fp16 vs fp32
+  # Smoke test only (barely trained models: most labels are near-ties, so raw int8/fp16 agreement
+  # measures noise). int8/fp16 must agree on words where fp32 is confident (top-two logit gap >
+  # smoke_margin). Quantization quality is judged in Phase 9 on trained models.
+  smoke_margin: 0.1
+  smoke_min_confident_agreement: 0.90
+
+# Phase 7 acceptance (proposed; plan.md → Undecided → Acceptance thresholds). A model is offered only
+# if it meets min_upos_accuracy and min_chunk_f1; its nested view needs min_uas and min_las.
+acceptance:
+  min_upos_accuracy: 0.97
+  min_chunk_f1: 0.94
+  min_uas: 0.97
+  min_las: 0.94

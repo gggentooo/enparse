@@ -103,7 +103,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Module                       | Description                                                                                       |
 |------------------------------|---------------------------------------------------------------------------------------------------|
 | `core/storage.ts`            | Persistent state wrapper (LocalStorage for small data, IndexedDB for larger datasets).             |
-| `core/environment.ts`        | Browser capability probes (workers, WebAssembly SIMD/threads, WebGPU limits, device memory, storage quota) and model-file cache access (read, SHA-256, delete). Returns data only; no decisions. |
+| `core/environment.ts`        | Browser capability probes (workers, WebAssembly SIMD/threads, WebGPU limits, device memory, storage quota) and model-file cache access (list, download with progress, read, SHA-256, delete). Returns data only; no decisions. |
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
 | `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
 | `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, chunk parses, and (model mode) dependency trees with nested phrases. Pluggable backend. |
@@ -112,6 +112,9 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `preflight/preflight.ts`     | Runs pre-flight stages (device, model, post-load file verification) through `core/environment` and combines results into a `PreflightReport` with a verdict (`ok`, `warn`, `blocked`). |
 | `preflight/checks.ts`        | One pure function per check (pass, warn, fail, skip); unit-testable without browser APIs. |
 | `preflight/requirements.ts`  | Minimum requirements and check severity (which checks block); values from `plan-training.md` Phase 10. |
+| `modelLibrary/catalog.ts`    | Loads and validates `public/models/catalog.json` (offered models); files per model and variant. |
+| `modelLibrary/downloads.ts`  | Per-model download state; downloads with progress and verification into Cache Storage; cancel; delete. |
+| `modelLibrary/selection.ts`  | Persisted user choice and a recommended model. |
 | `parser/winkBackend.ts`      | wink-nlp support (not a `ParserBackend`): sentence split and runtime words (hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL) and lemmas. |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. |
@@ -134,8 +137,8 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Criterion        | How it is met                                                                 |
 |------------------|-------------------------------------------------------------------------------|
 | License          | Runtime libraries are Apache 2.0 / MIT. The model is trained in-house on openly licensed data (see *Model training*). |
-| Accuracy         | Neural taggers reach ~97–98% POS accuracy and mid-90s chunk F1 on standard benchmarks, vs ~95% POS for wink-nlp. Actual figures come from `training/scripts/evaluate.py`. |
-| Speed / size     | Quantized model ~65–80 MB (proposed cap 80 MB), downloaded once and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Expected to fit the 5 s budget; to be confirmed by benchmark. |
+| Accuracy         | Neural taggers reach ~97–98% POS accuracy and mid-90s chunk F1 on standard benchmarks. Measured baselines on EWT test (`plan-training.md` Phase 5): wink-nlp 88.8% UPOS; compromise 82.4% UPOS, 69.7% chunk F1. Model figures come from `training/scripts/evaluate.py`. |
+| Speed / size     | Up to four models (~65–150 MB int8 each); the user chooses one in the model library. Each is downloaded once on request and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Speed per model measured in `plan-training.md` Phase 10 and shown to the user. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
 | Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Ships only if UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without the nested view. |
@@ -148,11 +151,11 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
   - Group A: `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing group-A probabilities.
   - Group B: head and relation (`<offset>@<head UPOS>|<relation>`).
   - Softmax is applied per group. One output is used because Transformers.js token-classification models return only `logits`.
-- **Base model candidates:** `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT); `bert-base-cased` and `ModernBERT-base` (Apache 2.0) as accuracy references. Cased models only. The final pick is decided by benchmark.
+- **Models:** one model per base model: `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT), `bert-base-cased`, `ModernBERT-base` (Apache 2.0). Cased models only. Every model that meets the acceptance thresholds is offered; the user chooses in the model library (see *Model library*). No single model is selected.
 - **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases.
 - **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
-- **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules.
-- **Traceability:** every `ParseResult` carries the model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
+- **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules. Transformers.js has no pre-split option, so words are encoded one by one with a per-model strategy (`plain`, or `space` for byte-level BPE), found by `training/js/benchmark.mjs` and stored as `labels.json` → `tokenizer_word_encoding` in Phase 11.
+- **Traceability:** every `ParseResult` carries the model id and model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
 - **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
 
@@ -163,7 +166,7 @@ Full plan: [plan-training.md](plan-training.md).
 - **Data:** Universal Dependencies English EWT (CC BY-SA 4.0), web text. Chunks are derived from its dependency trees. GUM is optional extra data.
 - **Framework:** Hugging Face `Trainer` on Apple Silicon (MPS). Unsloth was ruled out in Phase 0. Optimum (`optimum-onnx`) handles ONNX export and quantization.
 - **Evaluation:** UPOS accuracy, chunk F1, UAS/LAS, nested-phrase F1, calibration, and speed on the EWT test split. Flat outputs are compared with baselines: wink-nlp POS (UPOS only) and compromise (UPOS and chunks).
-- **Artifacts:** ONNX model (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperature, ambiguity margin, versions) published as static files in `public/models/`, tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
+- **Artifacts:** per offered model, ONNX files (int8 for WASM, fp16 for WebGPU), tokenizer, and `labels.json` (label map, temperatures, margins, versions, file checksums) in `public/models/<model-id>/`, plus `public/models/catalog.json`, published as static files tracked with Git LFS (`.gitattributes`). `training/` is not shipped with the app.
 
 ### Pipeline
 
@@ -181,6 +184,51 @@ raw text
 - `parserService` runs this chain.
 - Subword segmentation runs on demand: `subwordService` receives a word and its lemma from the parse result.
 
+### Model library
+
+The app ships up to four models (one per base model) and the user chooses which to use (owner decision, 2026-11-18). Only models that meet the acceptance thresholds are offered (`plan-training.md` → Phase 7).
+
+**Layout**
+
+| File | Layer | Role |
+|------|-------|------|
+| `public/models/catalog.json` | static asset | Offered models (schema v1), written by `training/scripts/package_models.py` (Phase 11). |
+| `public/models/<model-id>/` | static asset | One model: `config.json`, tokenizer files, `labels.json`, `onnx/model_quantized.onnx` (int8), `onnx/model_fp16.onnx`. |
+| `modules/modelLibrary/catalog.ts` | modules | Load and validate the catalog; files per model and variant. |
+| `modules/modelLibrary/downloads.ts` | modules | Per-model state on this device; download with progress and verify (bytes, SHA-256) into Cache Storage; cancel; delete. |
+| `modules/modelLibrary/selection.ts` | modules | Persisted user choice (`core/storage`); recommendation. |
+| `modules/modelLibrary/types.ts`, `index.ts` | modules | `Catalog`, `CatalogEntry`, `ModelState`, errors; public API. |
+| `modules/parser/parser.worker.ts` | modules | `load(model)` / `unload()`: one model in memory at a time. |
+| `services/parserService.ts` | services | Owns the worker, library, and pre-flight; `chooseModel`, `deleteModel`, `cancelDownload`. |
+| `hooks/useModelLibrary.ts` | hooks | Library state and actions for components. |
+| `components/Pages/ModelsPage.tsx` | components | Model cards (`#/models`). |
+
+**`catalog.json` (schema v1)** — one entry per offered model:
+
+| Field | Meaning |
+|-------|---------|
+| `id`, `display_name`, `description` | Model id (`train_<id>.yaml` key) and texts from `training/configs/catalog.yaml` |
+| `base_model`, `license`, `model_version` | Base model id and license; release version |
+| `folder`, `labels` | Path of the model folder and its `labels.json` |
+| `variants` | `int8` and `fp16`: ONNX file and size in bytes |
+| `shared_files` | Config and tokenizer files with sizes and SHA-256 |
+| `metrics` | EWT test UPOS, chunk F1, UAS, LAS |
+| `nested_view` | `true` if UAS/LAS meet the thresholds (97% / 94%) |
+| `performance` | Phase 10: first-load time, parse time per backend, peak memory per backend |
+| `requirements` | Phase 10: `min_device_memory_gb` |
+
+Top level: `schema_version` (1), `generated_at`, `models`.
+
+**Behavior**
+
+- **First visit:** nothing is downloaded until the user chooses a model. The library highlights a recommended model based on this device's pre-flight fitness (rule in `selection.ts`; open in `plan.md` → *Model library*).
+- **Later visits:** the saved choice is loaded automatically if it is fully cached; otherwise the status is `no-model`.
+- **Memory:** one model is loaded at a time; switching unloads the previous model first.
+- **Storage:** any number of downloaded models stay cached; the library shows each model's size on disk with a delete button, and pre-flight warns when storage is low. Deleting the active model unloads it first.
+- **Downloads:** started only by the user; byte progress; each file verified (size and SHA-256 from `labels.json` → `files`) as it arrives; a failed file is deleted and retried once.
+- **Per-model features:** the nested view is available only for models with `nested_view: true`.
+- `modules/modelLibrary` does not import `modules/parser` or `modules/preflight`; `parserService` passes plain data between them.
+
 ### Model readiness (no fallback)
 
 The app parses only with the model. There is no rule-based fallback (owner decision, 2026-11-18).
@@ -189,8 +237,10 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 |--------|---------|----|
 | `idle` | App started; nothing checked yet | Parse disabled |
 | `checking` | Pre-flight checks running (see *Pre-flight checks*) | Parse disabled; "checking" shown |
-| `loading` | Downloading model files, then initializing (progress 0–1 per phase) | Parse disabled; progress shown |
-| `ready` | Model fully loaded (see below); records backend (`webgpu` or `wasm`) and `model_version` | Parse enabled |
+| `no-model` | No model chosen yet, or the chosen one is not downloaded (nothing is downloaded without the user) | Parse disabled; link to the model library |
+| `downloading` | The chosen model's files are downloading and being verified (byte progress) | Parse disabled; progress shown |
+| `loading` | Initializing the chosen model (progress) | Parse disabled; progress shown |
+| `ready` | Model fully loaded (see below); records model id, backend (`webgpu` or `wasm`), and `model_version` | Parse enabled |
 | `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
 
 - **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v1, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
@@ -206,12 +256,12 @@ Client-side checks that decide, before the ~70 MB download where possible, wheth
 
 | File | Layer | Role |
 |------|-------|------|
-| `core/environment.ts` | core | Browser API probes and Cache Storage access (read, SHA-256, delete). No decisions. |
+| `core/environment.ts` | core | Browser API probes and Cache Storage access (list, download, read, SHA-256, delete). No decisions. Shared with `modules/modelLibrary`. |
 | `modules/preflight/checks.ts` | modules | Pure check functions. |
 | `modules/preflight/requirements.ts` | modules | Thresholds and severity (fail = blocks, warn = allowed). |
 | `modules/preflight/preflight.ts` | modules | Stage runners and verdict; calls `core/environment`. |
-| `modules/preflight/types.ts`, `index.ts` | modules | `PreflightReport`, `CheckResult`, structural `ModelManifest`; public API. |
-| `services/parserService.ts` | services | Runs the stages in order; maps verdicts to model status. |
+| `modules/preflight/types.ts`, `index.ts` | modules | `PreflightReport`, `CheckResult`, structural `ModelManifest`, `ModelRequirements`, `ModelFitness`; public API. |
+| `services/parserService.ts` | services | Runs the stages in order; maps verdicts to model status; passes catalog data in (pre-flight does not import `modules/modelLibrary`). |
 | `components/Shared/DiagnosticsPanel.tsx` | components | Shows the report; retry. |
 
 - `modules/preflight` does not import `modules/parser`: it reads `labels.json` through its own structural `ModelManifest` type (same approach as `modules/output`). A test keeps its supported schema version equal to the parser's `LABEL_SCHEMA_VERSION`.
@@ -219,10 +269,12 @@ Client-side checks that decide, before the ~70 MB download where possible, wheth
 **Flow** (run by `parserService.start()`; `retryLoad()` repeats it)
 
 ```
-checking ─► 1. device checks ──blocked──► failed: unsupported (no download)
-        └─► 2. model checks (labels.json, cached files) ──blocked──► failed: invalid-model / unsupported
-loading ─► 3. worker loads model + self-test ──error──► failed: <reason>
-        └─► 4. verify files after a fresh download ──mismatch──► failed: invalid-model
+checking ─► 1. device checks (once) ──blocked──► failed: unsupported (nothing downloaded)
+        └─► 2. model fitness for every catalog model (size, memory, speed) → shown in the model library
+no-model ─► user chooses a model (or the saved choice is fully cached)
+downloading ─► 3. model library downloads and verifies the files ──error──► failed: network / invalid-model
+        └─► 4. model checks for the chosen model (labels.json, cached-file integrity) ──blocked──► failed: invalid-model
+loading ─► 5. worker loads the model + self-test ──error──► failed: <reason>
 ready
 ```
 
@@ -239,7 +291,8 @@ ready
 | Model | `manifest-schema` | `labels.json`: supported `schema_version`; needed fields not `null` | Fail |
 | Model | `wink-versions` | `labels.json` → `versions.wink` vs the app's pinned versions | Warn |
 | Model | `storage-quota`, `model-size` | `navigator.storage.estimate()` vs `labels.json` → `files` sizes | Warn |
-| Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256); skipped while `files` is `null` | Mismatch: delete and re-download once; then fail |
+| Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256), before every load; skipped while `files` is `null`. Downloads are verified by the model library as they arrive. | Mismatch: delete and offer a re-download; then fail |
+| Fitness (per model) | `model-memory`, `model-storage`, `model-speed` | `catalog.json` requirements and Phase 10 measurements vs this device | Warn (shown on the model card); blocked models cannot be chosen |
 
 - Memory cannot be measured reliably in browsers, so low memory only warns; the real test is the model load and self-test (out-of-memory → `failed: out-of-memory`).
 - Thresholds are placeholders until Phase 10 measures peak memory and load times (`TODO(preflight-thresholds)`).
@@ -285,7 +338,8 @@ ready
 components/  ──►  hooks/  ──►  services/  ──►  modules/  ──►  core/storage.ts, core/environment.ts
                                                          └──►  utils/helpers.ts
 
-parserService      ──► preflight/preflight ──► core/environment                       (before and after model load)
+parserService      ──► preflight/preflight ──► core/environment                       (device and per-model checks)
+                   ──► modelLibrary/catalog, downloads, selection ──► core/environment, core/storage
                    ──► input/textInput ─► parser/parser.worker ─► output/annotator   (called in sequence by the service)
                                            └─► parser/transformerBackend, winkBackend, treeDecoder, ambiguity
 dictionaryService  ──► dictionary/dictionary ──► dictionary/staticDb
@@ -317,7 +371,7 @@ Component ─► Hook ─► Service ─► Module(s)
 
 ### Routing
 
-- Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`).
+- Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`, `#/models`).
 - `ContentArea` renders the active route via `<Outlet />`.
 
 ### Component hierarchy
@@ -332,7 +386,8 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── InputPage.tsx (raw text input: textarea, paste, drag-drop)
       │       ├── OutputPage.tsx (annotated results, word selection, inline lookup)
       │       ├── VocabPage.tsx (custom vocab lists)
-      │       └── DictionaryPage.tsx (lookup results)
+      │       ├── DictionaryPage.tsx (lookup results)
+      │       └── ModelsPage.tsx (model library: choose, download, delete models)
       └── Shared/
           ├── Button.tsx
           ├── Modal.tsx
@@ -345,7 +400,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
-| `parserService.ts`     | `preflight`, `textInput`, `parser`, `annotator`    | `useParser`     |
+| `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator` | `useParser`, `useModelLibrary` |
 | `dictionaryService.ts` | `dictionary`, `staticDb`                           | `useDictionary` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
@@ -390,7 +445,8 @@ enparse/
 │   │   │   ├── InputPage.tsx + InputPage.module.css
 │   │   │   ├── OutputPage.tsx + OutputPage.module.css
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
-│   │   │   └── DictionaryPage.tsx + DictionaryPage.module.css
+│   │   │   ├── DictionaryPage.tsx + DictionaryPage.module.css
+│   │   │   └── ModelsPage.tsx + ModelsPage.module.css
 │   │   └── Shared/
 │   │       ├── Button.tsx + Button.module.css
 │   │       ├── Modal.tsx + Modal.module.css
@@ -399,6 +455,7 @@ enparse/
 │   │       └── DiagnosticsPanel.tsx + DiagnosticsPanel.module.css
 │   ├── hooks/
 │   │   ├── useParser.ts
+│   │   ├── useModelLibrary.ts
 │   │   ├── useDictionary.ts
 │   │   ├── useSubword.ts
 │   │   └── useVocab.ts
@@ -413,6 +470,10 @@ enparse/
 │   ├── modules/ (each module also has index.ts (public API) and types.ts)
 │   │   ├── input/
 │   │   │   └── textInput.ts
+│   │   ├── modelLibrary/
+│   │   │   ├── catalog.ts
+│   │   │   ├── downloads.ts
+│   │   │   └── selection.ts
 │   │   ├── preflight/
 │   │   │   ├── preflight.ts
 │   │   │   ├── checks.ts
@@ -437,8 +498,9 @@ enparse/
 │   └── utils/
 │       └── helpers.ts
 ├── public/
-│   └── models/
-│       └── enparse-tagger/ (ONNX model, tokenizer, label config; built by training/; README.md placeholder)
+│   └── models/ (built by training/ in Phase 11; README.md placeholder)
+│       ├── catalog.json (offered models)
+│       └── <model-id>/ (one per offered model: ONNX files, tokenizer, labels.json)
 ├── training/ (offline only; not shipped; layout in plan-training.md)
 │   ├── configs/
 │   ├── scripts/ (env check, fetch, derive chunks, prepare, train, calibrate, export, evaluate)
@@ -582,3 +644,18 @@ enparse/
 - Added: *Model readiness* → `checking` status and *Pre-flight checks* (layout, flow, checks with proposed severity, memory limits of browser APIs).
 - Added: `core/environment.ts`, `modules/preflight/` (`preflight.ts`, `checks.ts`, `requirements.ts`, `types.ts`, `index.ts`), `components/Shared/DiagnosticsPanel.tsx` to the modules table, skeleton, component hierarchy, and dependency graph.
 - Modified: `parserService` wraps `preflight`; `failed` status shows `DiagnosticsPanel`.
+
+### 2026-11-18T07:14:39Z — Claude Opus 5.5, Measured baselines
+
+- Modified: *Parsing engine* → *Accuracy* uses the Phase 5 measured baselines (wink-nlp 88.8% UPOS, not ~95%).
+
+### 2026-11-18T07:50:53Z — Claude Opus 5.5, Model library
+
+- Added: *Model library* section (owner decision: up to four models, user chooses; only models meeting the acceptance thresholds; no download before a choice; any number cached): layout, `catalog.json` schema v1, behavior.
+- Added: `modules/modelLibrary/` (`catalog.ts`, `downloads.ts`, `selection.ts`, `types.ts`, `index.ts`), `hooks/useModelLibrary.ts`, `components/Pages/ModelsPage.tsx` (`#/models`) to the modules table, services table, component hierarchy, routes, dependency graph, and skeleton; `public/models/` layout (`catalog.json`, `<model-id>/`).
+- Modified: *Model readiness* statuses (`no-model`, `downloading`); pre-flight flow (per-model fitness; downloads verified by the model library; cached-file integrity before load); *Model* (no single base model; traceability carries the model id); *Speed / size*; *Artifacts*.
+
+### 2026-11-18T08:11:49Z — Claude Opus 5.5, treeDecoder implemented; word-encoding strategy
+
+- Modified: `parser/treeDecoder.ts` is implemented (decoding with root and cycle repair; head-outward nested phrases; tests reproduce the documented examples).
+- Added: *Model* → per-model word-encoding strategy for Transformers.js (`labels.json` → `tokenizer_word_encoding`, Phase 11).

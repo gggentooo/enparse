@@ -17,6 +17,11 @@
  *   2. Model stage (input: ModelManifest): checkManifestSchema (supported
  *      schema_version, REQUIRED_MANIFEST_FIELDS not null), checkWinkVersions,
  *      checkModelSize (sum of files.bytes vs free quota).
+ *   2b. Per-model fitness (input: ModelRequirements + EnvironmentProbe):
+ *      checkModelMemory (min_device_memory_gb vs deviceMemory; skip if not
+ *      exposed), checkModelStorage (download bytes vs free quota),
+ *      expectedParseTime (Phase 10 time for this device's backend vs
+ *      PARSE_BUDGET_SECONDS; warn if over).
  *   3. Files (input: manifest.files + digests from core/environment):
  *      checkFilesCached, checkFilesIntegrity (bytes and SHA-256 per file;
  *      skip when manifest.files is null, e.g. development models before

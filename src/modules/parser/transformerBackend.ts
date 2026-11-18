@@ -8,9 +8,14 @@
  * Layer: modules/ (parser). Runs only inside parser.worker.ts.
  *
  * Tasks:
- *   1. load(): fetch labels.json and the model from public/models/enparse-tagger/
- *      (own static host only); WebGPU (fp16) first, WASM (int8) fallback.
- *      Throw ParserLoadError on failure.
+ *   1. load(model: ModelRef): load the chosen model from its folder under
+ *      public/models/<model-id>/ (own static host only). Files are already in
+ *      Cache Storage (downloaded and verified by modules/modelLibrary);
+ *      Transformers.js reads them from the cache (no remote models). WebGPU
+ *      (fp16) first, WASM (int8) if WebGPU is unavailable. Throw
+ *      ParserLoadError on failure.
+ *   1b. unload(): dispose the ONNX session and tokenizer to free memory
+ *      (before switching models or deleting the active one).
  *   2. Build overlapping windows of up to WINDOW_TOKENS = 256 subword tokens
  *      from wink words (same size as training; plan-training.md Phase 4).
  *   3. Take first-subword logits per word; merge overlapping windows.
@@ -33,10 +38,11 @@
  * Dependencies:
  *   External: @huggingface/transformers (Transformers.js).
  *   Internal: ./parser.ts (ParserBackend), ./types.ts.
- *   Assets: public/models/enparse-tagger/ (built by training/).
+ *   Assets: public/models/<model-id>/ (built by training/; one folder per
+ *           offered model, listed in public/models/catalog.json).
  *   Used by: ./parser.worker.ts.
  *
- * Open items (plan.md → Undecided): base model, model size cap.
+ * Open items (plan.md → Undecided): model library (hosting limits).
  *
  * Status: header only; not implemented.
  */

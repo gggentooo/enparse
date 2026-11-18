@@ -1,0 +1,201 @@
+"""
+training/scripts/metrics.py — word-level predictions and metrics for both label groups
+
+Description:
+    Shared by train.py (dev metrics each epoch) and evaluate.py (test,
+    parity): turns per-token logits into one prediction per word (first
+    subword), and scores UPOS accuracy, chunk P/R/F1 (seqeval, overall and per
+    type), and UAS/LAS from group B (rel_pos_v1, decoded with the predicted
+    UPOS). Raw argmax decoding; tree repair and nested phrases are done by the
+    app's treeDecoder.ts (Phase 7 evaluation via tsx).
+
+Phase: 7 — Full training and tuning (also 9, 12).
+
+Rules:
+    - Only labeled words count: reviewed, not overlap context.
+    - Chunk F1 per (window, sentence) sequence, only over sentences whose
+      words are all reviewed (plan-training.md → Phase 4 partial labels).
+    - UAS/LAS: every labeled word whose gold head lies in the same window;
+      LAS also needs the base relation to match.
+
+Dependencies:
+    Python: numpy, seqeval; prepare_data.decode_head, prepare_data.base_relation.
+    Used by: scripts/train.py, scripts/evaluate.py; tests/test_train.py.
+
+Status: implemented (Phase 7 pre-work).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+from seqeval.metrics import classification_report, f1_score, precision_score, recall_score
+
+from prepare_data import IGNORE, base_relation, decode_head
+
+
+@dataclass(frozen=True)
+class LabelSpace:
+    """Class ids of both label groups, from labels.json."""
+
+    labels: list[str]
+    chunk_start: int
+    chunk_end: int
+    dep_start: int
+    dep_end: int
+
+    @classmethod
+    def from_labels_json(cls, obj: dict[str, Any]) -> LabelSpace:
+        """Build from a labels.json object (schema v1)."""
+        g = obj["groups"]
+        return cls(
+            obj["labels"],
+            g["chunk"]["start"],
+            g["chunk"]["end"],
+            g["dep"]["start"],
+            g["dep"]["end"],
+        )
+
+    @property
+    def n_chunk(self) -> int:
+        """Number of group A classes."""
+        return self.chunk_end - self.chunk_start
+
+    @property
+    def n_dep(self) -> int:
+        """Number of group B classes."""
+        return self.dep_end - self.dep_start
+
+    def chunk_label(self, local_id: int) -> tuple[str, str]:
+        """(UPOS, chunk tag) of a group-local A id."""
+        upos, _, chunk = self.labels[self.chunk_start + local_id].partition("|")
+        return upos, chunk
+
+    def dep_label(self, local_id: int) -> str:
+        """rel_pos_v1 label of a group-local B id."""
+        return self.labels[self.dep_start + local_id]
+
+
+def first_subword_positions(token_word: Sequence[int]) -> dict[int, int]:
+    """Token position of the first subword of each word index."""
+    out: dict[int, int] = {}
+    for t, w in enumerate(token_word):
+        if w >= 0 and w not in out:
+            out[w] = t
+    return out
+
+
+def word_argmax(
+    logits: np.ndarray, token_word: Sequence[int], space: LabelSpace
+) -> tuple[list[int], list[int]]:
+    """Per-word group A and group B argmax (group-local ids) from one window's logits [T, C]."""
+    firsts = first_subword_positions(token_word)
+    n_words = max(firsts) + 1 if firsts else 0
+    a = logits[:, space.chunk_start : space.chunk_end].argmax(-1)
+    b = logits[:, space.dep_start : space.dep_end].argmax(-1)
+    pa = [int(a[firsts[w]]) if w in firsts else -1 for w in range(n_words)]
+    pb = [int(b[firsts[w]]) if w in firsts else -1 for w in range(n_words)]
+    return pa, pb
+
+
+@dataclass
+class WindowPrediction:
+    """Predictions for one window: group-local ids per word (-1 = no subword)."""
+
+    chunk_ids: list[int]
+    dep_ids: list[int]
+
+
+def _sentences(row: dict[str, Any]) -> dict[int, list[int]]:
+    out: dict[int, list[int]] = {}
+    for w, s in enumerate(row["word_sent"]):
+        out.setdefault(s, []).append(w)
+    return out
+
+
+def score(
+    rows: Iterable[dict[str, Any]], preds: Iterable[WindowPrediction], space: LabelSpace
+) -> dict[str, Any]:
+    """UPOS accuracy, chunk P/R/F1 (overall and per type), UAS, and LAS."""
+    upos_total = upos_ok = 0
+    head_total = uas_ok = las_ok = 0
+    gold_seqs: list[list[str]] = []
+    pred_seqs: list[list[str]] = []
+    for row, pred in zip(rows, preds, strict=True):
+        n = len(row["words"])
+        p_upos = ["X"] * n
+        p_chunk = ["O"] * n
+        for w in range(n):
+            cid = pred.chunk_ids[w] if w < len(pred.chunk_ids) else -1
+            if cid >= 0:
+                p_upos[w], p_chunk[w] = space.chunk_label(cid)
+        labeled = [row["word_reviewed"][w] and not row["word_context"][w] for w in range(n)]
+        for s_words in _sentences(row).values():
+            idx = [w for w in s_words if labeled[w]]
+            for w in idx:
+                upos_total += 1
+                upos_ok += int(p_upos[w] == row["gold_upos"][w])
+            if idx and len(idx) == len(s_words):
+                gold_seqs.append([row["gold_chunk"][w] for w in idx])
+                pred_seqs.append([p_chunk[w] for w in idx])
+            # Heads: decode within the sentence, with predicted UPOS.
+            sent_upos = [p_upos[w] for w in s_words]
+            local = {row["word_index"][w]: k for k, w in enumerate(s_words)}
+            for w in idx:
+                gold_head = row["gold_head"][w]
+                if gold_head != 0 and (gold_head - 1) not in local:
+                    continue  # head in another window piece
+                head_total += 1
+                did = pred.dep_ids[w] if w < len(pred.dep_ids) else -1
+                if did < 0:
+                    continue
+                label = space.dep_label(did)
+                k = local[row["word_index"][w]]
+                ph = decode_head(label, sent_upos, k)
+                # Map the predicted sentence-local head back to the word index space.
+                ph_index = (
+                    None
+                    if ph is None
+                    else (0 if ph == 0 else row["word_index"][s_words[ph - 1]] + 1)
+                )
+                if ph_index == gold_head:
+                    uas_ok += 1
+                    if label.partition("|")[2] == base_relation(row["gold_deprel"][w]):
+                        las_ok += 1
+    report = (
+        classification_report(gold_seqs, pred_seqs, output_dict=True, zero_division=0)
+        if gold_seqs
+        else {}
+    )
+    per_type = {
+        k: {
+            "precision": v["precision"],
+            "recall": v["recall"],
+            "f1": v["f1-score"],
+            "support": v["support"],
+        }
+        for k, v in report.items()
+        if k in {"NP", "VP", "PP", "ADJP", "ADVP"}
+    }
+    return {
+        "upos_acc": upos_ok / upos_total if upos_total else 0.0,
+        "chunk_f1": f1_score(gold_seqs, pred_seqs, zero_division=0) if gold_seqs else 0.0,
+        "chunk_precision": precision_score(gold_seqs, pred_seqs, zero_division=0)
+        if gold_seqs
+        else 0.0,
+        "chunk_recall": recall_score(gold_seqs, pred_seqs, zero_division=0) if gold_seqs else 0.0,
+        "uas": uas_ok / head_total if head_total else 0.0,
+        "las": las_ok / head_total if head_total else 0.0,
+        "words": upos_total,
+        "head_words": head_total,
+        "chunk_sentences": len(gold_seqs),
+        "per_type": per_type,
+    }
+
+
+def ignore_count(labels: Sequence[int]) -> int:
+    """Number of ignored (-100) positions; helper for tests and logs."""
+    return sum(1 for x in labels if x == IGNORE)

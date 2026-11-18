@@ -1,5 +1,5 @@
 <!--
-training/MODEL_CARD.md — model card for the Enparse tagger (enparse-tagger)
+training/MODEL_CARD.md — model card for the Enparse tagger models (model library)
 
 Description:
   Public record of the shipped parser model: base model, data sources and
@@ -9,7 +9,7 @@ Description:
 
 Phases:
   1  — license summary and attribution text (UD EWT CC BY-SA 4.0; GUM if used).
-  6  — chosen base model and its license.
+  7  — per offered model: base model and license, test metrics.
   7  — metrics (UPOS accuracy, chunk F1 overall/per type, mean ± spread over 3 seeds).
   8  — calibration temperature and ambiguity margin.
   9  — quantization variants and parity results.
@@ -23,12 +23,12 @@ Tasks:
 
 Dependencies:
   Sources: configs/data.yaml, configs/train_<model>.yaml, configs/eval.yaml,
-           reports/*.md, public/models/enparse-tagger/labels.json.
+           reports/*.md, public/models/catalog.json, public/models/<model-id>/labels.json.
 
 Status: Phase 1 sections filled (training data, licenses, attribution); others pending.
 -->
 
-# Model Card — enparse-tagger
+# Model Card — Enparse tagger models
 
 ## Model summary
 
@@ -51,7 +51,7 @@ Summary for engineering, not legal advice.
 |----------|-------------------|------------|
 | Raw EWT files | No (redistribution) | Not redistributed; stay in git-ignored `training/data/`. |
 | Derived chunk tags and processed datasets (Phases 2–4) | Yes | If shared: license under CC BY-SA 4.0 (or compatible), give attribution, state changes. Not shared for now (git-ignored). |
-| Trained weights (`public/models/enparse-tagger/`) | Unsettled | Whether weights are Adapted Material is not settled in law. Working position (owner-accepted 2026-11-18): treat weights as CC BY-SA 4.0 derived material, ship them under CC BY-SA 4.0 with attribution. Legal advice required before commercial release. |
+| Trained weights (`public/models/<model-id>/`, every offered model) | Unsettled | Whether weights are Adapted Material is not settled in law. Working position (owner-accepted 2026-11-18): treat weights as CC BY-SA 4.0 derived material, ship them under CC BY-SA 4.0 with attribution. Legal advice required before commercial release. |
 | App source code | No | Not affected by share-alike; the model files are separate files with their own license. |
 
 - Attribution must name the creator, copyright notice, license with link, link to the source, and that the material was modified (Section 3(a)).

@@ -5,7 +5,7 @@
 # Description:
 #   Enforces agents.md → Training code: never commit raw or processed datasets,
 #   checkpoints, or large ONNX files. Shipped model files live in
-#   public/models/enparse-tagger/, outside training/.
+#   public/models/<model-id>/ (one folder per offered model), outside training/.
 #
 # Phase: 0 — Environment setup (layout creation).
 #

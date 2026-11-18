@@ -10,17 +10,20 @@
  *
  * Tasks:
  *   1. runDeviceChecks(): Promise<PreflightReport> — probeEnvironment() →
- *      device-stage checks → verdict. Runs before any model download.
- *   2. runModelChecks(manifestUrl, device: PreflightReport):
- *      Promise<{ report, manifest }> — fetchStaticJson(labels.json) → narrow
- *      to ModelManifest → model-stage checks (incl. storage quota with the
- *      model size) → if files are cached: digestCachedFiles() →
- *      files-cached / files-integrity. On an integrity mismatch, delete the
- *      bad entries (deleteCachedFiles) and report "warn" (they are
- *      downloaded again), up to MAX_INTEGRITY_RETRIES.
- *   3. verifyModelFiles(manifest): Promise<CheckResult> — after the model has
- *      loaded (files now cached): digest again; mismatch → "fail" and delete
- *      the entries (parserService reports `failed: invalid-model`).
+ *      device-stage checks → verdict. Runs once at app start, before any
+ *      model download.
+ *   2. assessModels(models: ModelRequirements[], device): fitness per model
+ *      (ok / warn / blocked, expected parse time for this device's backend)
+ *      from each model's size, peak memory, and min_device_memory_gb (catalog
+ *      data passed in by parserService). Shown in the model library and
+ *      used for its recommendation.
+ *   3. runModelChecks(manifestUrl, model, device): Promise<{ report,
+ *      manifest }> — for the chosen model, before loading: fetch its
+ *      labels.json → narrow to ModelManifest → manifest-schema, wink-versions,
+ *      storage-quota → digestCachedFiles() → files-integrity of the cached
+ *      files (downloads are verified by modules/modelLibrary; this catches
+ *      later corruption). Mismatch → delete the bad entries; parserService
+ *      offers a re-download.
  *   4. combine(checks): verdict = blocked if any fail, warn if any warn, else ok.
  *   5. Never throws for an unsupported feature: probe errors become "skip"
  *      or "fail" results. Only programming errors throw.
@@ -32,7 +35,8 @@
  *   Internal: ./checks.ts, ./requirements.ts, ./types.ts;
  *             core/environment.ts (probes, fetchStaticJson, cache digests).
  *   External: none.
- *   Used by: ./index.ts → services/parserService.ts.
+ *   Used by: ./index.ts → services/parserService.ts. Does not import
+ *            modules/modelLibrary: model data is passed in as plain values.
  *
  * Open items (plan.md → Undecided): pre-flight checks (scope, policies).
  *

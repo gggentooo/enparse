@@ -10,11 +10,12 @@
  * Layer: modules/ (preflight)
  *
  * Tasks:
- *   1. Re-export runDeviceChecks, runModelChecks, verifyModelFiles from
+ *   1. Re-export runDeviceChecks, assessModels, runModelChecks from
  *      ./preflight.ts.
  *   2. Re-export requirement constants from ./requirements.ts (for display).
  *   3. Re-export public types from ./types.ts (PreflightReport, CheckResult,
- *      CheckId, CheckStatus, Verdict, ModelManifest).
+ *      CheckId, CheckStatus, Verdict, ModelManifest, ModelRequirements,
+ *      ModelFitness).
  *   4. Do not export the individual check functions (internal; tested directly).
  *
  * Dependencies:

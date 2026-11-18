@@ -37,12 +37,19 @@ Open details and decisions required before development can proceed. Remove items
 
 Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, words, and lemmas; no rule-based fallback, so the app parses only once the model is loaded (see *Parsing engine* → *Model readiness* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
 
-- **Base model:** `distilbert-base-cased` or `deberta-v3-xsmall` (references: `bert-base-cased`, `ModernBERT-base`); pick by benchmark. Training plan: `plan-training.md`.
-- **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 required to ship (e.g., ≥ 97% / ≥ 94%).
-- **Model size cap:** confirm proposed 80 MB maximum download. (Hosting decided: `public/models/` with Git LFS, served from the app's static host.)
+- **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 a model needs to be offered in the model library (e.g., ≥ 97% / ≥ 94%), applied per model.
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
 
+
+### Model library
+
+Decided (owner, 2026-11-18): every base model is trained; models that meet the acceptance thresholds are offered and the user chooses; nothing is downloaded before a choice; any number of models may stay cached (user deletes). Design: `architecture.md` → *Model library*. Open:
+
+- **Hosting and storage limits:** all four models are ~0.4 GB at int8 plus ~0.8 GB at fp16. Check the static host's per-file and total-size limits and the Git LFS storage and bandwidth quota (e.g., GitHub's free LFS quota is small). Options: ship fp16 only for some models, split large ONNX files (external data), or host model files elsewhere on the same origin. Tied to *Deployment target*; needed before `plan-training.md` Phase 11.
+- **Recommendation rule:** proposed: among models not blocked on this device and without memory warnings, the highest chunk F1 whose measured parse time meets the 5 s budget; ties → smaller download.
+- **Presentation:** which facts each model card shows (proposed: description, download size, UPOS / chunk F1, nested view yes/no, expected speed on this device, size on disk) and how accuracy is phrased for learners (numbers vs. labels like "most accurate").
+- **Descriptions:** display names and texts in `training/configs/catalog.yaml` (proposed English drafts); language follows *Interface language*.
 
 ### Pre-flight checks
 
@@ -113,6 +120,7 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 
 ### Core features
 
+- **Model choice:** a model library offers up to four parser models (different size, speed, and accuracy); the user chooses and downloads one before parsing, and can switch or delete models later.
 - **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Two views: flat phrases and nested phrases grouped by level (e.g., `[[The [red [dog]]] [rarely [[barks] loudly]]]`). Ambiguous sentences display multiple valid parses.
 - **Automatic dictionary lookup:** Highlighting a word shows its English and Korean definitions and example usages. Dictionary data is compiled into a static local database (hosted via raw content URLs), avoiding live API calls.
 - **Subword parsing:** Frequently occurring prefixes, bases, and suffixes (e.g., *un-*, *-ism*) are parsed and treated as vocabulary items.
@@ -241,3 +249,9 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 ### 2026-11-18T07:06:28Z — Claude Opus 5.5, Pre-flight checks
 
 - Added: 'Undecided' → *Pre-flight checks* (scope, memory and storage policies, thresholds, integrity failures, multi-threaded WASM, diagnostics display).
+
+### 2026-11-18T07:51:11Z — Claude Opus 5.5, Model library
+
+- Added: *Core features* → *Model choice*; 'Undecided' → *Model library* (hosting and storage limits, recommendation rule, presentation, descriptions), with the owner's decisions recorded.
+- Removed: 'Undecided' → 'Parser' → *Base model* and *Model size cap* (decided: every model that meets the thresholds is offered; size is shown to the user instead of capped).
+- Modified: *Acceptance thresholds* apply per model and decide which models are offered.

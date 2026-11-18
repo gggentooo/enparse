@@ -17,7 +17,7 @@
  * Dependencies:
  *   Dev: vite 8.3.8, vitest 5.1.0; @vitejs/plugin-react (added with React).
  *   Related: src/index.html, src/main.tsx, src/modules/parser/parser.worker.ts,
- *            public/models/enparse-tagger/.
+ *            public/models/ (catalog.json + one folder per model).
  *
  * Open items (plan.md → Undecided): deployment target (affects base path),
  *   Offline/PWA (would add a plugin here).

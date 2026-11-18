@@ -29,8 +29,13 @@
  *   4. digestCachedFiles(urls): Promise<Record<url, { bytes, sha256 } | null>>
  *      — read entries from Cache Storage (the cache Transformers.js uses),
  *      SHA-256 via crypto.subtle; null for files not cached.
- *   5. deleteCachedFiles(urls): Promise<void> — drop cache entries (used after
- *      an integrity mismatch so the files are downloaded again).
+ *   5. deleteCachedFiles(urls): Promise<void> — drop cache entries (after an
+ *      integrity mismatch, or when the user deletes a model).
+ *   5b. listCached(urls): Promise<Record<url, number | null>> — cached size per
+ *      file (null if absent), without hashing.
+ *   5c. downloadToCache(url, expected { bytes, sha256 }, onProgress, signal):
+ *      Promise<void> — stream the file with byte progress, check size and
+ *      SHA-256, then store it in the model cache; abortable.
  *   6. Constants: MODEL_CACHE_NAME (the Transformers.js cache name; checked
  *      against the pinned version), PROBE_TIMEOUT_MS for slow adapters.
  *   7. Unit tests in environment.test.ts with stubbed globals.
@@ -39,7 +44,8 @@
  *   Browser APIs: navigator (gpu, deviceMemory, hardwareConcurrency, storage),
  *     WebAssembly, caches, crypto.subtle, fetch, crossOriginIsolated.
  *   No external libraries; no other layers.
- *   Used by: modules/preflight (preflight.ts).
+ *   Used by: modules/preflight (preflight.ts), modules/modelLibrary
+ *            (catalog.ts, downloads.ts).
  *
  * Network: fetchStaticJson only loads assets from the app's own static host
  *   (agents.md → Parser and worker code). No telemetry; results stay local.

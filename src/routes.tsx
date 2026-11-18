@@ -8,7 +8,8 @@
  * Tasks:
  *   1. Root route: element <App />.
  *   2. Child routes: #/input → InputPage, #/output → OutputPage,
- *      #/vocab → VocabPage, #/dictionary → DictionaryPage.
+ *      #/vocab → VocabPage, #/dictionary → DictionaryPage,
+ *      #/models → ModelsPage (model library).
  *   3. Index route redirects to #/input (proposed).
  *   4. Fallback route for unknown paths (redirect to #/input) (proposed).
  *   5. Export `router` (named export).

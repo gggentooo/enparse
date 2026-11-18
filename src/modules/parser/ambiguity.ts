@@ -21,7 +21,7 @@
  *
  * Dependencies:
  *   Internal: ./types.ts, ./treeDecoder.ts (alternative trees). External: none.
- *   Data: margins from public/models/enparse-tagger/labels.json (passed in).
+ *   Data: margins from the loaded model's labels.json (passed in).
  *   Used by: ./parser.ts.
  *
  * Open items (plan.md → Undecided): ambiguity threshold and display;

@@ -12,8 +12,9 @@
  *   2. Drag-and-drop of plain-text files.
  *   3. Parse button → useParser().parseText; navigate to #/output on success.
  *      The button is disabled unless useParser().canParse (model ready); show
- *      why (checking, loading progress, or failure reason with
- *      DiagnosticsPanel). Typed text is kept while the model loads.
+ *      why (checking, no model chosen → link to #/models, download/loading
+ *      progress, or failure reason with DiagnosticsPanel). Typed text is kept
+ *      while the model loads.
  *   4. Show too-long errors (with count) and the removed-text notice.
  *   5. `strings` constant for user-facing text.
  *

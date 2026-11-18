@@ -20,7 +20,7 @@ Status: setup written (Phase 0); run commands added per phase.
 
 # Enparse training pipeline
 
-Offline pipeline that trains the `UPOS|CHUNK` token classifier and exports it to `public/models/enparse-tagger/`.
+Offline pipeline that trains the two-group token classifier (`UPOS|CHUNK` + dependency heads) for each of the four candidate base models and packages the ones that meet the acceptance thresholds into `public/models/` (one folder per model plus `catalog.json`) for the app's model library.
 
 - Plan and phases: [`dev_meta/plan-training.md`](../dev_meta/plan-training.md)
 - Rules: [`dev_meta/agents.md`](../dev_meta/agents.md) → *Training code*
@@ -72,4 +72,11 @@ Run from `training/` with the venv active.
 | 4 | `python scripts/prepare_data.py [--models <key> ...]` | Builds `data/processed/dataset/<model>/` (train/dev/test windows + `labels.json`) for each `configs/train_<key>.yaml`, and `reports/dataset.md`. |
 | 4 | `python -m pytest tests/test_prepare_data.py` | Dataset tests (tokenizer tests use the local Hugging Face cache). |
 
-TODO(training-setup): commands for Phases 5–11, added as scripts are implemented.
+| 5 | `(cd js && npm run baselines)` | wink-nlp and compromise on dev/test (Phase 3 words); writes `reports/baselines.md`. |
+
+| 7 | `sh scripts/run_smoke.sh [model ...]` | Smoke test (task 0) for every candidate: `train.py --smoke` → `export_onnx.py --run smoke` → `js/benchmark.mjs --mode smoke`; writes `reports/smoke_test.md`. |
+| 7 | `python scripts/train.py --model <m> [--sweep lr\|dep_weight\|seeds] [--lr X --dep-weight Y --seed Z]` | Full training runs; best checkpoint per run in `data/checkpoints/<m>/<run>/best/` with `summary.json`; TensorBoard logs in each run folder. |
+| 7, 9 | `python scripts/export_onnx.py --model <m> --run <run> [--parity-windows N\|all]` | ONNX export (fp32, int8, fp16) to `data/onnx/<m>/<run>/` with `labels.json` file checksums, reference and parity inputs. |
+| 7, 9, 10 | `(cd js && npm run benchmark -- --model <m> --run <run> --mode smoke\|parity\|speed)` | Transformers.js (Node) load, tokenizer, parity, and speed checks; writes `benchmark_<mode>.json`. |
+
+TODO(training-setup): commands for Phases 8, 11, added as scripts are implemented.

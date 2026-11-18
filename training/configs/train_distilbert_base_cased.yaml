@@ -7,11 +7,13 @@
 #   Per-candidate training config read by scripts/train.py. Same key set as
 #   every other train_<model>.yaml so candidates are compared on equal terms.
 #
-# Phases: 0 (Unsloth check), 6 (selection run), 7 (full training and tuning).
+# Phases: 0 (environment check), 4 (dataset), 7 (smoke test, full training), 8–11.
 #
 # Tasks:
-#   1. Phase 0: set `framework` to unsloth or hf_trainer per check_env.py result.
-#   2. Phase 6: short run — 3 epochs, default hyperparameters, shared seed.
+#   1. Phase 0: `framework` set from check_env.py (hf_trainer).
+#   2. Phase 7: smoke test (1 epoch, export check), then the full training below.
+#      Every candidate is trained; it is offered in the app if it meets the
+#      acceptance thresholds (no single base model is selected).
 #   3. Phase 7: LR sweep, then final config run with 3 seeds.
 #
 # Dependencies:
@@ -21,12 +23,13 @@
 #
 # Planned keys (values from plan-training.md → Phase 7; none set yet):
 #   model_name            — distilbert-base-cased
-#   framework             — unsloth | hf_trainer (Phase 0 outcome)
-#   head                  — combined (UPOS|CHUNK); two_head optional experiment
+#   framework             — hf_trainer (Phase 0 outcome)
+#   head                  — two label groups in one classifier (A: UPOS|CHUNK, B: rel_pos_v1)
+#   dep_loss_weight       — λ = 1.0 (sweep 0.5, 1.0, 2.0); two_head optional experiment
 #   learning_rate         — 5e-5 (sweep 2e-5, 3e-5, 5e-5, 1e-4)
 #   lr_schedule           — linear, warmup_ratio 0.1
 #   batch_size            — 32 windows (grad accumulation if needed)
-#   epochs                — up to 10 (Phase 6: 3)
+#   epochs                — up to 10
 #   early_stopping        — metric dev chunk F1, patience 2
 #   weight_decay          — 0.01
 #   max_seq_length        — 256
@@ -34,9 +37,24 @@
 #   seeds                 — 3 seeds for the final configuration
 #   output_subdir         — checkpoint subfolder under data/checkpoints/
 #
-# Status: Phase 0 keys set (model_name, framework, max_seq_length); rest pending.
+# Status: Phase 0 and Phase 7 keys set.
 # =============================================================================
 
 model_name: distilbert-base-cased
 framework: hf_trainer  # Phase 0 result (check_env.py, 2026-11-18); Unsloth unsupported on MPS
 max_seq_length: 256
+
+# Phase 7 training settings (plan-training.md → Phase 7 → Starting hyperparameters).
+learning_rate: 5.0e-5
+lr_sweep: [2.0e-5, 3.0e-5, 5.0e-5, 1.0e-4]
+lr_schedule: linear
+warmup_ratio: 0.1
+batch_size: 32
+grad_accum_steps: 1
+epochs: 10
+early_stopping_patience: 2
+weight_decay: 0.01
+precision: fp32
+dep_loss_weight: 1.0
+dep_loss_weight_sweep: [0.5, 1.0, 2.0]
+seeds: [13, 42, 2026]

@@ -14,7 +14,8 @@
  *   2. Attach chunk labels and display metadata (type, "most likely" flag).
  *   3. Attach alternatives per sentence with rank and reason (probability or
  *      PP attachment), capped by the parser's limit.
- *   4. Carry the model version and backend for display and traceability.
+ *   4. Carry the model id, model version, and backend for display and
+ *      traceability.
  *   5. Expose token lookup data (surface form + lemma) for dictionary and
  *      subword lookups.
  *   6. Unit tests in annotator.test.ts.

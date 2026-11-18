@@ -30,7 +30,7 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Goal:** Train the Enparse parser model: a token classifier that gives each word two outputs in one pass:
   - **Flat output:** UPOS tag and chunk tag (NP, VP, PP, ADJP, ADVP).
   - **Structure output:** the word's dependency head and relation. The nested phrase view is built from it (see *Nested phrase structure*).
-- **Output:** A quantized ONNX model loaded by `parser/transformerBackend.ts` via Transformers.js (see *Parsing engine* in `architecture.md`).
+- **Output:** one quantized ONNX model per candidate base model that meets the acceptance thresholds (up to four), loaded by `parser/transformerBackend.ts` via Transformers.js. The app offers them in a model library and the user chooses (`architecture.md` → *Model library*); no single base model is selected (owner decision, 2026-11-18).
 - **Priority:** Accuracy before speed. Runtime budget: ≤ ~5 s per 5,000 characters on a typical laptop.
 - **Training machine:** MacBook Pro M5 Pro, 48 GB unified memory. Training uses the PyTorch MPS (Metal) backend.
 - **Training framework:** Hugging Face `Trainer` on MPS for every candidate. Unsloth was ruled out in Phase 0.
@@ -49,6 +49,7 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Traceable outputs.** `labels.json` has a fixed, versioned schema (Phase 4), and the app's `ParseResult` carries the model version and wink word offsets (Phase 11), so any parse, including user feedback, can be traced to the model and word split that produced it.
 - **Multi-sentence context.** Training examples are windows of consecutive sentences from the same document, matching the runtime's overlapping context windows.
 - **Cased models only.** Capitalization is a strong cue for proper nouns and sentence boundaries.
+- **Every candidate is trained and may ship.** Phases 7–11 run for each of the four candidates. A model is offered only if its test metrics meet the acceptance thresholds; its nested view is enabled only if its UAS/LAS meet theirs. Each offered model ships with its measured size, accuracy, speed, and memory in `public/models/catalog.json`.
 - **No rule-based nesting.** The nested phrase view comes from the model's structure output, not from hand-written rules. The only runtime step is deterministic decoding (`parser/treeDecoder.ts`, below).
 
 ### Nested phrase structure
@@ -77,7 +78,7 @@ The app shows two views of each sentence:
 ### Open questions
 
 - **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 to ship (proposed ≥ 97% / ≥ 94%). Tracked in `plan.md` → *Undecided*.
-- **Download size cap:** proposed ≤ 80 MB for the shipped model file; affects base-model choice (Phase 6).
+- **Hosting limits:** several models (~0.4 GB int8 + ~0.8 GB fp16 for all four) may exceed static-host or Git LFS limits. Tracked in `plan.md` → *Undecided* → *Model library*. (The download size cap is no longer needed: each model's size is shown to the user.)
 - **Extra data:** learner-style noise augmentation (Phase 4). No extra treebanks for now (owner, 2026-11-18): GUM excluded (Phase 1, non-commercial); other CC BY-SA UD English treebanks (ESLSpok, CHILDES, Atis) and the Penn Treebank (LDC license, conversion needed) were considered and dropped.
 
 
@@ -88,7 +89,7 @@ The app shows two views of each sentence:
 ### Hardware
 
 - MacBook Pro M5 Pro, 48 GB memory. Sufficient for every candidate model; no cloud GPU needed.
-- ~20 GB free disk space (datasets, checkpoints, ONNX exports).
+- ~40 GB free disk space (datasets; checkpoints and ONNX exports for all four candidates).
 
 ### System software
 
@@ -139,14 +140,14 @@ The app shows two views of each sentence:
 
 ### Base model candidates
 
-Approximate shipped size at int8 ≈ 1 MB per million parameters.
+Approximate shipped size at int8 ≈ 1 MB per million parameters. All four are trained; each one that meets the acceptance thresholds is offered in the app.
 
 | Model | License | Params | Approx. int8 size | Notes |
 |-------|---------|--------|-------------------|-------|
 | `distilbert-base-cased` | Apache 2.0 | ~65M | ~65 MB | Fast, well supported in Transformers.js |
 | `microsoft/deberta-v3-xsmall` | MIT | ~70M | ~70 MB | Strong accuracy for its size |
-| `bert-base-cased` | Apache 2.0 | ~110M | ~110 MB | Reference baseline; likely over size cap |
-| `answerdotai/ModernBERT-base` | Apache 2.0 | ~150M | ~150 MB | Accuracy upper bound; over size cap unless the cap is raised |
+| `bert-base-cased` | Apache 2.0 | ~110M | ~110 MB | Larger; balanced accuracy and speed |
+| `answerdotai/ModernBERT-base` | Apache 2.0 | ~150M | ~150 MB | Largest; accuracy upper bound |
 
 ---
 
@@ -162,6 +163,7 @@ training/
 ├── configs/
 │   ├── data.yaml (UD release tag, paths, window size)
 │   ├── eval.yaml (calibration, export, parity, benchmark settings) (proposed)
+│   ├── catalog.yaml (model library display names and descriptions; owner-editable)
 │   └── train_<model>.yaml (hyperparameters per candidate; one file per model)
 ├── data/ (git-ignored: raw UD files, processed datasets, checkpoints, ONNX exports)
 ├── scripts/
@@ -172,11 +174,14 @@ training/
 │   ├── train.py
 │   ├── calibrate.py
 │   ├── export_onnx.py
-│   └── evaluate.py
+│   ├── evaluate.py
+│   ├── metrics.py (word-level predictions; UPOS, chunk F1, UAS/LAS; shared by train.py and evaluate.py)
+│   ├── run_smoke.sh, smoke_report.py (Phase 7 task 0)
+│   └── package_models.py (Phase 11: public/models/<model-id>/ and catalog.json)
 ├── js/
 │   ├── package.json (scripts: align, test)
 │   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
-│   ├── lib/ (conllu.mjs reader, align.mjs label transfer; Phase 3)
+│   ├── lib/ (conllu.mjs, align.mjs: Phase 3; baselines.mjs, metrics.mjs: Phase 5; inference.mjs: word encoding and argmax, Phases 7–10)
 │   ├── tests/ (node:test unit tests, e.g. align.test.mjs)
 │   ├── evaluate_baselines.mjs (wink-nlp POS, compromise)
 │   ├── benchmark.mjs (Transformers.js speed and parity)
@@ -222,12 +227,12 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 |---------------|------|-------------------|------------|
 | Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | Done: Phase 1 *Outcome* |
 | Phase 3 | `src/modules/parser/winkBackend.ts` tokenization and `src/modules/input/textInput.ts` preprocessing implemented (alignment runs them via `tsx`); root `package.json` pins the same `wink-nlp` and `@huggingface/transformers` versions as `training/js/` | Dev | Done 2026-11-18 (Phase 3 *Pre-flight check 2*) |
-| Phase 6 | Model size cap | Owner | `plan.md` → *Model size cap* |
-| Phase 7 | `src/modules/parser/treeDecoder.ts` implemented (nested-phrase F1 runs it via `tsx`) | Dev | `architecture.md` → *Logic modules* |
-| Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1) | Owner | `plan.md` → *Acceptance thresholds*. Nested view thresholds decided: UAS ≥ 97%, LAS ≥ 94% |
+| Phase 7 | `src/modules/parser/treeDecoder.ts` implemented (nested-phrase F1 runs it via `tsx`) | Dev | Done 2026-11-18 |
+| Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1); they decide which models are offered | Owner | `plan.md` → *Acceptance thresholds*. Nested view thresholds decided: UAS ≥ 97%, LAS ≥ 94% (per model) |
 | Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | Done 2026-11-18: Vite 8.3.8 in root and `training/js` |
 | Phase 10 exit | Pre-flight policies (memory, storage, multi-threaded WASM) | Owner | `plan.md` → *Pre-flight checks* |
 | Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | Done 2026-11-18 (Phase 4 *Outcome*) |
+| Phase 11 | Hosting and storage limits for several models (file size, LFS quota) | Owner | `plan.md` → *Model library* |
 | Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `plan.md` → *Attribution display*; `architecture.md` → *Model* |
 
 **Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
@@ -520,18 +525,27 @@ Sets the bar the model must beat.
 **Deliverables:** `reports/baselines.md`.
 **Exit criterion:** baseline numbers recorded.
 
-### Phase 6 — Base model selection
+**Outcome (2026-11-18): exit criterion met.**
 
-**Tasks**
-1. Short training run (3 epochs, default hyperparameters) for each candidate on the same data and seed.
-2. Record on dev: UPOS accuracy, chunk F1, UAS/LAS, training time, and approximate int8 size.
-3. Quick ONNX export and Transformers.js timing for each (see Phase 10 method) to confirm the size and speed budgets.
-4. Pick the model with the best dev chunk F1 and LAS that meets the size cap and speed budget. If the two metrics disagree, prefer chunk F1 unless LAS misses its threshold.
+| Split | wink-nlp UPOS | compromise UPOS | compromise chunk F1 (P / R) |
+|-------|---------------|-----------------|-----------------------------|
+| dev | 88.93% | 83.07% | 69.48% (71.84% / 67.28%) |
+| test | **88.76%** | 82.36% | **69.65%** (72.38% / 67.11%) |
 
-**Deliverables:** `reports/model_selection.md`.
-**Exit criterion:** one base model chosen and recorded here.
+- **Bar for Phase 7 (test):** UPOS > 88.76% (wink-nlp); chunk F1 > 69.65% (compromise). The proposed acceptance thresholds (97% / 94%) are far above both.
+- Method: `js/evaluate_baselines.mjs` (`npm run baselines`, ~2 s). Each library gets the runtime words joined by single spaces (same view as the model); tokens map back to words by offset, the last alphanumeric token deciding (`js/lib/baselines.mjs`). Feeding wink-nlp the original text instead gives the same score (88.88% vs 88.93% on dev).
+- compromise mapping: punctuation by form; `Conjunction` → CCONJ / SCONJ by a closed coordinator list, `to` → PART; chunk boundaries from compromise's own chunks, prepositions as single-word PP. Its tag set lacks some UD distinctions (possessive pronouns, auxiliary `be`/`have`/`do`), and it has no ADVP chunk (ADVP F1 0%). No word-specific rules were added.
+- wink-nlp's weakest tags on EWT web text: ADJ (70%), SCONJ (60%), INTJ (63%), NOUN/VERB (~84%); common errors NOUN/ADJ → PROPN (capitalized words).
+- Structure output: no baseline (neither library parses dependencies).
+- Tests: 10 new `node:test` tests (`js/tests/baselines.test.mjs`; 26 Node tests in total).
+
+### Phase 6 — Base model selection (removed)
+
+Removed by owner decision (2026-11-18). No single base model is chosen: every candidate is trained (Phase 7) and every one that meets the acceptance thresholds is offered in the app's model library, where the user chooses (`architecture.md` → *Model library*). The export and Transformers.js compatibility check that Phase 6 would have given early is now the Phase 7 smoke test. Phase numbers are kept so references stay valid.
 
 ### Phase 7 — Full training and tuning
+
+Runs for every candidate (`configs/train_<model>.yaml`). Compute estimate on the training machine (Phase 0 throughput): about 90 epochs per candidate (sweeps, seeds, optional experiments) at ~25 s (DistilBERT), ~45 s (DeBERTa-v3-xsmall), ~55 s (BERT), and ~75 s (ModernBERT) per epoch: ~5 h in total, up to ~10 h with overhead; unattended.
 
 **Starting hyperparameters**
 
@@ -548,18 +562,34 @@ Sets the bar the model must beat.
 | Loss | Group A loss + λ × group B loss; λ = 1.0 (sweep 0.5, 1.0, 2.0) (proposed) |
 
 **Tasks**
-1. `train.py` with configs from `configs/train_<model>.yaml`; log to TensorBoard. `Trainer` subclass with per-group `compute_loss`; the model class stays `AutoModelForTokenClassification`.
-2. Learning-rate sweep; then the final run with 3 seeds; keep the best checkpoint by dev chunk F1.
-3. Optional experiments, kept only if they improve dev F1 or LAS: augmentation (Phase 4, task 6); biaffine head for group B if LAS misses its threshold (needs custom export).
-4. Final evaluation on the test split, run once: UPOS accuracy, chunk F1 overall and per type, comparison with Phase 5 baselines; UAS, LAS, and nested-phrase F1 (predicted vs gold-tree brackets, both built by `src/modules/parser/treeDecoder.ts` run via `tsx`, so training and the app share one implementation), and the share of sentences that needed tree repair.
-5. Error analysis: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`.
+0. **Smoke test** (before any full run; ~30 min for all four): for each candidate, `train.py --smoke` trains 1 epoch on a small train subset, exports fp32 / int8 / fp16 ONNX (`export_onnx.py`), loads the int8 export with Transformers.js in Node (`benchmark.mjs`, `tokenizer_input` and the per-word subword cap applied), and parses a fixed sentence: logits have the `labels.json` group sizes, labels decode, and the result matches PyTorch on that sentence. A candidate that fails is fixed or dropped before full training. Results in `reports/smoke_test.md`.
+   - Run: `sh scripts/run_smoke.sh` (all four; or name models). Steps per model: `train.py --model <m> --smoke` → `export_onnx.py --model <m> --run smoke` → `js/benchmark.mjs --model <m> --run smoke --mode smoke`; then `scripts/smoke_report.py` writes the report. Settings: `configs/eval.yaml` → `smoke`, `export`, `parity`.
+   - The benchmark also finds the word-encoding strategy that reproduces Python's token ids in Transformers.js (`plain` = encode each word; `space` = encode `" " + word`, needed by byte-level BPE such as ModernBERT). Transformers.js has no pre-split input option, so the app must use this strategy per model (Phase 11 task 1).
+   - **Outcome (2026-11-18): passed for all four candidates** (`reports/smoke_test.md`). Every step ran: 1-epoch training (2–5 s on the subset), export of fp32 / int8 / fp16 (all pass `onnx.checker`), and the Transformers.js check in Node. fp32 matches PyTorch exactly on every dev word (5,093–5,475 words per model); fp16 matches on all confident words. Word encoding: `plain` for all four (ModernBERT's saved tokenizer adds the prefix space itself).
 
-**Deliverables:** best checkpoint, `reports/training.md`, `reports/errors.md`.
-**Exit criterion:** test metrics meet the acceptance thresholds and beat the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). UAS ≥ 97% and LAS ≥ 94% decide whether the nested view ships; missing them does not block Phase 7 exit (the app ships without the nested view).
+     | Model | int8 / fp16 size | int8 agreement on confident words (A / B) |
+     |-------|------------------|-------------------------------------------|
+     | distilbert_base_cased | 66 / 132 MB | 100.0% / 100.0% |
+     | deberta_v3_xsmall | 88 / 143 MB | 99.7% / 99.8% |
+     | bert_base_cased | 109 / 217 MB | 100.0% / 99.8% |
+     | modernbert_base | 152 / 301 MB | **93.8% / 90.8%** |
+
+     - Fixes from the first run: int8 now uses per-channel scales (about 3× lower error at the same size); exports are topologically re-sorted, counting values read inside `If` subgraphs (quantization left DeBERTa's graph unsorted, failing `onnx.checker`).
+     - Smoke criterion changed: raw int8/fp16 agreement on a model trained for 2 steps measures near-ties, not the export (first run: int8 61–77%, even fp16 missed single words). int8/fp16 are now judged on words where PyTorch's top-two logit gap > 0.1 (≥ 90%; `configs/eval.yaml` → `parity`); fp32 must still match (≥ 99.9%).
+     - **Risk for Phase 9:** ModernBERT loses the most under int8 even with per-channel scales (relative logit error ~0.09 vs ~0.05 for the others). If it fails parity after training, try excluding sensitive nodes (task 4), or offer it with fp16 (WebGPU) only.
+     - Disk after the smoke test: ~1.2 GB checkpoints, ~3.1 GB exports.
+1. `train.py` with configs from `configs/train_<model>.yaml`; log to TensorBoard. `Trainer` subclass with per-group `compute_loss`; the model class stays `AutoModelForTokenClassification`.
+2. Per candidate: learning-rate sweep; λ sweep; then the final run with 3 seeds; keep the best checkpoint by dev chunk F1 (only the best checkpoint of each run is kept on disk).
+3. Optional experiments, kept only if they improve dev F1 or LAS: augmentation (Phase 4, task 6); biaffine head for group B if LAS misses its threshold (needs custom export).
+4. Final evaluation on the test split, run once per candidate: UPOS accuracy, chunk F1 overall and per type, comparison with Phase 5 baselines; UAS, LAS, and nested-phrase F1 (predicted vs gold-tree brackets, both built by `src/modules/parser/treeDecoder.ts` run via `tsx`, so training and the app share one implementation), and the share of sentences that needed tree repair.
+5. Error analysis per candidate: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`.
+
+**Deliverables:** best checkpoint per candidate, `reports/smoke_test.md`, `reports/training.md` (one table row per candidate), `reports/errors.md`.
+**Exit criterion:** every candidate passed the smoke test or was dropped with a reason; every remaining candidate is trained and evaluated once on test; at least one candidate meets the acceptance thresholds and beats the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). Candidates that meet the thresholds go on to Phases 8–11 and are offered in the app; the others are recorded and not shipped. Per model, UAS ≥ 97% and LAS ≥ 94% decide whether its nested view is enabled. Test scores are not used to rank models; the app shows each model's metrics and the user chooses.
 
 ### Phase 8 — Calibration and ambiguity threshold
 
-Alternatives at runtime are built from label probabilities, so the probabilities must be reliable.
+Alternatives at runtime are built from label probabilities, so the probabilities must be reliable. Runs for every offered candidate (separate temperatures and margins per model, in each model's `labels.json`).
 
 **Tasks**
 1. `calibrate.py`: fit a single temperature on dev logits; report expected calibration error before and after.
@@ -569,9 +599,11 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 5. Store temperatures and margins in `labels.json` (`calibration.temperature`, `calibration.dep_temperature`, `ambiguity.margin`, `ambiguity.attachment_margin`; see the Phase 4 schema).
 
 **Deliverables:** calibration report; updated `labels.json`.
-**Exit criterion:** calibration error reduced; margin chosen and recorded in `architecture.md`.
+**Exit criterion:** calibration error reduced for every offered model; margins chosen and recorded in `architecture.md` (per model).
 
 ### Phase 9 — ONNX export and quantization
+
+Runs for every offered candidate.
 
 **Tasks**
 1. `export_onnx.py`: export with Optimum (`token-classification` task) in the folder layout Transformers.js expects (`config.json`, `tokenizer.json`, `tokenizer_config.json`, `onnx/model.onnx`).
@@ -579,16 +611,16 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 3. Parity check (`benchmark.mjs` + `evaluate.py`):
    - fp32 ONNX vs PyTorch: ≥ 99.9% label agreement on dev.
    - int8 and fp16: chunk F1 and LAS drop ≤ 0.3 points each vs fp32.
-4. If int8 fails parity, try excluding sensitive layers (e.g., embeddings, classifier) from quantization.
+4. If int8 fails parity, try excluding sensitive layers (e.g., embeddings, classifier) from quantization (`configs/eval.yaml` → `export.int8_exclude_nodes`). ModernBERT is the most likely case (Phase 7 smoke test); if it still fails, offer it with fp16 (WebGPU) only.
 
 **Deliverables:** ONNX files; parity report.
-**Exit criterion:** both variants pass parity.
+**Exit criterion:** both variants pass parity for every offered model (a model whose variant fails is not offered with that variant).
 
 ### Phase 10 — Browser benchmarking
 
 **Tasks**
-1. Build the minimal Vite test page in `training/js/bench-page/` that loads the model with Transformers.js in a Web Worker and parses a fixed 5,000-character sample.
-2. Measure in Chrome, Safari, and Firefox, with WebGPU (where available) and WASM:
+1. Build the minimal Vite test page in `training/js/bench-page/` that loads each offered model (model switcher, run in sequence) with Transformers.js in a Web Worker and parses a fixed 5,000-character sample.
+2. For every offered model, measure in Chrome, Safari, and Firefox, with WebGPU (where available) and WASM:
    - First load time (download + initialization), cached load time.
    - Parse time for 5,000 characters, including tree decoding (median of 10 runs).
    - Peak memory (and memory after loading) per backend.
@@ -596,25 +628,29 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 
 4. Set the pre-flight thresholds in `src/modules/preflight/requirements.ts` from these measurements (memory hint, storage margin, WebGPU buffer size); check single-threaded WASM against the 5 s budget.
 
-**Deliverables:** `reports/benchmark.md`; pre-flight threshold values.
-**Exit criterion:** ≤ 5 s per 5,000 characters on a typical laptop with WASM; minimum device requirements defined and set in `requirements.ts`.
+5. Record per model, for the catalog: first-load time, parse time per backend, peak memory per backend, and the minimum device memory it needs (`min_device_memory_gb`).
+
+**Deliverables:** `reports/benchmark.md` (one section per model); per-model performance and requirements for `catalog.json`; pre-flight threshold values.
+**Exit criterion:** at least one offered model parses 5,000 characters in ≤ 5 s on a typical laptop with WASM; per-model requirements recorded; minimum device requirements defined and set in `requirements.ts`. Slower models stay available with their measured speed shown.
 
 ### Phase 11 — Packaging and release
 
 **Tasks**
-1. Copy the exported files to `public/models/enparse-tagger/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` and `files` (sizes and SHA-256 of the shipped files) are set here. `transformerBackend.ts` feeds words as `tokenizer_input` says and applies `window.max_subwords_per_word`; the Phase 9 parity check covers this.
-2. Write `MODEL_CARD.md`: base model, data and licenses, attribution text, metrics, known weaknesses, intended use.
+1. `scripts/package_models.py`: for every offered model, copy the exported files to `public/models/<model-id>/` (ONNX files tracked with Git LFS) with `labels.json`. Every schema field (Phase 4) is filled; `model_version` and `files` (sizes and SHA-256 of the shipped files) are set here.
+   - Add `tokenizer_word_encoding` (`plain` or `space`, from the model's Phase 9 benchmark) to its `labels.json`; `transformerBackend.ts` encodes words with it. (Optional schema v1 field; `LabelConfig` and `validate_labels_json` gain it in the same change.)
+   - Write `public/models/catalog.json` (schema v1; `architecture.md` → *Model library*): display name and description from `configs/catalog.yaml`, sizes, test metrics, `nested_view`, Phase 10 performance and requirements. `transformerBackend.ts` feeds words as `tokenizer_input` says and applies `window.max_subwords_per_word`; the Phase 9 parity check covers this.
+2. Write `MODEL_CARD.md`: one section per offered model (base model and license, metrics, known weaknesses) plus the shared data, licenses, attribution text, and intended use.
 3. Tag the release (e.g., `model-v1.0.0`); record config, seed, data version, and checksums for reproducibility.
-4. Integration test in the app: `transformerBackend.ts` loads the model and matches Phase 9 outputs on 20 fixed sentences. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word, and that every sentence has a valid tree and nested phrases. The pre-flight checks pass on the shipped files (including `files-integrity`).
+4. Integration test in the app, per offered model: the model library downloads and verifies it, `transformerBackend.ts` loads it and matches Phase 9 outputs on 20 fixed sentences; switching models unloads the previous one. The test also checks that `ParseResult` carries `model_version` from `labels.json` and wink character offsets for every word, and that every sentence has a valid tree and nested phrases. The pre-flight checks pass on the shipped files (including `files-integrity`).
 
-**Deliverables:** shipped model files, model card, release tag.
-**Exit criterion:** app integration test passes.
+**Deliverables:** shipped model files per offered model, `catalog.json`, model card, release tag.
+**Exit criterion:** app integration test passes for every offered model.
 
 ### Phase 12 — Maintenance (ongoing)
 
 - Optional: collect misparsed sentences reported in the app (opt-in, stored locally until exported by the user) as a regression set and extra training data. Requires a new app feature; not yet planned. Already prepared for: feedback records can store words with wink offsets and the model version from `ParseResult`, and unreviewed words are handled as partial labels (Phase 4).
 - Retrain when: a new UD release fixes relevant annotations, the regression set grows past ~200 sentences, or a better base model fits the budget.
-- Every retrain repeats Phases 7–11 and must not regress on the test split or the regression set.
+- Every retrain repeats Phases 7–11 for the retrained models and must not regress on the test split or the regression set. A new or dropped model only changes `catalog.json` and the model folders.
 
 ---
 
@@ -747,3 +783,27 @@ Alternatives at runtime are built from label probabilities, so the probabilities
 
 - Added: `labels.json` schema v1 field `files` (written by `export_onnx.py`, Phase 11; `null` until then; optional addition, schema version unchanged). `prepare_data.py` writes `null` and validates it.
 - Modified: Phase 10 measures memory per backend and sets the pre-flight thresholds; Phase 11 writes `files` and checks pre-flight on the shipped files; gate for pre-flight policies before Phase 10 exit.
+
+### 2026-11-18T07:14:39Z — Claude Opus 5.5, Phase 5 complete
+
+- Added: Phase 5 *Outcome*: wink-nlp UPOS 88.76%, compromise UPOS 82.36% and chunk F1 69.65% (test); method and mapping; bar for Phase 7.
+
+### 2026-11-18T07:49:54Z — Claude Opus 5.5, Model library: every candidate trained and offered
+
+- Removed: Phase 6 (base model selection) and its size-cap gate (owner decision): no single base model is chosen; candidates that meet the acceptance thresholds are offered in the app's model library and the user chooses.
+- Added: Phase 7 task 0 smoke test (1-epoch train, export, Node Transformers.js load and parse per candidate; `reports/smoke_test.md`); compute estimate.
+- Modified: Overview output, key design decisions, open questions (hosting limits instead of a size cap), candidate table, disk estimate (~40 GB); Phases 7–11 run per candidate; Phase 7 exit (at least one model meets the thresholds; test scores not used to rank); Phase 10 records per-model performance and requirements; Phase 11 writes `public/models/<model-id>/` and `catalog.json` (`scripts/package_models.py`, `configs/catalog.yaml`); Phase 12 per model.
+- Added: gate for hosting and storage limits before Phase 11.
+
+### 2026-11-18T08:11:49Z — Claude Opus 5.5, Phase 7 tooling implemented (not run)
+
+- Added: `scripts/train.py` (two-group loss, word-level dev metrics, early stopping, sweeps, `--smoke`), `scripts/metrics.py`, `scripts/export_onnx.py` (fp32 / int8 / fp16, `labels.json` `files`, reference and parity files), `js/benchmark.mjs` (smoke, parity, speed) with `js/lib/inference.mjs`, `scripts/run_smoke.sh`, `scripts/smoke_report.py`; `src/modules/parser/treeDecoder.ts` (Phase 7 gate). Tested on a tiny random model only; the smoke test has not been run.
+- Added: Phase 7 task 0 run instructions and word-encoding strategy; Phase 11 task 1 writes `tokenizer_word_encoding` into each model's `labels.json`.
+- Modified: `configs/eval.yaml` (`smoke`, `export` with opset 18, `parity`, `acceptance`), `configs/train_*.yaml` (Phase 7 hyperparameters), `configs/data.yaml` (`paths.checkpoints`, `paths.onnx`); directory layout.
+- Modified: *Gates for later phases* — Phase 7 gate (`treeDecoder.ts`) is met.
+
+### 2026-11-18T08:36:15Z — Claude Opus 5.5, Phase 7 smoke test passed
+
+- Added: Phase 7 task 0 *Outcome*: all four candidates pass (training, export, Transformers.js check); sizes; int8 agreement; word encoding `plain` for all.
+- Modified: `export_onnx.py` uses per-channel int8 and topologically re-sorts graphs (DeBERTa fix); the smoke criterion judges int8/fp16 on confident words only (`configs/eval.yaml` → `parity.smoke_margin`, `smoke_min_confident_agreement`).
+- Added: Phase 9 risk and fallback for ModernBERT int8.

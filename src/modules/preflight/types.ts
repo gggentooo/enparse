@@ -25,7 +25,12 @@
  *   6. ModelManifest (structural subset of labels.json schema v1):
  *      schema_version, model_version, calibration, ambiguity,
  *      versions.wink, files (Record<path, { bytes, sha256 }> | null).
- *   7. FailureReason mapping for parserService: blocked device checks →
+ *   7. ModelRequirements (structural; from catalog.json, passed in): id,
+ *      download bytes per variant, peak_memory_mb per backend,
+ *      min_device_memory_gb, parse_5000_chars_s per backend.
+ *      ModelFitness: { id, verdict, reasons: CheckResult[],
+ *      expectedParseSeconds | null }.
+ *   8. FailureReason mapping for parserService: blocked device checks →
  *      "unsupported"; failed model checks → "invalid-model".
  *
  * Dependencies:

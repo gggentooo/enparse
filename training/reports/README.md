@@ -12,7 +12,7 @@ Tasks:
 Dependencies:
   Produced by: scripts/*.py, js/*.mjs, and manual review (see table).
 
-Status: Phase 2–4 reports written (`chunks.md`, `chunk_review.md`, `alignment.md`, `dataset.md`).
+Status: Phase 2–5 reports written (`chunks.md`, `chunk_review.md`, `alignment.md`, `dataset.md`, `baselines.md`).
 -->
 
 # Training reports
@@ -24,7 +24,7 @@ Status: Phase 2–4 reports written (`chunks.md`, `chunk_review.md`, `alignment.
 | `alignment.md` | 3 | `js/align_tokens.mjs` |
 | `dataset.md` | 4 | `scripts/prepare_data.py` |
 | `baselines.md` | 5 | `js/evaluate_baselines.mjs` |
-| `model_selection.md` | 6 | `scripts/train.py` + `scripts/evaluate.py` + `js/benchmark.mjs` |
+| `smoke_test.md` | 7 | `scripts/run_smoke.sh` → `scripts/smoke_report.py` (train, export, Transformers.js check per candidate) |
 | `training.md` | 7 | `scripts/train.py` + `scripts/evaluate.py` |
 | `errors.md` | 7 | `scripts/evaluate.py` + manual grouping |
 | `calibration.md` | 8 | `scripts/calibrate.py` |

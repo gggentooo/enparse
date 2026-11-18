@@ -3,8 +3,9 @@
  *
  * Description:
  *   Exposes parserService to components: current annotation, model status
- *   (checking, loading progress, ready, failed reason), the pre-flight
- *   report, and parse actions.
+ *   (checking, no-model, downloading/loading progress, ready with the active
+ *   model, failed reason), the pre-flight report, and parse actions. Model
+ *   choice lives in hooks/useModelLibrary.ts.
  *
  * Layer: hooks/
  *

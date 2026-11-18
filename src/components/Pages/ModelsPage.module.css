@@ -1,0 +1,8 @@
+/*
+ * src/components/Pages/ModelsPage.module.css — styles for ModelsPage.tsx
+ *
+ * Description: model card grid, metric rows, recommended/active/blocked states, progress bars.
+ * Tasks: 1. Card layout (responsive). 2. State styles with icons plus text. 3. Progress and action placement.
+ * Dependencies: src/css/tokens.css. Used by: ModelsPage.tsx.
+ * Status: header only; not implemented.
+ */

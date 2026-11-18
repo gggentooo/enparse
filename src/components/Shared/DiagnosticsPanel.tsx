@@ -23,7 +23,8 @@
  *   External: react.
  *   Internal: hooks/useParser.ts, components/Shared/Button.tsx,
  *             ./DiagnosticsPanel.module.css.
- *   Used by: Layout/Header.tsx (details popover/modal), Pages/InputPage.tsx.
+ *   Used by: Layout/Header.tsx (details popover/modal), Pages/InputPage.tsx,
+ *            Pages/ModelsPage.tsx (why a model is not supported).
  *
  * Open items (plan.md → Undecided): pre-flight checks (diagnostics display);
  *   interface language.

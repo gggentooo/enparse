@@ -23,8 +23,8 @@ Dependencies:
     Python: torch, transformers, datasets, numpy, pandas, pyyaml.
     Reads:  configs/eval.yaml (calibration, ambiguity);
             configs/train_<model>.yaml (checkpoint); configs/data.yaml;
-            data/processed/dataset/ (dev split); data/processed/labels.json.
-    Writes: data/processed/labels.json (temperature, margin);
+            data/processed/dataset/<model>/ (dev split and labels.json), per candidate.
+    Writes: data/processed/dataset/<model>/labels.json (temperatures, margins);
             reports/calibration.md.
     Related: src/modules/parser/ambiguity.ts and transformerBackend.ts use
              the same temperature and margin at runtime.

@@ -18,11 +18,14 @@
  *      null when the nested view is not shipped), treeRepaired flag,
  *      alternatives (ranked, with probability and reason: probability or
  *      attachment).
- *   5. ParseResult: sentences, model version from labels.json, backend
- *      (webgpu | wasm); every Token keeps wink character offsets (traceability).
+ *   5. ParseResult: sentences, model id and model version (labels.json),
+ *      backend (webgpu | wasm); every Token keeps wink character offsets
+ *      (traceability).
  *      No mode field: results always come from the model.
  *   6. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4). (done)
- *   7. Worker message types (request/response unions) and ParserStatus
+ *   7. ModelRef: { id, folder, variant ("int8" | "fp16") } — the model the
+ *      worker loads (structural; parserService builds it from the catalog).
+ *      Worker message types (request/response unions) and ParserStatus
  *      (idle | loading + phase/progress | ready + backend/modelVersion |
  *      failed + reason; architecture.md → Model readiness). The `checking`
  *      status is added by parserService (pre-flight runs outside the worker).
@@ -74,7 +77,7 @@ export type LabelGroup = {
 };
 
 /**
- * Contents of public/models/enparse-tagger/labels.json, schema v1
+ * Contents of public/models/<model-id>/labels.json, schema v1
  * (plan-training.md → Phase 4). Field names match the JSON exactly.
  * Fields written by later training phases are null until then.
  */
@@ -113,3 +116,46 @@ export type LabelConfig = {
   /** Model files (path relative to the model folder) with size and SHA-256; written by export_onnx.py (Phase 11). Used by pre-flight integrity checks. */
   files: Record<string, { bytes: number; sha256: string }> | null;
 };
+
+/** One group B label with its probability (candidates are sorted, best first). */
+export type DepCandidate = {
+  /** rel_pos_v1 label, e.g. "+1@NOUN|det" or "0@ROOT|root". */
+  label: string;
+  prob: number;
+};
+
+/** A decoded dependency tree for one sentence (1-based heads, 0 = root). */
+export type DecodedTree = {
+  heads: number[];
+  /** Base UD relation per word ("dep" for words attached by repair). */
+  relations: string[];
+  /** True if any word did not use its best label. */
+  repaired: boolean;
+  /** 0-based indexes of words whose head came from repair (not their best label). */
+  repairedWords: number[];
+};
+
+/** Phrase label in the nested view; null when the head's UPOS has no phrase type. */
+export type PhraseType = "NP" | "VP" | "PP" | "ADJP" | "ADVP" | null;
+
+/** A word shown without its own bracket (0-based index into the sentence). */
+export type WordLeaf = { word: number };
+
+/** One bracketed level of the nested view. */
+export type PhraseNode = {
+  type: PhraseType;
+  /** 0-based index of the head word. */
+  head: number;
+  /** First and last covered word (0-based, inclusive). */
+  start: number;
+  end: number;
+  /** False if the covered words have gaps (non-projective tree). */
+  contiguous: boolean;
+  children: Array<PhraseNode | WordLeaf>;
+};
+
+/** Nested view of one sentence: the root phrase plus root-level punctuation, in word order. */
+export type SentencePhrases = Array<PhraseNode | WordLeaf>;
+
+/** A labeled bracket span for scoring (0-based, inclusive). */
+export type PhraseSpan = { type: PhraseType; start: number; end: number };

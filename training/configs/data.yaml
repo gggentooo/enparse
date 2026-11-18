@@ -83,6 +83,8 @@ paths:
   chunked: data/processed/chunked
   aligned: data/processed/aligned
   dataset: data/processed/dataset   # <model_key>/ = save_to_disk dataset + labels.json
+  checkpoints: data/checkpoints     # <model_key>/<run>/best (+ summary.json, tensorboard/)
+  onnx: data/onnx                   # <model_key>/<run>/ (export_onnx.py)
 
 # Phase 2 — chunk derivation (scripts/derive_chunks.py).
 chunks:
@@ -116,3 +118,9 @@ dataset:
   splits: [train, dev, test]
   report: reports/dataset.md
 seed: 13
+
+# Phase 5 — baselines (js/evaluate_baselines.mjs).
+baselines:
+  splits: [dev, test]
+  report: reports/baselines.md
+  top_confusions: 8
