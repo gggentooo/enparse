@@ -30,9 +30,10 @@
   "type": "module",
   "scripts": {
     "align": "tsx align_tokens.mjs",
-    "test": "node --test tests/",
+    "test": "tsx --test tests/",
     "baselines": "tsx evaluate_baselines.mjs",
-    "benchmark": "node benchmark.mjs"
+    "benchmark": "node benchmark.mjs",
+    "nested": "tsx nested_eval.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

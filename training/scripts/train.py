@@ -18,8 +18,10 @@ Tasks:
     2. Model on MPS with the Hugging Face Trainer; `compute_loss` = group A
        loss + λ × group B loss (labels_chunk, labels_dep; -100 ignored).
     3. compute_metrics on dev: UPOS accuracy, chunk F1 (seqeval), UAS/LAS
-       (group B decoded with the rel_pos_v1 decoder); early stopping on dev
-       chunk F1.
+       (group B decoded with the rel_pos_v1 decoder); early stopping and the
+       best checkpoint use `select` = mean of dev chunk F1 and LAS (LAS improves
+       more slowly than chunk F1; stopping on chunk F1 alone under-trains the
+       nested view).
     4. --smoke: 1 epoch on a small train subset, then export and Node
        Transformers.js load check (plan-training.md → Phase 7 task 0).
     5. LR sweep, λ sweep, and multi-seed runs (one run per setting); keep only
@@ -70,7 +72,8 @@ if TYPE_CHECKING:
 TRAINING_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = TRAINING_DIR / "configs"
 TENSOR_COLUMNS = ("input_ids", "attention_mask", "labels_chunk", "labels_dep")
-BEST_METRIC = "chunk_f1"
+BEST_METRIC = "select"  # mean of SELECTION_KEYS on dev: early stopping and best checkpoint
+SELECTION_KEYS = ("chunk_f1", "las")
 
 
 @dataclass(frozen=True)
@@ -208,6 +211,10 @@ def pick_device(name: str) -> torch.device:
 def flat_metrics(metrics: dict[str, Any], prefix: str = "eval_") -> dict[str, float]:
     """Numeric metrics with a prefix (per-type F1 flattened), for Trainer logs."""
     out = {f"{prefix}{k}": float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
+    if all(k in metrics for k in SELECTION_KEYS):
+        out[f"{prefix}{BEST_METRIC}"] = sum(float(metrics[k]) for k in SELECTION_KEYS) / len(
+            SELECTION_KEYS
+        )
     for t, v in metrics.get("per_type", {}).items():
         out[f"{prefix}f1_{t}"] = float(v["f1"])
     return out
@@ -390,6 +397,9 @@ def main() -> None:
     parser.add_argument("--dep-weight", type=float)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--epochs", type=int)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--patience", type=int, help="early-stopping patience (epochs)")
+    parser.add_argument("--run-name", help="override the run folder name")
     parser.add_argument("--device", default="auto", help="auto | mps | cpu")
     args = parser.parse_args()
 
@@ -406,6 +416,8 @@ def main() -> None:
         "dep_loss_weight": args.dep_weight,
         "seed": args.seed,
         "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "early_stopping_patience": args.patience,
     }
     base = replace(base, **{k: v for k, v in overrides.items() if v is not None})
     if args.smoke:
@@ -414,6 +426,10 @@ def main() -> None:
         runs = [("smoke", base)]
     else:
         runs = run_settings_list(args.sweep, base, mcfg)
+    if args.run_name:
+        if len(runs) != 1:
+            raise SystemExit("--run-name works with single runs only")
+        runs = [(args.run_name, runs[0][1])]
 
     root = TRAINING_DIR / data_cfg["paths"]["checkpoints"] / args.model
     for name, settings in runs:

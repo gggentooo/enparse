@@ -92,6 +92,37 @@ describe("decodeTree", () => {
     expect(t.relations[0]).toBe(REPAIR_RELATION);
   });
 
+  it("always returns a valid tree for random labels (fuzz)", () => {
+    const tags = ["NOUN", "VERB", "DET", "ADJ", "PUNCT"];
+    let seed = 7;
+    const rand = (n: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    for (let trial = 0; trial < 3000; trial++) {
+      const n = 1 + rand(14);
+      const upos = Array.from({ length: n }, () => tags[rand(tags.length)] as string);
+      const cands = upos.map(() =>
+        Array.from({ length: 1 + rand(5) }, (_, k) => {
+          const off = rand(7) - 3;
+          const label = off === 0 ? ROOT_LABEL : `${off > 0 ? "+" : ""}${off}@${tags[rand(tags.length)]}|dep`;
+          return c(label, 1 / (k + 1));
+        }),
+      );
+      const t = decodeTree(cands, upos);
+      expect(t.heads.filter((h) => h === 0)).toHaveLength(1);
+      for (let i = 0; i < n; i++) {
+        // following heads from every word reaches the root without revisiting a word
+        const seen = new Set<number>();
+        for (let k = i + 1; k !== 0; k = t.heads[k - 1] ?? 0) {
+          expect(seen.has(k)).toBe(false);
+          seen.add(k);
+        }
+      }
+      expect(() => buildPhrases(t.heads, upos, t.relations)).not.toThrow();
+    }
+  });
+
   it("handles empty sentences", () => {
     expect(decodeTree([], []).heads).toEqual([]);
   });

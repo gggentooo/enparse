@@ -133,7 +133,7 @@ def test_train_run_end_to_end_on_cpu(
     assert (best / "tokenizer.json").exists() or (best / "vocab.txt").exists()
     assert not (tmp_path / "run" / "checkpoints").exists()
     assert summary["epochs_run"] == 3
-    for k in ("chunk_f1", "upos_acc", "uas", "las"):
+    for k in ("chunk_f1", "upos_acc", "uas", "las", "select"):
         assert 0.0 <= summary["best_dev"][k] <= 1.0
     saved = json.loads((tmp_path / "run" / "summary.json").read_text())
     assert saved["settings"]["learning_rate"] == 5e-3

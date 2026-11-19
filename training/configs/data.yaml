@@ -85,6 +85,8 @@ paths:
   dataset: data/processed/dataset   # <model_key>/ = save_to_disk dataset + labels.json
   checkpoints: data/checkpoints     # <model_key>/<run>/best (+ summary.json, tensorboard/)
   onnx: data/onnx                   # <model_key>/<run>/ (export_onnx.py)
+  eval: data/eval                   # <model_key>/<run>/<split>_{metrics,predictions,nested}.* (evaluate.py)
+  logs: data/logs                   # run logs and Phase 7 status (run_phase7.py)
 
 # Phase 2 — chunk derivation (scripts/derive_chunks.py).
 chunks:

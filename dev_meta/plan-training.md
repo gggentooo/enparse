@@ -54,7 +54,16 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ### Nested phrase structure
 
-Confirmed by owner (2026-11-18): two views, bracketing order, and phrase labels as below. The nested view ships only if test UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without it (the flat view is unaffected).
+Confirmed by owner (2026-11-18): two views, bracketing order, and phrase labels as below.
+
+**Nested-view acceptance (owner, 2026-11-19; replaces UAS ≥ 97 / LAS ≥ 94, which Phase 7 showed out of reach on EWT):** per model, on the test split:
+- UAS excluding punctuation ≥ 93% (punctuation is not bracketed in the view);
+- labeled bracket F1 over multi-word brackets ≥ 88%;
+- precision of the brackets actually shown ≥ 95% after confidence gating (Phase 8 calibration), with coverage reported. Brackets below the confidence threshold collapse: their words show flat inside the parent phrase.
+
+A model that misses them is offered without the nested view (the flat view is unaffected).
+
+**Planned change (owner, 2026-11-19): biaffine parser head.** After the Phase 7 extended stage, group B (head-position labels) is replaced by a biaffine arc scorer (every word scores every head in its sentence; root via the first special token) plus a per-word relation classifier in the packed logits. Arc scores ship as a second ONNX output (Transformers.js `model.forward()` returns all outputs); `treeDecoder.ts` decodes trees with maximum spanning tree (Chu-Liu-Edmonds), so no head is unresolvable and no root or cycle repair is needed. Measured motivation (Phase 7 test, DeBERTa): the correct head is in the top 5 head labels for 96.7% of words, but 23% of sentences needed repair; MST over the current labels gives no gain. Expected +1–2 UAS (to be measured). All four models are retrained with it (Phase 7 again), then Phases 8–9.
 
 The app shows two views of each sentence:
 
@@ -73,7 +82,7 @@ The app shows two views of each sentence:
   5. Each phrase is labeled from its head word (noun → NP, verb → VP, adjective → ADJP, adverb → ADVP; a noun phrase with a `case` dependent → PP).
 - **Why decoding is still needed:** a neural network outputs scores for each word, not brackets. Turning per-word head labels into a valid tree and then into brackets is a fixed procedure (like BIO decoding for chunks). It holds no grammar rules, so it is not a separate nesting module.
 - **Flat and nested views can differ:** the views use different conventions (for example, `[NP the man] [PP in] [NP the car]` versus `[the [[man] [in [the [car]]]]]`). Both are shown as-is; the UI does not force one to match the other.
-- **Expected accuracy:** sequence-labeling parsers on EWT score slightly below biaffine parsers, and small models score lower than large ones. Actual UAS/LAS come from Phase 7. If they miss the thresholds (UAS 97% / LAS 94%), try a biaffine head in Phase 7 (needs a custom export and runtime model class); if that also misses, ship without the nested view.
+- **Expected accuracy:** see *Nested-view acceptance* and *Planned change* above (Phase 7 base results: tree UAS 88–92, LAS 86–90).
 
 ### Open questions
 
@@ -545,16 +554,19 @@ Removed by owner decision (2026-11-18). No single base model is chosen: every ca
 
 ### Phase 7 — Full training and tuning
 
-Runs for every candidate (`configs/train_<model>.yaml`). Compute estimate on the training machine (Phase 0 throughput): about 90 epochs per candidate (sweeps, seeds, optional experiments) at ~25 s (DistilBERT), ~45 s (DeBERTa-v3-xsmall), ~55 s (BERT), and ~75 s (ModernBERT) per epoch: ~5 h in total, up to ~10 h with overhead; unattended.
+Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts/run_phase7_overnight.sh` starts `scripts/run_phase7.py` detached under `caffeinate` (resumable; progress in `data/logs/phase7_status.json`; report in `reports/training.md`). Per model: learning-rate sweep → λ sweep at the best rate → 3 seeds at both → dev and test evaluation of each seed (raw metrics, repaired-tree UAS/LAS, nested-phrase F1 via `treeDecoder.ts`). Compute estimate at batch 8 (DistilBERT ~27 s per epoch, others scaled by Phase 0 throughput): ≤ 8 runs × 15 epochs per model, ~7 h worst case for all four.
+
+**Batch-size probe (2026-11-18, DistilBERT, dev, before the overnight run):** the first full run (batch 32, lr 2e-5) reached only UPOS 94.1 / chunk F1 88.7 / LAS 63.0 after 10 epochs. After 4 epochs: batch 16 (lr 5e-5) 94.9 / 91.3 / 69.3; batch 8 (5e-5) 95.7 / 93.3 / 74.9; batch 4 (5e-5) 96.2 / 94.1 / 77.7; batch 8 (1e-4) 96.5 / 94.4 / 79.1. Settings changed to batch 8, a higher learning-rate sweep, and up to 15 epochs (table above).
 
 **Starting hyperparameters**
 
 | Setting | Value |
 |---------|-------|
-| Learning rate | 5e-5 (sweep 2e-5, 3e-5, 5e-5, 1e-4) |
+| Learning rate | Sweep 3e-5, 5e-5, 1e-4, 2e-4 (was 2e-5 – 1e-4; shifted up after the batch-size probe) |
 | Schedule | Linear decay, 10% warmup |
-| Batch size | 32 windows (gradient accumulation if needed) |
-| Epochs | Up to 10, early stopping on dev chunk F1 (patience 2) |
+| Batch size | 8 windows (~80 sentences per update; was 32 windows ≈ 320 sentences, which gave only ~40 updates per epoch) |
+| Epochs | Up to 15, early stopping on the dev selection score (patience 3) |
+| Selection score | Mean of dev chunk F1 and LAS: early stopping, best checkpoint, learning rate, λ, and offered seed (proposed; LAS improves more slowly than chunk F1, so stopping on chunk F1 alone under-trains the nested view) |
 | Weight decay | 0.01 |
 | Max sequence length | 256 subword tokens |
 | Precision | fp32 on MPS (switch to bf16 only if stable and faster) |
@@ -585,6 +597,8 @@ Runs for every candidate (`configs/train_<model>.yaml`). Compute estimate on the
 5. Error analysis per candidate: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`.
 
 **Deliverables:** best checkpoint per candidate, `reports/smoke_test.md`, `reports/training.md` (one table row per candidate), `reports/errors.md`.
+**Outcome, base run (2026-11-18, 5.9 h unattended, 32 runs, 0 failures; `reports/training.md`):** test UPOS / chunk F1 / tree UAS / tree LAS / nested F1 — DistilBERT 96.67 / 95.20 / 88.15 / 86.05 / 79.26; DeBERTa-v3-xsmall 97.62 / 96.75 / 91.57 / 89.79 / 85.36; BERT 96.89 / 95.81 / 89.68 / 87.73 / 81.11; ModernBERT 97.67 / 96.94 / 91.42 / 89.68 / 83.76 (seed sd ≤ 0.2). DeBERTa and ModernBERT meet the flat thresholds; no model meets the nested ones. Every model picked the top learning rate (2e-4) and most runs peaked at the 15-epoch cap, so an extended stage runs next (`--stage extended`: learning rates 1e-4 – 3e-4, up to 30 epochs, λ fixed; `reports/training_extended.md`). Flat thresholds confirmed by owner: UPOS ≥ 97, chunk F1 ≥ 94. Task 5 (`reports/errors.md`) pending.
+
 **Exit criterion:** every candidate passed the smoke test or was dropped with a reason; every remaining candidate is trained and evaluated once on test; at least one candidate meets the acceptance thresholds and beats the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). Candidates that meet the thresholds go on to Phases 8–11 and are offered in the app; the others are recorded and not shipped. Per model, UAS ≥ 97% and LAS ≥ 94% decide whether its nested view is enabled. Test scores are not used to rank models; the app shows each model's metrics and the user chooses.
 
 ### Phase 8 — Calibration and ambiguity threshold
@@ -807,3 +821,19 @@ Runs for every offered candidate.
 - Added: Phase 7 task 0 *Outcome*: all four candidates pass (training, export, Transformers.js check); sizes; int8 agreement; word encoding `plain` for all.
 - Modified: `export_onnx.py` uses per-channel int8 and topologically re-sorts graphs (DeBERTa fix); the smoke criterion judges int8/fp16 on confident words only (`configs/eval.yaml` → `parity.smoke_margin`, `smoke_min_confident_agreement`).
 - Added: Phase 9 risk and fallback for ModernBERT int8.
+
+### 2026-11-18T13:17:06Z — Claude Opus 5.5, Phase 7 overnight run set up
+
+- Added: `scripts/run_phase7.py` (sweeps → seeds → evaluation per model; resumable; reuses runs only with matching settings; status file; report), `scripts/run_phase7_overnight.sh` (pre-flight checks, detached under `caffeinate`), `scripts/evaluate.py` test mode, `js/nested_eval.mjs` + `js/lib/nested.mjs` (nested-phrase F1 and repaired-tree scores with `treeDecoder.ts`).
+- Modified: Phase 7 hyperparameters after a batch-size probe (batch 8, learning-rate sweep 3e-5 – 2e-4, up to 15 epochs, patience 3); early stopping and all choices use the mean of dev chunk F1 and LAS (proposed).
+- Fixed: `treeDecoder.ts` cycle repair could fail to converge on noisy predictions; repairs now never create a new cycle (fuzz test with 3,000 random sentences).
+
+### 2026-11-18T22:18:20Z — Claude Opus 5.5, Phase 7 base results; extended stage
+
+- Added: Phase 7 base-run *Outcome* (per-model test metrics; flat thresholds met by DeBERTa-v3-xsmall and ModernBERT; nested thresholds by none); flat thresholds 97 / 94 confirmed by owner.
+- Added: `run_phase7.py --stage` (tagged runs, own record and report, fixed λ, stage-scoped pruning) and `configs/eval.yaml` → `phase7_stages.extended`; extended run started 2026-11-18 22:16 UTC.
+
+### 2026-11-18T22:20:52Z — Claude Opus 5.5, Nested-view targets and biaffine head decided
+
+- Modified: *Nested phrase structure* — nested-view acceptance is UAS without punctuation ≥ 93, labeled multi-word bracket F1 ≥ 88, and ≥ 95% precision of shown brackets after confidence gating (owner); low-confidence brackets collapse.
+- Added: planned biaffine parser head after the extended stage (owner), with the measurements that motivate it.

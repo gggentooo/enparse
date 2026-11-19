@@ -75,6 +75,8 @@ Run from `training/` with the venv active.
 | 5 | `(cd js && npm run baselines)` | wink-nlp and compromise on dev/test (Phase 3 words); writes `reports/baselines.md`. |
 
 | 7 | `sh scripts/run_smoke.sh [model ...]` | Smoke test (task 0) for every candidate: `train.py --smoke` → `export_onnx.py --run smoke` → `js/benchmark.mjs --mode smoke`; writes `reports/smoke_test.md`. |
+| 7 | `sh scripts/run_phase7_overnight.sh [model ...]` | Unattended Phase 7 (detached, `caffeinate`, resumable): sweeps, seeds, dev/test evaluation, `reports/training.md`. Progress: `data/logs/phase7_status.json`; stop: `kill "$(cat data/logs/phase7.pid)"`. Keep the Mac plugged in, lid open. |
+| 7 | `python scripts/evaluate.py --model <m> --run <run> --split test` + `(cd js && npx tsx nested_eval.mjs --model <m> --run <run> --split test)` | Metrics and nested-phrase F1 for one run. |
 | 7 | `python scripts/train.py --model <m> [--sweep lr\|dep_weight\|seeds] [--lr X --dep-weight Y --seed Z]` | Full training runs; best checkpoint per run in `data/checkpoints/<m>/<run>/best/` with `summary.json`; TensorBoard logs in each run folder. |
 | 7, 9 | `python scripts/export_onnx.py --model <m> --run <run> [--parity-windows N\|all]` | ONNX export (fp32, int8, fp16) to `data/onnx/<m>/<run>/` with `labels.json` file checksums, reference and parity inputs. |
 | 7, 9, 10 | `(cd js && npm run benchmark -- --model <m> --run <run> --mode smoke\|parity\|speed)` | Transformers.js (Node) load, tokenizer, parity, and speed checks; writes `benchmark_<mode>.json`. |

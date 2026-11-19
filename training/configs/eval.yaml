@@ -88,10 +88,41 @@ parity:
   smoke_margin: 0.1
   smoke_min_confident_agreement: 0.90
 
-# Phase 7 acceptance (proposed; plan.md → Undecided → Acceptance thresholds). A model is offered only
-# if it meets min_upos_accuracy and min_chunk_f1; its nested view needs min_uas and min_las.
+# Phase 7 acceptance (owner, 2026-11-19). A model is offered only if it meets min_upos_accuracy and
+# min_chunk_f1 (and beats the baselines); its nested view needs nested_view.*.
 acceptance:
   min_upos_accuracy: 0.97
   min_chunk_f1: 0.94
-  min_uas: 0.97
-  min_las: 0.94
+  min_uas: 0.97              # superseded for the nested view (owner, 2026-11-19); kept for older reports
+  min_las: 0.94              # superseded, see nested_view below
+  nested_view:               # owner, 2026-11-19 (plan-training.md → Nested phrase structure)
+    min_uas_no_punct: 0.93
+    min_bracket_f1: 0.88     # labeled, multi-word brackets
+    min_shown_precision: 0.95  # after confidence gating (Phase 8)
+
+# Phase 7 orchestration (scripts/run_phase7.py) and test evaluation (scripts/evaluate.py).
+phase7:
+  models: [distilbert_base_cased, deberta_v3_xsmall, bert_base_cased, modernbert_base]  # smallest first
+  # Score for picking the learning rate and λ from dev: mean of chunk F1 and LAS (both views
+  # matter; early stopping inside a run still uses dev chunk F1). (proposed)
+  selection: [chunk_f1, las]
+  prune_unselected: true     # delete weights of sweep runs not used for the final seeds (keeps summary.json)
+  dep_top_k: 5               # group B candidates per word written for tree decoding (treeDecoder.ts)
+  eval_splits: [dev, test]   # test is evaluated once per final seed run; never used for choices
+
+# Phase 5 results (reports/baselines.md, EWT test) that Phase 7 must beat.
+baselines:
+  upos_accuracy: 0.8876      # wink-nlp (better of the two UPOS baselines)
+  chunk_f1: 0.6965           # compromise
+
+# Follow-up stages of Phase 7 (scripts/run_phase7.py --stage <name>). Runs are tagged so they never
+# collide with base Phase 7 runs; results go to their own record and report.
+phase7_stages:
+  extended:                  # 2026-11-19: base runs peaked at the 15-epoch cap and at the top learning rate
+    tag: e30
+    epochs: 30
+    early_stopping_patience: 3
+    lr_sweep: [1.0e-4, 2.0e-4, 3.0e-4]
+    fix_dep_weight: true     # λ from the base Phase 7 choice (λ changed dev scores by ≤ 0.4 points)
+    record: phase7_extended.json
+    report: reports/training_extended.md

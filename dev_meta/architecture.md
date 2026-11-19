@@ -141,7 +141,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Speed / size     | Up to four models (~65–150 MB int8 each); the user chooses one in the model library. Each is downloaded once on request and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Speed per model measured in `plan-training.md` Phase 10 and shown to the user. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
-| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Ships only if UAS ≥ 97% and LAS ≥ 94%; otherwise the app ships without the nested view. |
+| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Shown per model only if it meets the nested-view targets (UAS without punctuation ≥ 93, labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets); brackets below the confidence threshold collapse to flat words. A biaffine parser head (arc scores as a second ONNX output, MST decoding) replaces the head-position labels after Phase 7's extended stage. |
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
@@ -659,3 +659,7 @@ enparse/
 
 - Modified: `parser/treeDecoder.ts` is implemented (decoding with root and cycle repair; head-outward nested phrases; tests reproduce the documented examples).
 - Added: *Model* → per-model word-encoding strategy for Transformers.js (`labels.json` → `tokenizer_word_encoding`, Phase 11).
+
+### 2026-11-18T22:20:52Z — Claude Opus 5.5, Nested-view targets; planned biaffine head
+
+- Modified: *Parsing engine* → *Nested phrases*: view-based acceptance targets, confidence-gated brackets, planned biaffine head (owner decisions).

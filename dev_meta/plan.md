@@ -37,7 +37,6 @@ Open details and decisions required before development can proceed. Remove items
 
 Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, words, and lemmas; no rule-based fallback, so the app parses only once the model is loaded (see *Parsing engine* → *Model readiness* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
 
-- **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 a model needs to be offered in the model library (e.g., ≥ 97% / ≥ 94%), applied per model.
 - **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
 - **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
 
@@ -255,3 +254,7 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 - Added: *Core features* → *Model choice*; 'Undecided' → *Model library* (hosting and storage limits, recommendation rule, presentation, descriptions), with the owner's decisions recorded.
 - Removed: 'Undecided' → 'Parser' → *Base model* and *Model size cap* (decided: every model that meets the thresholds is offered; size is shown to the user instead of capped).
 - Modified: *Acceptance thresholds* apply per model and decide which models are offered.
+
+### 2026-11-18T22:18:20Z — Claude Opus 5.5, Acceptance thresholds decided
+
+- Removed: 'Undecided' → 'Parser' → *Acceptance thresholds*. Decision (owner): a model is offered if test UPOS ≥ 97% and chunk F1 ≥ 94% (and it beats the Phase 5 baselines). Nested-view thresholds are under review (`plan-training.md` → Phase 7).

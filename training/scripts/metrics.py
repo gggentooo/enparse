@@ -172,21 +172,23 @@ def score(
     )
     per_type = {
         k: {
-            "precision": v["precision"],
-            "recall": v["recall"],
-            "f1": v["f1-score"],
-            "support": v["support"],
+            "precision": float(v["precision"]),
+            "recall": float(v["recall"]),
+            "f1": float(v["f1-score"]),
+            "support": int(v["support"]),
         }
         for k, v in report.items()
         if k in {"NP", "VP", "PP", "ADJP", "ADVP"}
     }
     return {
         "upos_acc": upos_ok / upos_total if upos_total else 0.0,
-        "chunk_f1": f1_score(gold_seqs, pred_seqs, zero_division=0) if gold_seqs else 0.0,
-        "chunk_precision": precision_score(gold_seqs, pred_seqs, zero_division=0)
+        "chunk_f1": float(f1_score(gold_seqs, pred_seqs, zero_division=0)) if gold_seqs else 0.0,
+        "chunk_precision": float(precision_score(gold_seqs, pred_seqs, zero_division=0))
         if gold_seqs
         else 0.0,
-        "chunk_recall": recall_score(gold_seqs, pred_seqs, zero_division=0) if gold_seqs else 0.0,
+        "chunk_recall": float(recall_score(gold_seqs, pred_seqs, zero_division=0))
+        if gold_seqs
+        else 0.0,
         "uas": uas_ok / head_total if head_total else 0.0,
         "las": las_ok / head_total if head_total else 0.0,
         "words": upos_total,

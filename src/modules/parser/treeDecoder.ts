@@ -19,9 +19,10 @@
  *      others take their best non-root candidate (else attach to the root);
  *      if none, the word with the most probable root candidate becomes root
  *      (else the first VERB/AUX, else the first word).
- *   3. Cycles are broken by the cheapest change: among words in the cycle,
- *      the most probable alternative candidate whose head lies outside the
- *      cycle; if none, the cycle's least confident word attaches to the root.
+ *   3. Cycles are broken one at a time by the cheapest change: among words in
+ *      the cycle, the most probable alternative candidate whose head chain
+ *      does not lead back to that word (so no new cycle appears); if none, the
+ *      cycle's least confident word attaches to the root. Always terminates.
  *   4. Words without any usable candidate attach to the root (relation "dep").
  *
  * Nested phrases (buildPhrases):
@@ -148,16 +149,22 @@ export function decodeTree(candidates: readonly (readonly DepCandidate[])[], upo
     if (chosen[i] === null) chosen[i] = { head: root + 1, relation: REPAIR_RELATION, prob: 0, rank: Infinity };
   }
 
-  // Step 3: break cycles.
+  // Step 3: break cycles. An alternative is used only if its head chain does not lead back to
+  // the word (so a fix never creates a new cycle); otherwise the word attaches to the root.
   const heads = chosen.map((c) => (c as Choice).head);
-  for (let guard = 0; guard <= n; guard++) {
-    const cycle = findCycle(heads);
-    if (cycle === null) break;
-    const inCycle = new Set(cycle);
+  const leadsBackTo = (word: number, head: number): boolean => {
+    const seen = new Set<number>();
+    for (let k = head; k !== 0 && !seen.has(k); k = heads[k - 1] ?? 0) {
+      if (k - 1 === word) return true;
+      seen.add(k);
+    }
+    return false;
+  };
+  for (let cycle = findCycle(heads); cycle !== null; cycle = findCycle(heads)) {
     let best: { word: number; choice: Choice } | null = null;
     for (const w of cycle) {
       for (const o of options[w] ?? []) {
-        if (o.head === 0 || inCycle.has(o.head - 1)) continue;
+        if (o.head === 0 || leadsBackTo(w, o.head)) continue;
         if (best === null || o.prob > best.choice.prob) best = { word: w, choice: o };
       }
     }
@@ -168,7 +175,6 @@ export function decodeTree(candidates: readonly (readonly DepCandidate[])[], upo
     chosen[best.word] = best.choice;
     heads[best.word] = best.choice.head;
   }
-  if (findCycle(heads) !== null) throw new Error("cycle repair did not converge");
 
   const repairedWords = chosen.flatMap((c, i) => ((c as Choice).rank === 0 ? [] : [i]));
   return {
