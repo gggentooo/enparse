@@ -167,24 +167,17 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** With a Vite worker and the Phase 7 smoke ONNX files, check that files written to Cache Storage by our own downloader are found by Transformers.js 4.3.2 (same cache name and URL keys; no duplicate download), and measure memory when hashing a ~300 MB file with `crypto.subtle.digest` (streaming hash or split files needed?). Q&A 2026-11-19 conflict #3.
 - **Needs:** —
 
-#### [Modules/parser] phraseLabeler.ts · T34 · Build
+#### [Modules/parser] transformerBackend.ts · T63 · Build
 
-- **Files:** `src/modules/parser/phraseLabeler.ts`, `src/modules/parser/phraseLabeler.test.ts`, `src/modules/parser/types.ts`
-- **Task:** Implement the approved conventions as a pure pass over `treeDecoder.ts` output (roles, `S` vs. `VP(Predicate)`, `isHead`, copula, coordination, `contiguous`). Confidence-gating behavior is T59.
-- **Needs:** T10
+- **Files:** `src/modules/parser/transformerBackend.ts`, `src/modules/parser/parser.worker.ts`, tests
+- **Task:** Load the ONNX model with Transformers.js, per-word encoding (`tokenizer_word_encoding`), windows and merging (T04, T08), temperatures, label decoding, self-test parse.
+- **Needs:** T08, T33, T35, T61
 
-#### [Modules/parser] Parser types, BIO grouping, and worker shell · T35 · Build
+#### [Training] Phase 10 browser benchmarking · T64 · Build
 
-- **Files:** `src/modules/parser/types.ts`, `src/modules/parser/parser.ts`, `src/modules/parser/parser.worker.ts`, `src/modules/parser/index.ts`, tests
-- **Task:** Finalize `ParseResult` / `SentenceParse` / `Token` (from *Module interfaces*), BIO grouping and repair, the worker message protocol, and the readiness guard (`ParserNotReadyError`), against a mocked `ParserBackend`. Adjust fields after T33 if needed.
-- **Needs:** T08, T09, T10
-
-#### [Training] Biaffine head and retrain of all four models · T51 · Build
-
-- **Files:** `training/scripts/train.py`, `training/scripts/metrics.py`, `training/scripts/export_onnx.py`, `training/scripts/run_phase7.py`, `training/configs/train_*.yaml`, `training/reports/`
-- **Status:** code done 2026-11-20 (`scripts/biaffine.py`; `train.py`/`evaluate.py`/`run_phase7.py --stage biaffine`; `prepare_data.py --encoding arc [--augment]`; tests `tests/test_biaffine.py`); run started 2026-11-19T23:14Z (`reports/training_biaffine.md`). **Paused 2026-11-20T00:15Z (owner; no AC power):** DistilBERT finished (test UPOS 96.82, chunk F1 95.59, UAS excl. punct 92.22, multi-word bracket F1 84.97; augmentation not used); DeBERTa's first run was stopped and its partial folder removed. Resume from `training/`: `sh scripts/run_phase7_overnight.sh --stage biaffine` (on AC power; finished runs are reused).
-- **Task:** Replace group B head-position labels with a biaffine arc scorer plus relation classifier (keeping the ten-subtype allowlist from T03, set in `configs/`; current `rel_pos_v1` encoding and its tests unchanged), export arc scores as a second ONNX output, retrain all four (Phase 7 again), and evaluate against the nested-view targets. Design per `plan-training.md` → *Biaffine design* (T04, T06–T08): per-sentence arc masks, subword-level `[T, T]` arc scores, augmentation (`lowercase_sentence_start`, `drop_final_punct`) as an experiment kept only if dev does not drop, selection score and λ unchanged, learning-rate sweep adds 4e-4 and 5e-4 for DeBERTa-v3-xsmall and ModernBERT.
-- **Needs:** T01, T04, T05, T06, T07, T08, T45
+- **Files:** `training/js/bench-page/`, `training/reports/benchmark.md`
+- **Task:** Load and parse time, peak memory per model, browser, and backend; a lower-end device; per-model requirements for the catalog.
+- **Needs:** T61
 
 ---
 
@@ -244,12 +237,11 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
 
-#### [Training] Phase 8 calibration · T58 · Build
+#### [Modules/parser] ambiguity.ts · T60 · Build
 
-- **Files:** `training/scripts/calibrate.py`, `training/configs/eval.yaml`, `labels.json` per model, `dev_meta/architecture.md` (margins per model)
-- **Status:** code done 2026-11-20 (`scripts/calibrate.py`, `js/gating_eval.mjs`, `js/lib/gating.mjs`; tests `tests/test_calibrate.py`, `js/tests/gating.test.mjs`); runs when T51 finishes. Before running: add `calibration`/`ambiguity` settings to `configs/eval.yaml`, and compare the two bracket-confidence definitions (words in the bracket only, or also the head's outer dependents) on dev.
-- **Task:** Arc and relation temperatures, ambiguity margin, attachment margin, and the bracket confidence threshold; report shown-bracket precision and coverage for the nested-view decision.
-- **Needs:** T33, T51
+- **Files:** `src/modules/parser/ambiguity.ts`, `src/modules/parser/ambiguity.test.ts`
+- **Task:** Label alternatives from low-margin probabilities and attachment alternatives from biaffine arc-score margins / alternative trees, labeled through `phraseLabeler.ts`; cap at `MAX_ALTERNATIVES`.
+- **Needs:** T11, T34, T45, T58
 
 ---
 
@@ -285,24 +277,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Show data and model attribution and licenses; add it to the architecture skeleton.
 - **Needs:** T21, T39
 
-#### [Modules/parser] Confidence gating and role suppression · T59 · Decision
-
-- **Files:** `src/modules/parser/treeDecoder.ts`, `src/modules/parser/phraseLabeler.ts`
-- **Task:** Decide (and then build) how roles behave when low-confidence brackets collapse: drop, keep on the parent, or mark uncertain. Role accuracy is bounded by the model's UAS/LAS.
-- **Needs:** T34, T58
-
-#### [Modules/parser] ambiguity.ts · T60 · Build
-
-- **Files:** `src/modules/parser/ambiguity.ts`, `src/modules/parser/ambiguity.test.ts`
-- **Task:** Label alternatives from low-margin probabilities and attachment alternatives from biaffine arc-score margins / alternative trees, labeled through `phraseLabeler.ts`; cap at `MAX_ALTERNATIVES`.
-- **Needs:** T11, T34, T45, T58
-
-#### [Training] Phase 9 export and quantization · T61 · Build
-
-- **Files:** `training/scripts/export_onnx.py`, `training/js/benchmark.mjs`, `training/scripts/evaluate.py`, `training/configs/eval.yaml`
-- **Task:** Two-output export, int8 and fp16 variants, parity checks; ModernBERT may ship fp16 only.
-- **Needs:** T58
-
 ---
 
 ## Stage 3
@@ -318,18 +292,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Files:** `src/hooks/useDictionary.ts`, `src/components/Pages/DictionaryPage.tsx`, `src/components/Pages/DictionaryPage.module.css`, tests
 - **Task:** Direct lookup UI and the hook; lookup trigger per T25.
 - **Needs:** T25, T39, T46
-
-#### [Modules/parser] transformerBackend.ts · T63 · Build
-
-- **Files:** `src/modules/parser/transformerBackend.ts`, `src/modules/parser/parser.worker.ts`, tests
-- **Task:** Load the ONNX model with Transformers.js, per-word encoding (`tokenizer_word_encoding`), windows and merging (T04, T08), temperatures, label decoding, self-test parse.
-- **Needs:** T08, T33, T35, T61
-
-#### [Training] Phase 10 browser benchmarking · T64 · Build
-
-- **Files:** `training/js/bench-page/`, `training/reports/benchmark.md`
-- **Task:** Load and parse time, peak memory per model, browser, and backend; a lower-end device; per-model requirements for the catalog.
-- **Needs:** T61
 
 ---
 
@@ -384,6 +346,30 @@ This guide applies to all contributors (human and AI) editing this file.
 ---
 
 ## Done
+
+#### [Training] Phase 9 export and quantization · T61 · Build
+
+- **Done:** 2026-11-21. DeBERTa-v3-xsmall and ModernBERT exported with two outputs; int8 and fp16 pass parity for both (chunk F1 / LAS within 0.13 points of fp32; fp32 agrees 100% with PyTorch), so both ship both variants. Word encoding `plain` for both. `evaluate.py --parity` implemented. Exports in `training/data/onnx/<model>/<run>/`. Recorded in `training/reports/parity.md` and `plan-training.md` → Phase 9.
+
+#### [Modules/parser] Confidence gating and role suppression · T59 · Decision
+
+- **Done:** 2026-11-21 (owner). Roles of collapsed brackets become badges on their head words (never moved to an inner bracket); roles are gated by relation × head probability at `nested.role_threshold`, fitted in Phase 8 for ≥ 95% dev role precision (0.4 for both offered models; test role precision 96.06% / 95.99%, 97% / 96% of roles shown). Built in `phraseLabeler.ts`, `treeDecoder.ts` (`relationProbs`), `js/lib/gating.mjs` (`roleCurve`), `calibrate.py`; labels.json v2 gains `nested.role_threshold`. Recorded in `architecture.md` → *Role labeling* and `plan-training.md` → Phase 8 task 5b.
+
+#### [Modules/parser] Parser types, BIO grouping, and worker shell · T35 · Build
+
+- **Done:** 2026-11-21. `types.ts`: `Token`, `Chunk`, `SentenceParse`, `ParseResult`, `Alternative`, `ModelRef` (+ `nestedView`), `ParserBackend` contract, worker protocol, `WorkerStatus`, typed errors with (de)serialization. `parser.ts`: `repairBio`, `groupChunks`, `buildSentenceParse`, `Parser`. `parser.worker.ts`: `createWorkerHandler` (one model at a time, ordered requests, retry, readiness guard). `index.ts`: `createParserWorker` / `createParserClient`. `transformerBackend.ts` is a placeholder until T63; alternatives wait for T60; lemmas for `TODO(lemma)`. Tests: `parser.test.ts`, `parser.worker.test.ts`, `index.test.ts`.
+
+#### [Modules/parser] phraseLabeler.ts · T34 · Build
+
+- **Done:** 2026-11-21. `labelPhrases` (roles from relations on maximal projections, `S` / `VP(Predicate)`, copula Complement, split predicates, coordination, single-word wrappers, `isHead`), matched to treeDecoder's bracketing levels so gated phrases label correctly. Tests: `phraseLabeler.test.ts` (12). Recorded in the `phraseLabeler.ts` header.
+
+#### [Training] Phase 8 calibration · T58 · Build
+
+- **Done:** 2026-11-21. `scripts/calibrate.py` for DeBERTa-v3-xsmall and ModernBERT; ECE reduced for all outputs (test arc ECE 5.19 → 0.41 and 5.33 → 1.67). Margins / attachment margins 0.4 / 0.3 and 0.3 / 0.3 (≤ 0.3 mean alternatives per sentence, owner); bracket thresholds 0.85 and 0.80 with test shown-bracket precision 95.71% for both, coverage 48.6% and 53.7%; nested view met for both. Bracket confidence includes the head's outer dependents (chosen on dev). Values in each checkpoint's `labels.json`; recorded in `training/reports/calibration.md`, `architecture.md` → *Ambiguity handling*, and `plan-training.md` → Phase 8.
+
+#### [Training] Biaffine head and retrain of all four models · T51 · Build
+
+- **Done:** 2026-11-20. `scripts/biaffine.py` (arc scorer, per-sentence masks), `prepare_data.py --encoding arc [--augment]`, `run_phase7.py --stage biaffine` (4.3 h after the resume; no failed runs). Test, dev-selected seed: DeBERTa-v3-xsmall UPOS 97.65, chunk F1 97.01, UAS excl. punct 94.51, multi-word bracket F1 89.75; ModernBERT 97.40 / 96.47 / 94.30 / 89.71 (both offered, nested view pending Phase 8); BERT 97.00 (96.995, not offered) / 96.13 / 93.80 / 87.82; DistilBERT 96.82 / 95.59 / 92.22 / 84.97 (not offered). Augmentation kept for BERT and ModernBERT only. Recorded in `training/reports/training_biaffine.md` and `plan-training.md` → Phase 7.
 
 #### [Modules/parser] treeDecoder.ts MST decoding · T45 · Build
 
@@ -460,3 +446,17 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T01, T04, T06, T07, T08, T32 moved to *Done* with outcomes (owner decisions for T04, T06–T08; checkpoints carried forward per model).
 - Modified: T51 task text adds the biaffine design decisions and the 4e-4 / 5e-4 learning rates for DeBERTa-v3-xsmall and ModernBERT.
+
+### 2026-11-20T22:07:16Z — Claude Opus 5.5, T51 and T58 done; restaged
+
+- Modified: T51 (biaffine retrain finished) and T58 (Phase 8 calibration) moved to *Done* with outcomes.
+- Modified: T61 moved to Stage 0; T59, T60, T63, T64 moved to Stage 1 (their remaining *Needs* are in Stage 0).
+
+### 2026-11-20T22:29:17Z — Claude Opus 5.5, T34, T35, T59 done
+
+- Modified: T34, T35, T59 moved to *Done* with outcomes (T59: owner chose head-word badges and a role gate).
+
+### 2026-11-20T22:42:10Z — Claude Opus 5.5, T61 done; restaged
+
+- Modified: T61 (Phase 9) moved to *Done* with outcome.
+- Modified: T63 and T64 moved to Stage 0 (all *Needs* done).

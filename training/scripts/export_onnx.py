@@ -59,7 +59,7 @@ Dependencies:
             scripts/prepare_data.py (encode_words, validate_labels_json), scripts/metrics.py.
     Reads:  configs/eval.yaml (export, smoke); configs/train_<model>.yaml;
             configs/data.yaml (paths); data/checkpoints/<model>/<run>/best/;
-            data/processed/dataset/<model>/ (dev windows).
+            data/processed/dataset/<model>/ (dev windows; dataset_arc/ for biaffine).
     Writes: data/onnx/<model>/<run>/ (git-ignored).
     Consumed by: js/benchmark.mjs (smoke, parity, speed), scripts/evaluate.py
                  (Phase 9 parity), scripts/package_models.py (Phase 11).
@@ -449,6 +449,7 @@ def dev_windows(dataset: Dataset, n: int | None) -> list[dict[str, Any]]:
     count = len(dataset) if n is None else min(n, len(dataset))
     return [
         {
+            "words": dataset[i]["words"],  # re-tokenized by js/benchmark.mjs (word encoding)
             "input_ids": dataset[i]["input_ids"],
             "token_word": dataset[i]["token_word"],
             "word_sent": dataset[i]["word_sent"],
@@ -651,7 +652,11 @@ def main() -> None:
             if args.parity_windows
             else int(eval_cfg["smoke"]["dev_windows"])
         )
-    dev_ds = load_from_disk(str(TRAINING_DIR / data_cfg["paths"]["dataset"] / args.model))["dev"]
+    from biaffine import is_biaffine
+
+    # Biaffine models are evaluated on dataset_arc (evaluate.py); parity uses the same windows.
+    key = "dataset_arc" if is_biaffine(str(checkpoint)) else "dataset"
+    dev_ds = load_from_disk(str(TRAINING_DIR / data_cfg["paths"][key] / args.model))["dev"]
     report = export(
         checkpoint,
         out,

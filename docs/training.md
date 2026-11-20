@@ -1,6 +1,6 @@
 # Enparse Model Training: Technical Guide
 
-> **Current Status (as of 2026-11-19):** Training is **in progress** in the middle of **Phase 7** (Full Training and Tuning). Phases pre-0 through 5 and the Phase 7 base training stage (32 runs, 15 epochs each across all four candidate models) are complete. The **Phase 7 extended stage** (up to 30 epochs) is currently running on `bert_base_cased` (`distilbert_base_cased` and `deberta_v3_xsmall` are finished; `modernbert_base` is queued next). After the extended stage finishes, a planned architectural upgrade (a **biaffine dependency parser head**) will retrain all four models before moving on to Phases 8–11 (calibration, ONNX export/quantization, browser benchmarking, and packaging).
+> **Current Status (as of 2026-11-21):** Phases pre-0 through 9 are complete. Phase 7 finished with a **biaffine dependency parser head** retrained on all four models: `deberta_v3_xsmall` and `modernbert_base` meet every acceptance threshold and are offered; `bert_base_cased` (test UPOS 96.995%) and `distilbert_base_cased` miss the 97% UPOS bar. Phase 8 calibrated both offered models (temperatures, ambiguity margins, bracket-confidence thresholds with ≥ 95% shown-bracket precision; `training/reports/calibration.md`). Phase 9 exported both offered models; int8 and fp16 pass parity for both (`training/reports/parity.md`). Next: Phase 10 (browser benchmarking). Sections below that describe the extended stage as running are historical.
 
 ---
 
@@ -35,19 +35,19 @@ All training runs locally without cloud GPUs:
 
 ### Pipeline Roadmap and Live Status
 
-| Phase | Purpose | Status (2026-11-19) |
+| Phase | Purpose | Status (2026-11-21) |
 |---|---|---|
 | **Pre-0 & 0** | Machine check, Python/Node pins, MPS verification, Unsloth check | Complete |
 | **1** | Acquire UD English EWT dataset, pin hashes, resolve licensing | Complete |
 | **2** | Derive flat phrase chunks (BIO tags) from UD dependency trees | Complete |
 | **3** | Align training words with the runtime `wink-nlp` tokenizer | Complete |
-| **4** | Build label maps, multi-sentence windows, and `labels.json` v1 | Complete |
+| **4** | Build label maps, multi-sentence windows, and `labels.json` (v1; v2 for the biaffine head) | Complete |
 | **5** | Measure classical JS baselines (`wink-nlp`, `compromise`) | Complete |
 | **6** | ~~Single base-model selection~~ | Removed (all qualifying models ship) |
-| **7** | Smoke test, hyperparameter sweeps, 3-seed training, test evaluation | **In progress** (base stage done; extended stage running; biaffine head planned next) |
-| **8** | Probability calibration (temperature scaling) and ambiguity margins | Planned |
-| **9** | Final ONNX export (`fp32`, `int8`, `fp16`) and parity verification | Planned |
-| **10** | Browser benchmarking (Chrome, Safari, Firefox; WebGPU & WASM) | Planned |
+| **7** | Smoke test, hyperparameter sweeps, 3-seed training, test evaluation | Complete (base, extended, and biaffine stages; DeBERTa-v3-xsmall and ModernBERT offered) |
+| **8** | Probability calibration (temperature scaling) and ambiguity margins | Complete (2026-11-21) |
+| **9** | Final ONNX export (`fp32`, `int8`, `fp16`) and parity verification | Complete (2026-11-21) |
+| **10** | Browser benchmarking (Chrome, Safari, Firefox; WebGPU & WASM) | **Next** |
 | **11** | Packaging into `public/models/` (Git LFS), `catalog.json`, integration tests | Planned |
 | **12** | Ongoing maintenance and optional user-feedback retraining | Planned |
 

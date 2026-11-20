@@ -753,7 +753,7 @@ def make_labels_json_v2(
         },
         "calibration": {"temperature": None, "rel_temperature": None, "arc_temperature": None},
         "ambiguity": {"margin": None, "attachment_margin": None},
-        "nested": {"bracket_threshold": None},
+        "nested": {"bracket_threshold": None, "role_threshold": None},
         "model_version": None,
         "files": None,
     }
@@ -875,7 +875,7 @@ def _validate_v2(obj: dict[str, Any]) -> list[str]:
         (
             ("calibration", ("temperature", "rel_temperature", "arc_temperature")),
             ("ambiguity", ("margin", "attachment_margin")),
-            ("nested", ("bracket_threshold",)),
+            ("nested", ("bracket_threshold", "role_threshold")),
         ),
         need,
     )

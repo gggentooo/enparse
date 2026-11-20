@@ -532,6 +532,7 @@ Single contract between training and the app. Later phases fill their fields; th
 | `calibration` | object | `calibrate.py` (8) | `temperature` (group A), `rel_temperature`, `arc_temperature` (replaces `dep_temperature`). |
 | `ambiguity.attachment_margin` | number \| null | `calibrate.py` (8) | Top-two head-probability margin for PP-attachment alternatives. |
 | `nested.bracket_threshold` | number \| null | `calibrate.py` (8) | Bracket-confidence threshold for gating (`treeDecoder.ts` → `gatePhrases`). |
+| `nested.role_threshold` | number \| null | `calibrate.py` (8) | Role-confidence threshold (relation × head probability of the role's head word; `phraseLabeler.ts` role gate; T59, added 2026-11-21). |
 
 - Dataset columns (v2): `labels_chunk`, `labels_rel` (group-local ids), `labels_head` (token position of the head's first subword; `0` = root; `-100` = ignored), `token_sent` (sentence index at first subwords, `-1` elsewhere), plus the v1 word-level fields. Check (2026-11-20): all 253,269 train/dev/test words map to their gold head token and relation for every model; 3 train words have a relation seen < 5 times and no kept base (`-100`).
 - `validate_labels_json` dispatches on `schema_version` (1 or 2); `tests/test_biaffine.py` covers v2. The pre-flight ↔ parser schema-version parity test is written with the pre-flight module (T36); its header names `SUPPORTED_SCHEMA_VERSION = 2`.
@@ -646,6 +647,17 @@ Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts
 
 **Biaffine stage (T51; started 2026-11-19 23:14 UTC):** `python scripts/run_phase7.py --stage biaffine` (`configs/eval.yaml` → `phase7_stages.biaffine`; report `reports/training_biaffine.md`; record `phase7_biaffine.json`). Data `dataset_arc` (schema v2); learning rates 1e-4, 2e-4, 3e-4 (+ 4e-4, 5e-4 for DeBERTa and ModernBERT), up to 30 epochs, patience 3, λ fixed from the base run; at the best rate, the first seed is also trained on `dataset_arc_aug` (augmentation, T06) and the seeds use it if its dev selection score is not lower. Dev UAS/LAS during training use argmax heads; test trees use MST (`treeDecoder.ts`). Probe before the run (DistilBERT, 2 epochs, lr 2e-4): dev UAS 90.1 / LAS 86.5 (rel_pos best after 15 epochs: 86.0 / 84.2).
 
+**Biaffine stage outcome (finished 2026-11-20; paused once for power and resumed):** test, dev-selected seed:
+
+| Model | UPOS | Chunk F1 | UAS excl. punct | Multi-word bracket F1 | Offered | Nested view |
+|---|---|---|---|---|---|---|
+| DistilBERT | 96.82 | 95.59 | 92.22 | 84.97 | no (UPOS) | no |
+| DeBERTa-v3-xsmall | 97.65 | 97.01 | 94.51 | 89.75 | yes | met (Phase 8) |
+| BERT | 96.995 | 96.13 | 93.80 | 87.82 | no (UPOS; strict ≥ 97) | no |
+| ModernBERT | 97.40 | 96.47 | 94.30 | 89.71 | yes | met (Phase 8) |
+
+Best rates: DeBERTa 3e-4 (4e-4 and 5e-4 lower), ModernBERT 2e-4, DistilBERT and BERT 1e-4 (lowest tried). Augmentation used for BERT and ModernBERT only. Words whose MST head differs from the argmax head: 2.6–4.5% (rel_pos tree repair: ~34%).
+
 **Exit status (2026-11-20): met.** All four passed the smoke test and were trained and evaluated on test; DeBERTa-v3-xsmall and ModernBERT meet the flat thresholds and beat the baselines; no model meets the nested-view targets with the current head. Deliverables done (`reports/training.md`, `reports/training_extended.md`, `reports/errors.md`). Next: the biaffine retrain (*Planned change*), then Phase 8 on the retrained models (`todo.md`).
 
 ### Phase 8 — Calibration and ambiguity threshold
@@ -654,15 +666,25 @@ Alternatives and the nested view's confidence gating are built from model probab
 
 **Tasks**
 1. Collect, on dev and test, each word's group A logits (`UPOS|CHUNK`), relation logits, and arc scores over its sentence plus root (first subwords), at the carried-forward checkpoint (dev-selected seed of the biaffine stage).
-2. Fit one temperature per output on dev by minimizing NLL: `calibration.temperature` (group A), `rel_temperature`, `arc_temperature`. Report top-1 expected calibration error (ECE) before and after, dev and test. (MST trees do not change with the arc temperature: each word keeps exactly one head, so only head probabilities change.)
+2. Fit one temperature per output on dev by minimizing NLL (golden-section search in [`t_min`, `t_max`] = [0.25, 20]; widened from 4 on 2026-11-21 because the raw arc scores are strongly overconfident: dev optimum 5.6 for DeBERTa, 9.4 for ModernBERT): `calibration.temperature` (group A), `rel_temperature`, `arc_temperature`. Report top-1 expected calibration error (ECE) before and after, dev and test. (MST trees do not change with the arc temperature: each word keeps exactly one head, so only head probabilities change.)
 3. Ambiguity margins on dev, with calibrated probabilities. A word is ambiguous if its top-two group A probabilities differ by less than `ambiguity.margin`; a PP-attachment word (gold `obl`/`nmod` with a `case` dependent) gets an attachment alternative if its top-two head probabilities differ by less than `ambiguity.attachment_margin`. Alternatives per sentence = min(5, 2^k − 1) for k ambiguous words, plus attachment alternatives, capped at `MAX_ALTERNATIVES` = 5 (T09). For each margin pair: share of errors recovered (the gold label or head is offered as an alternative) and mean alternatives per sentence.
-4. Choose the margin pair: most errors recovered with mean alternatives per sentence ≤ `ambiguity.max_mean_alternatives` (proposed 1.0; owner may change it after seeing the curve).
-5. Bracket gating (`treeDecoder.ts` → `bracketConfidence`, `gatePhrases`): decode MST trees with calibrated head probabilities, build nested phrases, and for thresholds 0 – 0.99 measure the precision of the shown multi-word brackets (labeled), their coverage (shown / predicted), and recall. Choose the lowest threshold whose dev precision is ≥ `acceptance.nested_view.min_shown_precision` (95%); report test precision and coverage there. Bracket confidence (proposed): the product of the chosen-head probabilities of the words a bracket covers, except its head word.
+4. Choose the margin pair: most errors recovered with mean alternatives per sentence ≤ `ambiguity.max_mean_alternatives` = 0.3 (owner, 2026-11-21: with the proposed 1.0 the cap never bound, because more alternatives always recover more errors, so the largest margins in the sweep won; DistilBERT dry run at 0.3: ~12% of errors recovered, 0.27 alternatives per sentence, ~18% of sentences flagged).
+5. Bracket gating (`treeDecoder.ts` → `bracketConfidence`, `gatePhrases`): decode MST trees with calibrated head probabilities, build nested phrases, and for thresholds 0 – 0.99 measure the precision of the shown multi-word brackets (labeled), their coverage (shown / predicted), and recall. Choose the lowest threshold whose dev precision is ≥ `acceptance.nested_view.min_shown_precision` (95%); report test precision and coverage there. Bracket confidence: the product of the chosen-head probabilities of the words a bracket covers except its head word, and of its head's dependents outside the bracket (attached at outer nesting levels). Chosen 2026-11-21 over the inside-words-only product, which kept wrong brackets that miss a word (e.g. [red dog barks] when "the" wrongly attaches to "barks"): at ≥ 95% dev precision it shows 48.7% vs 31.9% (DeBERTa) and 54.1% vs 42.5% (ModernBERT) of predicted multi-word brackets, with test precision 95.7% for both (fitted arc temperatures from the saved predictions).
+5b. Role gating (T59, owner 2026-11-21): at the chosen bracket threshold, label the gated phrases with `phraseLabeler.ts` (roles of collapsed brackets become badges on their head words) and choose the lowest role threshold (relation probability × head probability of the role's head word, calibrated; relation probabilities renormalized over the stored top-5 candidates) whose dev role precision is ≥ the same 95%. A role is correct if the gold tree's labeled phrases give the same role to the same span (badge: to the same head word). Stored as `nested.role_threshold`.
 6. Nested-view decision per model (test): UAS without punctuation ≥ 93, multi-word bracket F1 ≥ 88 (Phase 7 biaffine stage), and shown-bracket precision ≥ 95% at the chosen threshold, with coverage reported.
 7. Write temperatures, margins, and the threshold into the checkpoint's `labels.json` (export copies it) and `reports/calibration.md`; record the margins per model in `architecture.md`.
 
 **Deliverables:** `reports/calibration.md`; calibrated `labels.json` per offered model.
 **Exit criterion:** calibration error reduced for every offered model (group A, relation, arc); margins and bracket threshold chosen and recorded in `architecture.md` (per model); nested-view decision recorded per model.
+
+**Outcome (2026-11-21; `reports/calibration.md`):** exit criterion met.
+
+| Model | T (A / rel / arc) | Test ECE A / rel / arc, before → after (%) | Margin / attachment | Bracket threshold | Test shown precision | Test coverage | Role threshold | Test role precision | Roles shown | Nested view |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DeBERTa-v3-xsmall | 1.78 / 1.99 / 5.57 | 2.69 → 0.61 / 4.15 → 0.73 / 5.19 → 0.41 | 0.4 / 0.3 | 0.85 | 95.71 | 48.6% | 0.4 | 96.06 | 97.4% | met |
+| ModernBERT | 2.05 / 2.28 / 9.39 | 2.95 → 0.64 / 4.06 → 0.70 / 5.33 → 1.67 | 0.3 / 0.3 | 0.80 | 95.71 | 53.7% | 0.4 | 95.99 | 95.8% | met |
+
+About half of the predicted multi-word brackets are shown (the rest collapse); at the chosen margins ~19% of dev sentences get alternatives, recovering 15% (DeBERTa) and 13% (ModernBERT) of label errors and ~20% of PP-attachment errors.
 
 ### Phase 9 — ONNX export and quantization
 
@@ -678,6 +700,19 @@ Runs for every offered candidate.
 
 **Deliverables:** ONNX files; parity report.
 **Exit criterion:** both variants pass parity for every offered model (a model whose variant fails is not offered with that variant).
+
+**Outcome (2026-11-21; `reports/parity.md`):** exit criterion met. Commands (from `training/`): `python scripts/export_onnx.py --model <m> --run <run> --parity-windows all`; `npm run benchmark -- --model <m> --run <run> --mode parity` (in `js/`); `python scripts/evaluate.py --parity`. Dev windows come from `dataset_arc` for biaffine models (fixed 2026-11-21; the export had used the v1 dataset). Transformers.js (Node, CPU) on all dev windows:
+
+| Model | Variant | Size | Agreement with PyTorch (A / rel / head) | Δ chunk F1 | Δ LAS | Shipped |
+|---|---|---|---|---|---|---|
+| DeBERTa-v3-xsmall | fp32 | 287 MB | 100 / 100 / 100% | — | — | parity only |
+| | int8 | 90 MB | 99.81 / 99.78 / 99.78% | −0.04 | −0.05 | yes |
+| | fp16 | 144 MB | 99.99 / 99.99 / 100% | −0.01 | −0.01 | yes |
+| ModernBERT | fp32 | 604 MB | 100 / 100 / 100% | — | — | parity only |
+| | int8 | 156 MB | 99.69 / 99.62 / 99.41% | +0.13 | +0.02 | yes |
+| | fp16 | 302 MB | 99.99 / 100 / 99.98% | 0.00 | 0.00 | yes |
+
+Δ = fp32 − variant in points (negative: the variant scored slightly higher). ModernBERT int8 passes on the trained model (the smoke-test failure came from a barely trained model's near-ties); no `int8_exclude_nodes` needed. Word encoding: `plain` for both (both strategies reproduce Python's token ids on the 3 reference sentences and every dev window; the check now covers dev windows), written to the export's `labels.json` → `tokenizer_word_encoding`. Gating thresholds were fitted on PyTorch outputs; with ≥ 99.4% head agreement they carry over (not re-measured per variant).
 
 ### Phase 10 — Browser benchmarking
 
@@ -913,3 +948,19 @@ Runs for every offered candidate.
 - Added: Phase 7 extended-stage outcome, carried-forward checkpoints (owner: extended for DeBERTa, BERT, ModernBERT; base for DistilBERT), error-analysis outcome, and exit status (met).
 - Added: *Nested phrase structure* → *Biaffine design* (owner decisions T04, T06, T07, T08): per-sentence arc scope, subword-level `[T, T]` arc scores, runtime windows packed like training, stray `I-X` → `B-X` repair, augmentation experiment, learning rates 4e-4 / 5e-4 for DeBERTa and ModernBERT.
 - Modified: Phase 4 task 6 (augmentation decision), Phase 7 hyperparameters (selection score and λ confirmed), Phase 7 task 5 (done), *Key design decisions* → *Multi-sentence context* (no runtime overlap).
+
+### 2026-11-20T22:07:16Z — Claude Opus 5.5, Biaffine stage and Phase 8 done
+
+- Added: Phase 7 biaffine-stage outcome (DeBERTa-v3-xsmall and ModernBERT offered; BERT and DistilBERT not).
+- Added: Phase 8 outcome (temperatures, ECE, margins, bracket thresholds, nested view met for both offered models).
+- Modified: Phase 8 tasks 2, 4, 5: temperature range [0.25, 20], mean-alternatives cap 0.3 (owner), bracket confidence with the head's outer dependents.
+
+### 2026-11-20T22:29:17Z — Claude Opus 5.5, Role gating (T59)
+
+- Added: Phase 4 schema v2 → `nested.role_threshold`; Phase 8 task 5b (role gate fitted on dev, ≥ 95% role precision; badges for collapsed brackets).
+- Modified: Phase 8 outcome table: role threshold 0.4 for both offered models (test role precision 96.06% / 95.99%).
+
+### 2026-11-20T22:42:10Z — Claude Opus 5.5, Phase 9 done
+
+- Added: Phase 9 outcome (both offered models ship int8 and fp16; parity table; word encoding `plain`).
+- Modified: `export_onnx.py` uses `dataset_arc` dev windows for biaffine models and stores window words; `benchmark.mjs` checks the word encoding on every dev window; `evaluate.py --parity` implemented (`reports/parity.md`).

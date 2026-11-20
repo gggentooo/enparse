@@ -51,7 +51,8 @@ Dependencies:
     Writes: data/checkpoints/<model>/<run>/best/labels.json (calibration, ambiguity, nested);
             data/eval/<model>/<run>/calibration.json; reports/calibration.md.
     Related: src/modules/parser/transformerBackend.ts (temperatures), ambiguity.ts
-             (margins), treeDecoder.ts (gatePhrases with nested.bracket_threshold).
+             (margins), treeDecoder.ts (gatePhrases with nested.bracket_threshold), phraseLabeler.ts
+             (role gate with nested.role_threshold).
 
 Status: implemented (T58).
 """
@@ -363,7 +364,7 @@ def calibrate_run(
     )
     chosen = choose_margins(table, float(amb["max_mean_alternatives"]))
 
-    gating = run_gating(model_key, run, temps["arc"], cfg)
+    gating = run_gating(model_key, run, temps["arc"], temps["rel"], cfg)
 
     labels_json["calibration"] = {
         "temperature": temps["chunk"],
@@ -374,7 +375,10 @@ def calibrate_run(
         "margin": chosen["margin"],
         "attachment_margin": chosen["attachment_margin"],
     }
-    labels_json["nested"] = {"bracket_threshold": gating["threshold"]}
+    labels_json["nested"] = {
+        "bracket_threshold": gating["threshold"],
+        "role_threshold": gating["role"]["threshold"],
+    }
     problems = validate_labels_json(labels_json)
     if problems:
         raise RuntimeError(f"labels.json invalid after calibration: {problems}")
@@ -398,12 +402,12 @@ def calibrate_run(
 
 
 def run_gating(
-    model_key: str, run: str, arc_temperature: float, cfg: dict[str, Any]
+    model_key: str, run: str, arc_temperature: float, rel_temperature: float, cfg: dict[str, Any]
 ) -> dict[str, Any]:
-    """js/gating_eval.mjs: bracket threshold on dev, shown precision and coverage on test."""
+    """js/gating_eval.mjs: bracket and role thresholds on dev, precision and coverage on test."""
     cmd = [
         "npx", "tsx", "gating_eval.mjs", "--model", model_key, "--run", run,
-        "--arc-temperature", str(arc_temperature),
+        "--arc-temperature", str(arc_temperature), "--rel-temperature", str(rel_temperature),
         "--min-precision", str(cfg["acceptance"]["nested_view"]["min_shown_precision"]),
     ]  # fmt: skip
     proc = subprocess.run(cmd, cwd=TRAINING_DIR / "js", capture_output=True, text=True, check=False)
@@ -431,12 +435,13 @@ def offered(test: dict[str, Any], cfg: dict[str, Any]) -> bool:
 
 
 def nested_verdict(test: dict[str, Any], gating: dict[str, Any], cfg: dict[str, Any]) -> str:
-    """Nested view decision: all three targets on test (precision after gating)."""
+    """Nested view decision: all targets on test (bracket and role precision after gating)."""
     nv = cfg["acceptance"]["nested_view"]
     ok = (
         test.get("tree_uas_no_punct", 0) >= nv["min_uas_no_punct"]
         and test.get("nested_multiword_f1", 0) >= nv["min_bracket_f1"]
         and (gating["test"]["precision"] or 0) >= nv["min_shown_precision"]
+        and (gating["role"]["test"]["precision"] or 0) >= nv["min_shown_precision"]
     )
     return "**yes**" if ok else "no"
 
@@ -454,17 +459,23 @@ def render(results: list[dict[str, Any]], skipped: list[str], cfg: dict[str, Any
         f"({cfg['calibration']['ece_bins']} bins). Margins are chosen on dev: most errors "
         "recovered (gold label or PP head offered as an alternative) with mean alternatives "
         "per sentence "
-        f"≤ {amb['max_mean_alternatives']} (cap {amb['max_alternatives']}; proposed rule). The "
+        f"≤ {amb['max_mean_alternatives']} (cap {amb['max_alternatives']}; proposed rule, "
+        "owner-set mean cap). The "
         "bracket threshold is the lowest bracket confidence (product of chosen-head probabilities "
-        "inside the bracket, `treeDecoder.ts`) whose dev shown-bracket precision (labeled, "
-        f"multi-word) is ≥ {_pct(nv['min_shown_precision'])}; test values are reported at it.",
+        "of the words inside the bracket except its head and of the head's dependents outside it, "
+        "`treeDecoder.ts`) whose dev shown-bracket precision (labeled, "
+        f"multi-word) is ≥ {_pct(nv['min_shown_precision'])}; test values are reported at it. "
+        "The role threshold (T59) is the lowest role confidence (relation × head probability of "
+        "the role's head word) whose dev role precision is ≥ the same target, with brackets gated "
+        "at the bracket threshold and roles of collapsed brackets shown as head-word badges.",
         "",
         "## Summary",
         "",
         "| Model | Run | T (A / rel / arc) | ECE A before → after (test) | ECE arc before → after "
         "(test) | Margin | Attachment margin | Mean alternatives / sentence (dev) | Bracket "
-        "threshold | Shown precision (test) | Coverage (test) | Nested view |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "threshold | Shown precision (test) | Coverage (test) | Role threshold | Role precision "
+        "(test) | Roles shown (test) | Nested view |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
         t, e, m, g = r["temperatures"], r["ece"], r["margins"], r["gating"]
@@ -474,7 +485,8 @@ def render(results: list[dict[str, Any]], skipped: list[str], cfg: dict[str, Any
             f"{_pct(e['arc']['test_before'])} → {_pct(e['arc']['test_after'])} | {m['margin']} | "
             f"{m['attachment_margin']} | {m['mean_alternatives']:.2f} | {g['threshold']} | "
             f"{_pct(g['test']['precision'])} | {_pct(g['test']['coverage'])} | "
-            f"{r.get('nested_view', '—')} |"
+            f"{g['role']['threshold']} | {_pct(g['role']['test']['precision'])} | "
+            f"{_pct(g['role']['test']['coverage'])} | {r.get('nested_view', '—')} |"
         )
     if skipped:
         L += [
@@ -522,6 +534,23 @@ def render(results: list[dict[str, Any]], skipped: list[str], cfg: dict[str, Any
         ]
         for row in g["curve"]:
             mark = " ←" if row["threshold"] == g["threshold"] else ""
+            L.append(
+                f"| {row['threshold']}{mark} | {_pct(row['dev']['precision'])} | "
+                f"{_pct(row['dev']['coverage'])} | {_pct(row['test']['precision'])} | "
+                f"{_pct(row['test']['coverage'])} | {_pct(row['test']['recall'])} |"
+            )
+        role = g["role"]
+        L += [
+            "",
+            f"Role gating (T59; brackets gated at {g['threshold']}; coverage = share of roles "
+            "shown without a role gate):",
+            "",
+            "| Role threshold | Dev precision | Dev coverage | Test precision | Test coverage | "
+            "Test recall |",
+            "|---|---|---|---|---|---|",
+        ]
+        for row in role["curve"]:
+            mark = " ←" if row["threshold"] == role["threshold"] else ""
             L.append(
                 f"| {row['threshold']}{mark} | {_pct(row['dev']['precision'])} | "
                 f"{_pct(row['dev']['coverage'])} | {_pct(row['test']['precision'])} | "
@@ -577,7 +606,8 @@ def main() -> None:
         results.append(r)
         print(
             f"{m}/{run}: T {r['temperatures']}, margins {r['margins']['margin']} / "
-            f"{r['margins']['attachment_margin']}, bracket threshold {r['gating']['threshold']}"
+            f"{r['margins']['attachment_margin']}, bracket threshold {r['gating']['threshold']}, "
+            f"role threshold {r['gating']['role']['threshold']}"
         )
     REPORT.write_text(render(results, skipped, cfg), encoding="utf-8")
     print(f"report -> {REPORT.relative_to(TRAINING_DIR)}")

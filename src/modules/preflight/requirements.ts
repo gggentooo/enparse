@@ -29,7 +29,7 @@
  *      pinned in the root package.json (JSON import at build time), compared
  *      with labels.json → versions.wink.
  *   5. REQUIRED_MANIFEST_FIELDS: labels.json fields that must not be null at
- *      runtime (calibration.*, ambiguity.*, nested.bracket_threshold,
+ *      runtime (calibration.*, ambiguity.*, nested.bracket_threshold, nested.role_threshold,
  *      tokenizer_word_encoding, model_version).
  *
  * Dependencies:

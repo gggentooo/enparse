@@ -101,6 +101,11 @@ def test_render_lists_models_and_skipped() -> None:
             "threshold": 0.5,
             "test": curve_row,
             "curve": [{"threshold": 0.5, "dev": curve_row, "test": curve_row}],
+            "role": {
+                "threshold": 0.4,
+                "test": curve_row,
+                "curve": [{"threshold": 0.4, "dev": curve_row, "test": curve_row}],
+            },
         },  # noqa: E501
         "nested_view": "**yes**",
     }

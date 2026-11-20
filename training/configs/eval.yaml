@@ -46,8 +46,8 @@
 #     min_chunk_f1        — 0.94
 #     nested_view         — UAS excl. punct 0.93, multi-word bracket F1 0.88, shown precision 0.95
 #
-# Status: env_check (Phase 0), smoke, export, parity, acceptance (Phase 7/9) set; calibration,
-#   ambiguity, benchmark pending.
+# Status: env_check (Phase 0), smoke, export, parity, acceptance (Phase 7/9), calibration and
+#   ambiguity (Phase 8) set; benchmark pending.
 # =============================================================================
 
 # Phase 0 dummy training run (scripts/check_env.py). (proposed)
@@ -162,3 +162,19 @@ error_analysis:
   sample_size: 100           # errors sampled per model and grouped by type
   seed: 7
   examples_per_group: 2      # shown in the report; the full sample goes to data/eval/<model>/<run>/
+
+# Phase 8 (scripts/calibrate.py; T58). One temperature per output (group A, relations, arcs), fitted
+# on dev NLL by golden-section search in [t_min, t_max]; ECE (top-1 confidence) over ece_bins bins.
+calibration:
+  t_min: 0.25
+  t_max: 20.0               # arc scores are overconfident: dev optimum 5.6 (DeBERTa), 9.4 (ModernBERT)
+  ece_bins: 15
+
+# Phase 8 ambiguity margins (architecture.md → Ambiguity handling; T09: 5 alternatives per sentence).
+# Chosen pair: the most dev errors recovered (gold label/head shown as an alternative) with mean
+# alternatives per sentence ≤ max_mean_alternatives (rule proposed; cap owner 2026-11-21; sweep proposed).
+ambiguity:
+  margin_candidates: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]   # around the proposed 0.2
+  attachment_margin_candidates: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]      # PP-attachment alternatives
+  max_alternatives: 5                                              # owner, T09
+  max_mean_alternatives: 0.3                                       # owner, 2026-11-21 (1.0 never bound: the largest margins won)

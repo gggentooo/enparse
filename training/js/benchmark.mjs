@@ -13,9 +13,10 @@
  *   npm run benchmark -- --dir <export folder> [--variants fp32,int8,fp16]
  *
  * Modes:
- *   smoke   1. Tokenizer: encode reference.json sentences word by word
+ *   smoke   1. Tokenizer: encode reference.json sentences (and every
+ *              parity window that carries its words) word by word
  *              (lib/inference.mjs) with each strategy; one must reproduce
- *              Python's ids exactly (reported per model).
+ *              Python's ids exactly on all of them (reported per model).
  *           2. Per variant: load; logits width = labels.json labels; word
  *              argmax on the reference sentences and parity_inputs.jsonl vs
  *              PyTorch (agreement per group).
@@ -93,16 +94,22 @@ async function logitsFor(model, ids) {
   return { data: out.logits.data, tokens: t, width: c, arc: out.arc_scores?.data ?? null, arcDims: out.arc_scores?.dims ?? null };
 }
 
-function checkTokenizer(tokenizer, reference) {
+function checkTokenizer(tokenizer, reference, windows = []) {
+  // Reference sentences plus every parity window that carries its words (Phase 9 exports).
+  const cases = [...reference.sentences, ...windows.filter((w) => Array.isArray(w.words))];
   const results = {};
   for (const strategy of STRATEGIES) {
-    results[strategy] = reference.sentences.map((s) => {
+    results[strategy] = cases.map((s) => {
       const { ids, tokenWord } = encodeWords(tokenizer, s.words, reference.max_subwords_per_word, strategy);
       return sameIds(ids, s.input_ids) && sameIds(tokenWord, s.token_word);
     });
   }
   const strategy = STRATEGIES.find((st) => results[st].every(Boolean)) ?? null;
-  return { strategy, matches: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.filter(Boolean).length])) };
+  return {
+    strategy,
+    cases: cases.length,
+    matches: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.filter(Boolean).length])),
+  };
 }
 
 async function predictWindows(model, windows, labels, nLabels) {
@@ -214,7 +221,7 @@ async function main() {
   const labels = readJson(join(dir, "labels.json"));
   const reference = readJson(join(dir, "reference.json"));
   const parity = readJsonl(join(dir, "parity_inputs.jsonl"));
-  const tok = checkTokenizer(await loadTokenizer(dir), reference);
+  const tok = checkTokenizer(await loadTokenizer(dir), reference, parity);
   console.log(`tokenizer: strategy ${tok.strategy ?? "NONE"} (matches per strategy: ${JSON.stringify(tok.matches)})`);
 
   const results = [];

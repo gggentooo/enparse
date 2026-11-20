@@ -48,5 +48,33 @@
  *
  * Open items (todo.md): model library (hosting limits).
  *
- * Status: header only; not implemented.
+ * Status: placeholder (T35): createTransformerBackend() returns a backend
+ *   whose load() fails with ParserLoadError("unsupported"), so the worker shell
+ *   runs end to end. Implementation: T63.
  */
+
+import {
+  type BackendInfo,
+  type ParserBackend,
+  ParserLoadError,
+  ParserNotReadyError,
+  type TaggedSentence,
+} from "./types";
+
+/** The ONNX backend. TODO(T63): Transformers.js loading, windows, decoding, self-test. */
+export function createTransformerBackend(): ParserBackend {
+  return {
+    name: "transformer",
+    async load(): Promise<void> {
+      throw new ParserLoadError("unsupported", "The model backend is not implemented yet (T63).");
+    },
+    async unload(): Promise<void> {},
+    isReady: (): boolean => false,
+    info(): BackendInfo {
+      throw new ParserNotReadyError();
+    },
+    async tag(): Promise<TaggedSentence[]> {
+      throw new ParserNotReadyError();
+    },
+  };
+}

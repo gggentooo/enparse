@@ -42,8 +42,9 @@
  * Open items (todo.md): module interfaces (parse result types);
  *   nested phrase labeling (PhraseRole inventory, clause/predicate convention).
  *
- * Status: word and sentence spans (Phase 3 pre-work) and LabelConfig (Phase 4)
- *   implemented; other tasks pending.
+ * Status: implemented (spans Phase 3; LabelConfig T33; phrase labels T34; parse
+ *   results, backend contract, worker protocol, and errors T35). ModelRef adds
+ *   nestedView (from the catalog) so the worker knows whether to build phrases.
  */
 
 /** One runtime word: its text and character offsets into the preprocessed text. */
@@ -126,8 +127,11 @@ export type LabelConfig = {
   /** Softmax temperatures (Phase 8): group A, relations, arc scores. */
   calibration: { temperature: number | null; rel_temperature: number | null; arc_temperature: number | null };
   ambiguity: { margin: number | null; attachment_margin: number | null };
-  /** Confidence gating of the nested view (Phase 8): brackets below the threshold collapse. */
-  nested: { bracket_threshold: number | null };
+  /**
+   * Confidence gating of the nested view (Phase 8): brackets below bracket_threshold collapse;
+   * roles whose head word's relation × head probability is below role_threshold are hidden (T59).
+   */
+  nested: { bracket_threshold: number | null; role_threshold: number | null };
   model_version: string | null;
   /** Model files (path relative to the model folder) with size and SHA-256; written by export_onnx.py (Phase 11). Used by pre-flight integrity checks. */
   files: Record<string, { bytes: number; sha256: string }> | null;
@@ -161,6 +165,8 @@ export type DecodedTree = {
   repairedWords: number[];
   /** Probability of the chosen head per word (gating; Phase 8 calibration applies before decoding). */
   headProbs: number[];
+  /** Probability of the chosen relation per word (role gating, T59); 1 for rel_pos_v1 trees (joint label in headProbs). */
+  relationProbs: number[];
 };
 
 /** Phrase label in the nested view; null when the head's UPOS has no phrase type. */
@@ -187,3 +193,262 @@ export type SentencePhrases = Array<PhraseNode | WordLeaf>;
 
 /** A labeled bracket span for scoring (0-based, inclusive). */
 export type PhraseSpan = { type: PhraseType; start: number; end: number };
+
+// -- phrase labeling (phraseLabeler.ts; T34) ---------------------------------------------
+
+/** Learner-facing grammatical role (owner, 2026-11-20; T10). Display text comes from T18. */
+export type PhraseRole =
+  | "Subject"
+  | "Predicate"
+  | "Object"
+  | "Indirect Object"
+  | "Complement"
+  | "Modifier"
+  | "Passive subject"
+  | "Agent"
+  | "Relative clause"
+  | "Possessive"
+  | "Particle";
+
+/** Phrase category shown in the nested view: the bracket type, or "S" for a clause (subject + predicate). */
+export type PhraseCategory = PhraseType | "S";
+
+/** Labels shared by labeled words and phrases. */
+export type RoleLabels = {
+  /** Role in the parent structure; null when none applies (or the span is uncertain). */
+  role: PhraseRole | null;
+  /** Carries its parent bracket's head word (head constituent of the parent). */
+  isHead: boolean;
+  /** Conjunct of a coordination (the outer bracket carries the shared role). */
+  coordinated: boolean;
+  /** Piece of a predicate split by another constituent (questions, inversion). */
+  splitPredicate: boolean;
+  /** Role shown on this head word because its bracket was collapsed by gating (phrase boundary uncertain; T59). */
+  badge: boolean;
+};
+
+/** Role confidence gating (T59): per-word confidence (relation × head probability) and the model's threshold. */
+export type RoleGate = { confidence: readonly number[]; threshold: number };
+
+/** A word without its own bracket, with its labels. */
+export type LabeledWord = WordLeaf & RoleLabels;
+
+/** A bracket of the nested view with its labels. */
+export type LabeledPhrase = Omit<PhraseNode, "children"> &
+  RoleLabels & {
+    category: PhraseCategory;
+    /** Single-word head bracket inside a bracket with the same head ([dog] in [red dog]): collapsed for display. */
+    wrapper: boolean;
+    children: Array<LabeledPhrase | LabeledWord>;
+  };
+
+/** Labeled nested view of one sentence (same order and spans as SentencePhrases). */
+export type LabeledSentencePhrases = Array<LabeledPhrase | LabeledWord>;
+
+// -- parse results (T35; architecture.md → Model, Traceability) ----------------------------
+
+/** Flat chunk types (group A chunk tags). */
+export type ChunkType = "NP" | "VP" | "PP" | "ADJP" | "ADVP";
+
+/** Compute backend the model runs on (architecture.md → Model readiness). */
+export type ComputeBackend = "webgpu" | "wasm";
+
+/** One word of a parsed sentence. */
+export type Token = {
+  /** 0-based index in the sentence. */
+  index: number;
+  text: string;
+  /** wink character offsets into the preprocessed text (traceability). */
+  start: number;
+  end: number;
+  /** Lemma from wink-nlp; null until winkBackend provides lemmas (TODO(lemma)). */
+  lemma: string | null;
+  upos: string;
+  uposProb: number;
+  /** BIO chunk tag after repair (architecture.md → BIO repair). */
+  chunkTag: string;
+  chunkProb: number;
+  /** 0-based head index in the sentence; -1 = root. */
+  head: number;
+  /** UD relation (base or kept subtype). */
+  relation: string;
+  headProb: number;
+  relationProb: number;
+};
+
+/** A flat chunk: type and token range (0-based, inclusive). */
+export type Chunk = { type: ChunkType; start: number; end: number };
+
+/** One ranked alternative parse of a sentence (built by ambiguity.ts; T60). */
+export type Alternative = {
+  /** 1 = most probable alternative. */
+  rank: number;
+  probability: number;
+  reason: "probability" | "attachment";
+  chunks: Chunk[];
+  phrases: LabeledSentencePhrases | null;
+};
+
+/** One parsed sentence. */
+export type SentenceParse = {
+  /** Character offsets of the sentence in the preprocessed text. */
+  start: number;
+  end: number;
+  tokens: Token[];
+  /** Primary (most likely) flat chunks. */
+  chunks: Chunk[];
+  /** Labeled nested view (gated), or null when the model does not ship the nested view. */
+  phrases: LabeledSentencePhrases | null;
+  /** True if any word's tree head is not its most probable head (MST changed it). */
+  treeRepaired: boolean;
+  /** Ranked alternatives, at most MAX_ALTERNATIVES. */
+  alternatives: Alternative[];
+};
+
+/** Result of parsing one text. Always from the model (no mode field; no fallback). */
+export type ParseResult = {
+  sentences: SentenceParse[];
+  modelId: string;
+  /** labels.json → model_version. */
+  modelVersion: string;
+  backend: ComputeBackend;
+};
+
+/** The model the worker loads (built by parserService from the catalog). */
+export type ModelRef = {
+  id: string;
+  /** Folder under public/models/. */
+  folder: string;
+  variant: "int8" | "fp16";
+  /** Whether the model ships the nested view (catalog.json → nested_view). */
+  nestedView: boolean;
+};
+
+// -- backend contract (T35; implemented by transformerBackend.ts, T63) ---------------------
+
+/** Top group A candidates of a word (calibrated), best first. */
+export type LabelCandidate = { upos: string; chunkTag: string; prob: number };
+
+/** Backend output for one word (calibrated probabilities). */
+export type TaggedWord = {
+  upos: string;
+  /** UPOS probability (sum of group A probabilities with this UPOS). */
+  uposProb: number;
+  chunkTag: string;
+  /** Chunk tag probability (sum of group A probabilities with this tag). */
+  chunkProb: number;
+  /** Best group A candidates (for ambiguity.ts). */
+  candidates: LabelCandidate[];
+  /** Relation candidates, best first. */
+  relations: RelationCandidate[];
+};
+
+/** Backend output for one sentence: words in order and word-level arc scores (arc temperature applied). */
+export type TaggedSentence = { words: TaggedWord[]; arc: ArcScores };
+
+/** Load progress reported while a model loads. */
+export type LoadProgress = { phase: "download" | "initialize"; progress: number | null };
+
+/** What a ready backend reports about the loaded model. */
+export type BackendInfo = { labels: LabelConfig; backend: ComputeBackend };
+
+/** A model backend (agents.md → Adding a parser backend). Runs only inside parser.worker.ts. */
+export interface ParserBackend {
+  readonly name: string;
+  /** Load the model, self-test included; throws ParserLoadError. Ready only after it resolves. */
+  load(model: ModelRef, onProgress: (p: LoadProgress) => void): Promise<void>;
+  /** Free the session and tokenizer. */
+  unload(): Promise<void>;
+  isReady(): boolean;
+  /** Loaded model's labels.json and compute backend; throws ParserNotReadyError before ready. */
+  info(): BackendInfo;
+  /** Tag whole sentences (windows as in training); one TaggedSentence per input sentence. */
+  tag(sentences: readonly SentenceSpan[]): Promise<TaggedSentence[]>;
+}
+
+// -- worker protocol (T35) -----------------------------------------------------------------
+
+/** Why loading failed (architecture.md → Model readiness). */
+export type LoadFailureReason = "network" | "unsupported" | "out-of-memory" | "invalid-model";
+
+/** Worker status. `checking`, `no-model`, and `downloading` are added by parserService. */
+export type WorkerStatus =
+  | { state: "idle" }
+  | { state: "loading"; modelId: string; phase: LoadProgress["phase"]; progress: number | null }
+  | { state: "ready"; modelId: string; backend: ComputeBackend; modelVersion: string }
+  | { state: "failed"; modelId: string; reason: LoadFailureReason; message: string };
+
+/** Messages to the worker; `id` correlates the reply. */
+export type WorkerRequest =
+  | { type: "load"; id: number; model: ModelRef }
+  | { type: "unload"; id: number }
+  | { type: "retry"; id: number }
+  | { type: "parse"; id: number; text: string }
+  | { type: "status"; id: number };
+
+/** An error as sent between worker and main thread. */
+export type SerializedError = {
+  name: "ParserLoadError" | "ParserNotReadyError" | "ParserRuntimeError" | "TokenizerError" | "Error";
+  message: string;
+  reason?: LoadFailureReason;
+};
+
+/** Messages from the worker. `status` is broadcast on every change (and on request). */
+export type WorkerResponse =
+  | { type: "status"; status: WorkerStatus }
+  | { type: "result"; id: number; result: ParseResult }
+  | { type: "done"; id: number }
+  | { type: "error"; id: number; error: SerializedError };
+
+// -- errors (T35) --------------------------------------------------------------------------
+
+/** Loading the model failed; `reason` drives the `failed` status and the UI. */
+export class ParserLoadError extends Error {
+  readonly reason: LoadFailureReason;
+  constructor(reason: LoadFailureReason, message: string) {
+    super(message);
+    this.name = "ParserLoadError";
+    this.reason = reason;
+  }
+}
+
+/** A parse was requested before the model was ready (no fallback parser). */
+export class ParserNotReadyError extends Error {
+  constructor(message = "The parser model is not ready.") {
+    super(message);
+    this.name = "ParserNotReadyError";
+  }
+}
+
+/** Parsing failed after the model was ready (inference or decoding error). */
+export class ParserRuntimeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ParserRuntimeError";
+  }
+}
+
+/** Error → message form (keeps the typed name and load reason). */
+export function serializeError(err: unknown): SerializedError {
+  if (err instanceof ParserLoadError) return { name: "ParserLoadError", message: err.message, reason: err.reason };
+  if (err instanceof ParserNotReadyError || err instanceof ParserRuntimeError || err instanceof TokenizerError) {
+    return { name: err.name as SerializedError["name"], message: err.message };
+  }
+  return { name: "Error", message: err instanceof Error ? err.message : String(err) };
+}
+
+/** Message form → typed error. */
+export function deserializeError(e: SerializedError): Error {
+  switch (e.name) {
+    case "ParserLoadError":
+      return new ParserLoadError(e.reason ?? "invalid-model", e.message);
+    case "ParserNotReadyError":
+      return new ParserNotReadyError(e.message);
+    case "ParserRuntimeError":
+      return new ParserRuntimeError(e.message);
+    case "TokenizerError":
+      return new TokenizerError(e.message);
+    default:
+      return new Error(e.message);
+  }
+}

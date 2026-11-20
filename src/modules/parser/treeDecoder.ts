@@ -23,12 +23,18 @@
  *   3. Relation: "root" for the root word; otherwise the best candidate that
  *      is not "root" ("dep" if there is none).
  *   4. headProbs: probability of the chosen head per word (for gating);
+ *      relationProbs: probability of the chosen relation (role gating, T59;
+ *      0 when "root" was forced without a root candidate, or for "dep");
  *      repairedWords: words whose tree head is not their argmax head.
  *
  * Confidence gating (bracketConfidence, gatePhrases; Phase 8):
  *   A bracket's confidence is the product of the chosen-head probabilities
- *   of the words it covers, except its own head word (an estimate of "all
- *   attachments inside are right"). Brackets below the model's threshold
+ *   of the words it covers except its own head word, and of its head's
+ *   dependents outside it (an estimate of "the span is right": nothing inside
+ *   attaches wrongly and nothing outside belongs inside). Chosen over the
+ *   inside-words-only product in Phase 8: at ≥ 95% dev shown precision it
+ *   shows 49% vs 32% (DeBERTa) and 54% vs 43% (ModernBERT) of multi-word
+ *   brackets (reports/calibration.md). Brackets below the model's threshold
  *   (labels.json → nested.bracket_threshold) collapse: their children are
  *   shown directly in the parent. (proposed; threshold set per model in Phase 8)
  *
@@ -141,7 +147,7 @@ function findCycle(heads: number[]): number[] | null {
 export function decodeTree(candidates: readonly (readonly DepCandidate[])[], upos: readonly string[]): DecodedTree {
   const n = upos.length;
   if (candidates.length !== n) throw new Error("candidates and upos lengths differ");
-  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [] };
+  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
 
   const options: Choice[][] = candidates.map((cands, i) =>
     cands.flatMap((c, rank) => {
@@ -209,6 +215,8 @@ export function decodeTree(candidates: readonly (readonly DepCandidate[])[], upo
     repaired: repairedWords.length > 0,
     repairedWords,
     headProbs: chosen.map((c) => (c as Choice).prob),
+    // rel_pos_v1 labels give head and relation jointly: the label probability is in headProbs.
+    relationProbs: chosen.map(() => 1),
   };
 }
 
@@ -352,7 +360,7 @@ function headLogProbs(arc: ArcScores): number[][] {
 export function decodeArcTree(arc: ArcScores, relations: readonly (readonly RelationCandidate[])[]): DecodedTree {
   const n = arc.length;
   if (relations.length !== n) throw new Error("arc scores and relations lengths differ");
-  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [] };
+  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
   arc.forEach((row, i) => {
     if (row.length !== n + 1) throw new Error(`arc row ${i} has ${row.length} columns, expected ${n + 1}`);
   });
@@ -361,10 +369,12 @@ export function decodeArcTree(arc: ArcScores, relations: readonly (readonly Rela
   const score = [new Array<number>(n + 1).fill(-Infinity), ...logp];
   const tree = maxSpanningTree(score).slice(1);
   const greedy = greedyHeads(score).slice(1);
-  const rels = tree.map((h, i) => {
-    if (h === 0) return ROOT_RELATION;
-    return relations[i]?.find((c) => c.relation !== ROOT_RELATION)?.relation ?? REPAIR_RELATION;
+  const picked = tree.map((h, i): RelationCandidate => {
+    const cands = relations[i] ?? [];
+    if (h === 0) return { relation: ROOT_RELATION, prob: cands.find((c) => c.relation === ROOT_RELATION)?.prob ?? 0 };
+    return cands.find((c) => c.relation !== ROOT_RELATION) ?? { relation: REPAIR_RELATION, prob: 0 };
   });
+  const rels = picked.map((c) => c.relation);
   const repairedWords = tree.flatMap((h, i) => (h === greedy[i] ? [] : [i]));
   return {
     heads: tree,
@@ -372,29 +382,42 @@ export function decodeArcTree(arc: ArcScores, relations: readonly (readonly Rela
     repaired: repairedWords.length > 0,
     repairedWords,
     headProbs: tree.map((h, i) => Math.exp(logp[i]?.[h] as number)),
+    relationProbs: picked.map((c) => c.prob),
   };
 }
 
 // -- confidence gating -------------------------------------------------------------------
 
-/** Confidence of a bracket: product of chosen-head probabilities of its words except its head. */
-export function bracketConfidence(node: PhraseNode, headProbs: readonly number[]): number {
+/**
+ * Confidence of a bracket: product of the chosen-head probabilities of its words except its
+ * head, and of its head's dependents outside it (attached at outer nesting levels; if one of
+ * them belongs inside, the span is wrong even when every attachment inside is right).
+ */
+export function bracketConfidence(node: PhraseNode, tree: Pick<DecodedTree, "heads" | "headProbs">): number {
   const words = new Set<number>();
   covered(node, words);
   let p = 1;
-  for (const w of words) if (w !== node.head) p *= headProbs[w] ?? 0;
+  tree.heads.forEach((h, w) => {
+    const inside = words.has(w);
+    if ((inside && w !== node.head) || (!inside && h === node.head + 1)) p *= tree.headProbs[w] ?? 0;
+  });
   return p;
 }
 
 /**
  * Collapse brackets whose confidence is below threshold: their children are placed in the
  * parent level (word order kept). Brackets of one word are never collapsed here.
+ * @param tree the decoded tree the phrases were built from (heads, headProbs)
  */
-export function gatePhrases(items: SentencePhrases, headProbs: readonly number[], threshold: number): SentencePhrases {
+export function gatePhrases(
+  items: SentencePhrases,
+  tree: Pick<DecodedTree, "heads" | "headProbs">,
+  threshold: number,
+): SentencePhrases {
   const gate = (item: Item): Item[] => {
     if ("word" in item) return [item];
     const children = item.children.flatMap(gate);
-    if (item.start !== item.end && bracketConfidence(item, headProbs) < threshold) return children;
+    if (item.start !== item.end && bracketConfidence(item, tree) < threshold) return children;
     return [{ ...item, children }];
   };
   return items.flatMap(gate).sort((a, b) => firstWord(a) - firstWord(b));

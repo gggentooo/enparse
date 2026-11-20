@@ -305,15 +305,21 @@ describe("confidence gating", () => {
   const words = ["The", "red", "dog", "barks", "."];
   const items = buildPhrases(heads, upos, rels);
 
-  it("scores a bracket by the product of its non-head words' head probabilities", () => {
+  const tree = (headProbs: number[]) => ({ heads, headProbs });
+
+  it("scores a bracket by its non-head words' and outer dependents' head probabilities", () => {
     const np = (items[0] as PhraseNode).children[0] as PhraseNode; // [The [red [dog]]]
     expect(bracketString([np], words)).toBe("[The [red [dog]]]");
-    expect(bracketConfidence(np, [0.5, 0.8, 1, 1, 1])).toBeCloseTo(0.4, 9);
+    expect(bracketConfidence(np, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9); // outermost: no outer dependents
+    const inner = np.children.find((c) => "children" in c) as PhraseNode; // [red [dog]]; "The" attaches outside
+    expect(bracketString([inner], words)).toBe("[red [dog]]");
+    expect(bracketConfidence(inner, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9);
+    expect(bracketConfidence(inner, tree([1, 0.8, 1, 1, 1]))).toBeCloseTo(0.8, 9);
   });
 
   it("collapses brackets below the threshold and keeps the rest", () => {
-    expect(bracketString(gatePhrases(items, [1, 1, 1, 1, 1], 0.9), words)).toBe(bracketString(items, words));
-    const gated = gatePhrases(items, [0.5, 1, 1, 1, 1], 0.9);
-    expect(bracketString(gated, words)).toBe("The [red [dog]] [barks] .");
+    expect(bracketString(gatePhrases(items, tree([1, 1, 1, 1, 1]), 0.9), words)).toBe(bracketString(items, words));
+    expect(bracketString(gatePhrases(items, tree([1, 0.5, 1, 1, 1]), 0.9), words)).toBe("The red [dog] [barks] .");
+    expect(bracketString(gatePhrases(items, tree([0.5, 0.8, 1, 1, 1]), 0.6), words)).toBe("The red [dog] [barks] .");
   });
 });

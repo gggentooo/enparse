@@ -118,7 +118,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `modelLibrary/selection.ts`  | Persisted user choice and a recommended model. |
 | `parser/winkBackend.ts`      | wink-nlp support (not a `ParserBackend`): sentence split and runtime words (hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL) and lemmas. |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
-| `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. |
+| `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
 | `output/annotator.ts`        | Converts parse results into an annotation model (flat chunks, nested phrases, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
@@ -156,11 +156,11 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Models:** one model per base model: `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT), `bert-base-cased`, `ModernBERT-base` (Apache 2.0). Cased models only. Every model that meets the acceptance thresholds is offered; the user chooses in the model library (see *Model library*). No single model is selected.
 - **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases, and `parser/phraseLabeler.ts` attaches grammatical roles, clause/predicate categories, and head-of-parent markers.
 - **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
-- **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules. Transformers.js has no pre-split option, so words are encoded one by one with a per-model strategy (`plain`, or `space` for byte-level BPE), found by `training/js/benchmark.mjs` and stored as `labels.json` → `tokenizer_word_encoding` in Phase 11.
+- **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules. Transformers.js has no pre-split option, so words are encoded one by one with a per-model strategy (`plain`, or `space` for byte-level BPE), found by `training/js/benchmark.mjs` and stored as `labels.json` → `tokenizer_word_encoding` in Phase 9 (`plain` for DeBERTa-v3-xsmall and ModernBERT: both strategies reproduce Python's ids on every dev window).
 - **Traceability:** every `ParseResult` carries the model id and model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
-- **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
+- **Quantization:** int8 (WASM) and fp16 (WebGPU) per model, each shipped only if it passes Phase 9 parity. Phase 9 (2026-11-21): both variants pass for DeBERTa-v3-xsmall (90 / 144 MB) and ModernBERT (156 / 302 MB); chunk F1 and LAS within 0.13 points of fp32 (`training/reports/parity.md`).
 - **Context window:** whole wink sentences are packed into windows of up to 256 subword tokens without overlap, exactly like training windows (`plan-training.md` Phase 4 and *Biaffine design*), so context extends beyond the current sentence. Only a sentence longer than 256 subwords is split with a 32-token overlap; each word then takes its scores from the window where it is farthest from the edge.
-- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Single-word head wrappers are collapsed for display. Discontinuous predicates keep one role label across their pieces with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated.
+- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Single-word head wrappers are collapsed for display. Discontinuous predicates keep one role label across their pieces with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated. **Uncertain structure (owner, 2026-11-21; T59):** when gating collapses a bracket that carries a role, the role is shown as a badge on its head word ("phrase boundary uncertain"), never on an inner bracket. A role is shown only if its head word's relation × head probability is ≥ `labels.json` → `nested.role_threshold` (Phase 8: 0.4 for DeBERTa-v3-xsmall and ModernBERT; test role precision 96.1% and 96.0%, 97% and 96% of roles shown).
 - **BIO repair:** a stray `I-X` (after `O` or another type) becomes `B-X` (owner, 2026-11-20). This is how seqeval's default mode already reads chunks for the reported chunk F1, so the app shows what was measured.
 
 ### Model training (offline, `training/`)
@@ -248,7 +248,7 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 | `ready` | Model fully loaded (see below); records model id, backend (`webgpu` or `wasm`), and `model_version` | Parse enabled |
 | `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
 
-- **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v1, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
+- **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v2, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
 - Parse requests are refused unless the status is `ready`: `parserService.parseText()` rejects with `ParserNotReadyError` without contacting the worker, and the worker also rejects parse messages before `ready`.
 - Input entered while loading is kept; the user starts parsing once the model is ready.
 - WebGPU → WASM is a device choice inside model loading, not a fallback parser: both run the same model.
@@ -318,6 +318,12 @@ ready
 3. **Attachment alternatives:** flat chunks do not encode where a prepositional phrase attaches.
    The structure output does: when a PP's top-two heads (calibrated arc probabilities) are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
 4. **Cap:** at most 5 alternatives per sentence (`MAX_ALTERNATIVES`; owner, 2026-11-20), label and attachment alternatives together. Margins per model come from Phase 8 (`labels.json` → `ambiguity`).
+5. **Per-model values (Phase 8, 2026-11-21; `training/reports/calibration.md`):** chosen on dev as the most errors recovered with ≤ 0.3 alternatives per sentence on average (owner cap). Written to each model's `labels.json`.
+
+   | Model | Margin | Attachment margin | Bracket threshold | Temperatures (A / relation / arc) |
+   |---|---|---|---|---|
+   | deberta_v3_xsmall | 0.4 | 0.3 | 0.85 | 1.78 / 1.99 / 5.57 |
+   | modernbert_base | 0.3 | 0.3 | 0.80 | 2.05 / 2.28 / 9.39 |
 
 ### Subword segmentation
 
@@ -491,7 +497,8 @@ enparse/
 │   │   │   ├── ambiguity.ts
 │   │   │   ├── treeDecoder.ts
 │   │   │   ├── phraseLabeler.ts
-│   │   │   └── parser.worker.ts
+│   │   │   ├── parser.worker.ts
+│   │   │   └── testFixtures.ts (test-only: mocked backend for *.test.ts)
 │   │   ├── output/
 │   │   │   └── annotator.ts
 │   │   ├── dictionary/
@@ -686,3 +693,20 @@ enparse/
 
 - Modified: *Parsing engine* → *Context window*: whole wink sentences packed into 256-subword windows without overlap, like training; only sentences over 256 subwords split with overlap (owner, T04/T08).
 - Added: *Parsing engine* → *BIO repair*: stray `I-X` → `B-X` (owner, T08).
+
+### 2026-11-20T22:07:16Z — Claude Opus 5.5, Phase 8 margins and bracket gating recorded
+
+- Added: *Ambiguity handling* item 5: per-model margins, attachment margins, bracket thresholds, and temperatures (DeBERTa, ModernBERT) from Phase 8.
+- Modified: bracket confidence (`treeDecoder.ts`) also multiplies the head probabilities of the bracket head's outer dependents (chosen on dev; `plan-training.md` → Phase 8).
+
+### 2026-11-20T22:29:17Z — Claude Opus 5.5, Parser shell, phrase labeling, and role gating
+
+- Added: *Parsing engine* → *Role labeling* → uncertain structure (owner, T59): head-word role badges for collapsed brackets; role confidence gate (`nested.role_threshold`).
+- Modified: *Logic modules* → `parser.worker.ts`: message protocol and typed client (T35).
+- Modified: *Model readiness* → fully loaded validates `labels.json` schema v2 (was v1).
+- Added: skeleton → `parser/testFixtures.ts` (test-only).
+
+### 2026-11-20T22:42:10Z — Claude Opus 5.5, Phase 9 export results
+
+- Modified: *Model* → *Tokenizer input*: word encoding set in Phase 9 (`plain` for both offered models).
+- Modified: *Model* → *Quantization*: int8 and fp16 shipped per model after parity; Phase 9 sizes and results.

@@ -34,5 +34,8 @@
  *
  * Open items (todo.md): how alternatives are displayed (T11).
  *
- * Status: header only; not implemented.
+ * Status: MAX_ALTERNATIVES defined (T35); builder pending (T60).
  */
+
+/** Most alternatives shown per sentence, label and attachment together (owner, 2026-11-20; T09). */
+export const MAX_ALTERNATIVES = 5;

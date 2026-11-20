@@ -50,8 +50,18 @@ Dependencies:
 Usage (from training/):
     python scripts/evaluate.py --model <m> --run <run> --split test
 
-Status: test mode implemented (Phase 7). TODO(phase9-parity): parity mode
-    (js_predictions_<variant>.jsonl vs fp32: chunk F1 / LAS drops).
+    python scripts/evaluate.py --parity                 # Phase 9, offered models
+    python scripts/evaluate.py --parity --model <m> --run <run>
+
+Parity mode (Phase 9): needs export_onnx.py --parity-windows all and
+    js/benchmark.mjs --mode parity first. Scores PyTorch (parity_inputs.jsonl)
+    and each Transformers.js variant (js_predictions_<variant>.jsonl) on the
+    same dev windows; checks fp32 agreement and int8/fp16 chunk F1 / LAS drops
+    (configs/eval.yaml → parity); writes parity.json and the word-encoding
+    strategy (labels.json → tokenizer_word_encoding) into the export folder,
+    and reports/parity.md.
+
+Status: test mode (Phase 7) and parity mode (Phase 9) implemented.
 """
 
 from __future__ import annotations
@@ -319,13 +329,217 @@ def evaluate_split(
     return metrics
 
 
+# -- Phase 9 parity --------------------------------------------------------------------------
+
+PARITY_REPORT = TRAINING_DIR / "reports" / "parity.md"
+PARITY_VARIANTS = ("fp32", "int8", "fp16")
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _window_preds(rows: list[dict[str, Any]], prefix: str) -> list[WindowPrediction]:
+    """WindowPrediction per window from parity_inputs.jsonl (prefix torch_) or js_predictions."""
+    return [
+        WindowPrediction(
+            list(r[f"{prefix}chunk_ids"]), list(r[f"{prefix}dep_ids"]), r.get(f"{prefix}heads")
+        )
+        for r in rows
+    ]
+
+
+def parity_check(
+    metrics: dict[str, dict[str, float]],
+    agreement: dict[str, dict[str, float]],
+    width_ok: dict[str, bool],
+    limits: dict[str, Any],
+) -> dict[str, list[str]]:
+    """Problems per variant: fp32 agreement vs PyTorch; int8/fp16 chunk F1 and LAS drops vs fp32."""
+    problems: dict[str, list[str]] = {v: [] for v in metrics if v != "torch"}
+    fp32_min = float(limits["fp32_min_agreement"])
+    max_drop = float(limits["max_f1_drop_points"])
+    for v in problems:
+        if not width_ok.get(v, False):
+            problems[v].append("output shape differs from labels.json")
+    for g, a in agreement.get("fp32", {}).items():
+        if a < fp32_min:
+            problems["fp32"].append(f"agreement {g} {a:.4f} < {fp32_min}")
+    for v in problems:
+        if v == "fp32":
+            continue
+        if problems["fp32"]:
+            problems[v].append("fp32 failed parity")
+        for k in ("chunk_f1", "las"):
+            drop = 100 * (metrics["fp32"][k] - metrics[v][k])
+            if drop > max_drop:
+                problems[v].append(f"{k} drop {drop:.2f} points > {max_drop}")
+    return problems
+
+
+def offered_runs(data_cfg: dict[str, Any], eval_cfg: dict[str, Any]) -> list[tuple[str, str]]:
+    """(model, selected run) of each offered model of the biaffine stage (calibrate.py's rule)."""
+    from calibrate import offered
+
+    stage = eval_cfg["phase7_stages"]["biaffine"]
+    out = []
+    for m in eval_cfg["phase7"]["models"]:
+        path = TRAINING_DIR / data_cfg["paths"]["eval"] / m / stage["record"]
+        if not path.exists():
+            continue
+        rec = json.loads(path.read_text())
+        run = rec.get("selected_run")
+        test = (rec.get("seeds", {}).get(run) or {}).get("test") if run else None
+        if test and offered(test, eval_cfg):
+            out.append((m, run))
+    return out
+
+
+def run_parity(
+    model_key: str, run: str, data_cfg: dict[str, Any], eval_cfg: dict[str, Any]
+) -> dict[str, Any]:
+    """Score PyTorch and every Transformers.js variant on the parity windows; write parity.json."""
+    from datasets import load_from_disk
+
+    from biaffine import is_biaffine
+
+    out = TRAINING_DIR / data_cfg["paths"]["onnx"] / model_key / run
+    checkpoint = TRAINING_DIR / data_cfg["paths"]["checkpoints"] / model_key / run / "best"
+    labels_path = out / "labels.json"
+    labels_json = json.loads(labels_path.read_text())
+    space = LabelSpace.from_labels_json(labels_json)
+    key = "dataset_arc" if is_biaffine(str(checkpoint)) else "dataset"
+    ds = load_from_disk(str(TRAINING_DIR / data_cfg["paths"][key] / model_key))["dev"]
+    inputs = _read_jsonl(out / "parity_inputs.jsonl")
+    rows = [ds[i] for i in range(len(inputs))]
+    for r, w in zip(rows, inputs, strict=True):
+        if r["input_ids"] != w["input_ids"]:
+            raise RuntimeError("parity_inputs.jsonl does not match the dev windows")
+    bench = json.loads((out / "benchmark_parity.json").read_text())
+    export_report = json.loads((out / "export_report.json").read_text())
+
+    metrics = {"torch": score(rows, _window_preds(inputs, "torch_"), space)}
+    agreement: dict[str, dict[str, float]] = {}
+    dev_agreement: dict[str, dict[str, float]] = {}
+    width_ok: dict[str, bool] = {}
+    for v in bench["variants"]:
+        name = v["variant"]
+        metrics[name] = score(
+            rows, _window_preds(_read_jsonl(out / f"js_predictions_{name}.jsonl"), ""), space
+        )
+        groups = [g for g in ("chunk", "dep", "arc") if g in v["parity_agreement"]]
+        # fp32 check: dev windows and reference sentences; the report shows dev windows.
+        agreement[name] = {
+            g: min(v["parity_agreement"][g], v["reference_agreement"][g]) for g in groups
+        }
+        dev_agreement[name] = {g: v["parity_agreement"][g] for g in groups}
+        width_ok[name] = bool(v["logits_width_ok"])
+    problems = parity_check(metrics, agreement, width_ok, eval_cfg["parity"])
+    strategy = bench["tokenizer"]["strategy"]
+    if strategy is None:
+        for v in problems:
+            problems[v].append("no word-encoding strategy reproduces Python's token ids")
+    shipped = [v for v in ("int8", "fp16") if v in problems and not problems[v]]
+    labels_json["tokenizer_word_encoding"] = strategy
+    labels_path.write_text(json.dumps(labels_json, indent=2, ensure_ascii=False) + "\n")
+    result = {
+        "model": model_key,
+        "run": run,
+        "dev_windows": len(inputs),
+        "tokenizer_word_encoding": strategy,
+        "metrics": {
+            k: {m: v[m] for m in ("upos_acc", "chunk_f1", "uas", "las")} for k, v in metrics.items()
+        },
+        "js_agreement": dev_agreement,
+        "js_check_agreement": agreement,
+        "tokenizer_check": {k: bench["tokenizer"].get(k) for k in ("cases", "matches")},
+        "ort_agreement": {v: r["dev_agreement"] for v, r in export_report["variants"].items()},
+        "bytes": {v: r["bytes"] for v, r in export_report["variants"].items()},
+        "problems": problems,
+        "shipped_variants": shipped,
+    }
+    (out / "parity.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result
+
+
+def render_parity(results: list[dict[str, Any]], eval_cfg: dict[str, Any]) -> str:
+    """reports/parity.md."""
+    lim = eval_cfg["parity"]
+    L = [
+        "# Parity report (Phase 9)",
+        "",
+        "Generated by `scripts/evaluate.py --parity` from `js/benchmark.mjs --mode parity` "
+        "(Transformers.js 4.3.2 in Node, CPU) on every dev window, against PyTorch. Pass: fp32 "
+        f"agrees with PyTorch on ≥ {100 * lim['fp32_min_agreement']:.1f}% of words per output "
+        "(group A, relation, head; dev windows and reference sentences), and int8 / fp16 lose at "
+        f"most {lim['max_f1_drop_points']} points of chunk F1 and LAS vs fp32 (raw argmax heads). "
+        "A variant that fails is not shipped.",
+        "",
+        "| Model | Variant | Size (MB) | Dev agreement A / rel / head (JS) | UPOS | Chunk F1 | UAS "
+        "| LAS "
+        "| Δ chunk F1 | Δ LAS | Result |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        m = r["metrics"]
+        L.append(
+            f"| {r['model']} | PyTorch | — | — | {100 * m['torch']['upos_acc']:.2f} | "
+            f"{100 * m['torch']['chunk_f1']:.2f} | {100 * m['torch']['uas']:.2f} | "
+            f"{100 * m['torch']['las']:.2f} | — | — | reference |"
+        )
+        for v in PARITY_VARIANTS:
+            if v not in m:
+                continue
+            a = r["js_agreement"][v]
+            agr = " / ".join(f"{100 * a[g]:.2f}" for g in ("chunk", "dep", "arc") if g in a)
+            d_f1 = (
+                "—" if v == "fp32" else f"{100 * (m['fp32']['chunk_f1'] - m[v]['chunk_f1']):+.2f}"
+            )
+            d_las = "—" if v == "fp32" else f"{100 * (m['fp32']['las'] - m[v]['las']):+.2f}"
+            probs = r["problems"][v]
+            verdict = "pass" if not probs else "**fail**: " + "; ".join(probs)
+            if v in ("int8", "fp16") and not probs:
+                verdict = "pass (shipped)"
+            L.append(
+                f"| {r['model']} | {v} | {r['bytes'][v] / 1e6:.1f} | {agr} | "
+                f"{100 * m[v]['upos_acc']:.2f} | {100 * m[v]['chunk_f1']:.2f} | "
+                f"{100 * m[v]['uas']:.2f} | {100 * m[v]['las']:.2f} | {d_f1} | {d_las} | "
+                f"{verdict} |"
+            )
+    L += ["", "Δ = fp32 − variant (points; positive = the variant is worse).", ""]
+    L += [
+        "Word encoding: the Transformers.js strategy that reproduces Python's token ids on "
+        "every case (3 reference sentences + all dev windows); written to labels.json → "
+        "tokenizer_word_encoding.",
+        "",
+        "| Model | Run | Dev windows | Word encoding | Cases matched (plain / space) | "
+        "Shipped variants |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        tc = r["tokenizer_check"]
+        L.append(
+            f"| {r['model']} | `{r['run']}` | {r['dev_windows']} | "
+            f"{r['tokenizer_word_encoding'] or '**none**'} | "
+            f"{tc['matches'].get('plain', 0)} / {tc['matches'].get('space', 0)} of {tc['cases']} | "
+            f"{', '.join(r['shipped_variants']) or '**none**'} |"
+        )
+    L.append("")
+    return "\n".join(L)
+
+
 def main() -> None:
-    """Evaluate one run's best checkpoint on a split (Phase 7 test mode)."""
-    parser = argparse.ArgumentParser(description="Phase 7 evaluation.")
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--run", required=True)
+    """Evaluate one run on a split (Phase 7 test mode), or ONNX parity (Phase 9, --parity)."""
+    parser = argparse.ArgumentParser(description="Phase 7 evaluation; Phase 9 parity.")
+    parser.add_argument("--model")
+    parser.add_argument("--run")
     parser.add_argument("--split", default="test", choices=["dev", "test"])
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--parity",
+        action="store_true",
+        help="Phase 9: parity of the exports (default: offered models of the biaffine stage)",
+    )
     args = parser.parse_args()
 
     from datasets import load_from_disk
@@ -333,6 +547,25 @@ def main() -> None:
     data_cfg = yaml.safe_load((CONFIG_DIR / "data.yaml").read_text())
     eval_cfg = yaml.safe_load((CONFIG_DIR / "eval.yaml").read_text())
     from biaffine import is_biaffine
+
+    if args.parity:
+        targets = (
+            [(args.model, args.run)]
+            if args.model and args.run
+            else offered_runs(data_cfg, eval_cfg)
+        )
+        results = [run_parity(m, r, data_cfg, eval_cfg) for m, r in targets]
+        for r in results:
+            print(
+                f"{r['model']}/{r['run']}: shipped {r['shipped_variants']}, "
+                f"problems {r['problems']}"
+            )
+        if not (args.model and args.run):
+            PARITY_REPORT.write_text(render_parity(results, eval_cfg), encoding="utf-8")
+            print(f"report -> {PARITY_REPORT.relative_to(TRAINING_DIR)}")
+        return
+    if not (args.model and args.run):
+        parser.error("--model and --run are required (or use --parity)")
 
     checkpoint = TRAINING_DIR / data_cfg["paths"]["checkpoints"] / args.model / args.run / "best"
     key = "dataset_arc" if is_biaffine(str(checkpoint)) else "dataset"

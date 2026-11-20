@@ -25,7 +25,7 @@
  *   6. ModelManifest (structural subset of labels.json schema v2; T33):
  *      schema_version, model_version, tokenizer_word_encoding, calibration
  *      (temperature, rel_temperature, arc_temperature), ambiguity, nested
- *      (bracket_threshold), versions.wink, files (Record<path, { bytes,
+ *      (bracket_threshold, role_threshold), versions.wink, files (Record<path, { bytes,
  *      sha256 }> | null).
  *   7. ModelRequirements (structural; from catalog.json, passed in): id,
  *      download bytes per variant, peak_memory_mb per backend,
