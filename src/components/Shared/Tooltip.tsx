@@ -16,7 +16,7 @@
  *   Internal: ./Tooltip.module.css.
  *   Used by: OutputPage.
  *
- * Open items (plan.md → Undecided): lookup trigger (selection, hover, click, tap).
+ * Open items (todo.md): lookup trigger (selection, hover, click, tap).
  *
  * Status: header only; not implemented.
  */

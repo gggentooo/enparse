@@ -27,7 +27,7 @@ Dependencies:
 
 Storage: *.onnx files here are tracked with Git LFS (root .gitattributes).
 
-Open items (plan.md → Undecided): model library (hosting and storage limits
+Open items (todo.md): model library (hosting and storage limits
   for several models).
 
 Status: placeholder; no model files yet.

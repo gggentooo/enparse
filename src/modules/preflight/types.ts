@@ -22,9 +22,11 @@
  *   4. Verdict: "ok" | "warn" | "blocked" (blocked if any check fails).
  *   5. PreflightReport: { verdict, checks: CheckResult[], startedAt,
  *      finishedAt, backendHint: "webgpu" | "wasm" }.
- *   6. ModelManifest (structural subset of labels.json schema v1):
- *      schema_version, model_version, calibration, ambiguity,
- *      versions.wink, files (Record<path, { bytes, sha256 }> | null).
+ *   6. ModelManifest (structural subset of labels.json schema v2; T33):
+ *      schema_version, model_version, tokenizer_word_encoding, calibration
+ *      (temperature, rel_temperature, arc_temperature), ambiguity, nested
+ *      (bracket_threshold), versions.wink, files (Record<path, { bytes,
+ *      sha256 }> | null).
  *   7. ModelRequirements (structural; from catalog.json, passed in): id,
  *      download bytes per variant, peak_memory_mb per backend,
  *      min_device_memory_gb, parse_5000_chars_s per backend.
@@ -37,7 +39,7 @@
  *   Internal: core/environment.ts (EnvironmentProbe type only).
  *   Used by: ./preflight.ts, ./checks.ts, ./requirements.ts, ./index.ts.
  *
- * Open items (plan.md → Undecided): pre-flight checks (scope).
+ * Open items (todo.md): pre-flight checks (scope).
  *
  * Status: header only; not implemented.
  */

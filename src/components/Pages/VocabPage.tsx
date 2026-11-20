@@ -19,7 +19,7 @@
  *             components/Shared/Modal.tsx, ./VocabPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Open items (plan.md → Undecided): entry schema; export format; import conflicts.
+ * Open items (todo.md): entry schema; export format; import conflicts.
  *
  * Status: header only; not implemented.
  */

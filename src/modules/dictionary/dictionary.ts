@@ -19,7 +19,7 @@
  *   Internal: ./staticDb.ts, ./types.ts. External: none.
  *   Used by: services/dictionaryService.ts (via ./index.ts).
  *
- * Open items (plan.md → Undecided): lemmatization (headwords vs wink lemmas),
+ * Open items (todo.md): lemmatization (headwords vs wink lemmas),
  *   multiword expressions, sense selection.
  *
  * Status: header only; not implemented.

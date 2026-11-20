@@ -25,88 +25,9 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ---
 
-## Undecided
+## Open items and tasks
 
-Open details and decisions required before development can proceed. Remove items as they are resolved and record the decision in the relevant section.
-
-### Architecture
-
-- **Module interfaces:** data types for parse results, dictionary entries, subword segments, and vocab items are undefined.
-
-### Parser
-
-Engine selected: in-house transformer tagger via Transformers.js, with wink-nlp for sentence split, words, and lemmas; no rule-based fallback, so the app parses only once the model is loaded (see *Parsing engine* → *Model readiness* in `architecture.md`). Accuracy before speed; up to ~5 s per 5,000 characters is acceptable. Remaining:
-
-- **Ambiguity threshold:** probability margin for flagging alternatives (proposed 0.2); how alternatives are displayed.
-- **Limit defaults:** confirm proposed defaults (5,000 characters, 5 alternatives per sentence).
-
-
-### Model library
-
-Decided (owner, 2026-11-18): every base model is trained; models that meet the acceptance thresholds are offered and the user chooses; nothing is downloaded before a choice; any number of models may stay cached (user deletes). Design: `architecture.md` → *Model library*. Open:
-
-- **Hosting and storage limits:** all four models are ~0.4 GB at int8 plus ~0.8 GB at fp16. Check the static host's per-file and total-size limits and the Git LFS storage and bandwidth quota (e.g., GitHub's free LFS quota is small). Options: ship fp16 only for some models, split large ONNX files (external data), or host model files elsewhere on the same origin. Tied to *Deployment target*; needed before `plan-training.md` Phase 11.
-- **Recommendation rule:** proposed: among models not blocked on this device and without memory warnings, the highest chunk F1 whose measured parse time meets the 5 s budget; ties → smaller download.
-- **Presentation:** which facts each model card shows (proposed: description, download size, UPOS / chunk F1, nested view yes/no, expected speed on this device, size on disk) and how accuracy is phrased for learners (numbers vs. labels like "most accurate").
-- **Descriptions:** display names and texts in `training/configs/catalog.yaml` (proposed English drafts); language follows *Interface language*.
-
-### Pre-flight checks
-
-Client-side checks before and after the model loads (`architecture.md` → *Model readiness* → *Pre-flight checks*; source headers in `src/modules/preflight/`, `src/core/environment.ts`). Open:
-
-- **Scope:** confirm the proposed checks (workers, WebAssembly SIMD/threads, WebGPU, Cache Storage, memory hint, `labels.json` schema, wink versions, storage quota, cached-file integrity).
-- **Memory policy:** low device memory warns (proposed) or blocks. Browsers expose memory only roughly (Chromium) or not at all (Safari, Firefox), so blocking would turn some capable devices away.
-- **Thresholds:** minimum device memory hint, free-storage margin, minimum WebGPU buffer size. Placeholders until `plan-training.md` Phase 10 measures peak memory and load times.
-- **Storage policy:** warn (proposed) or block when free quota is below the model size; whether to request persistent storage (`navigator.storage.persist()`; Firefox asks the user).
-- **Integrity failures:** delete bad cached files and re-download once (proposed), then fail.
-- **Multi-threaded WASM:** needs COOP/COEP headers from the static host (depends on *Deployment target*); whether single-threaded WASM (warning only) is acceptable for the 5 s budget.
-- **Diagnostics display:** how much detail `DiagnosticsPanel` shows, and whether it is reachable when nothing failed (proposed: from the Header status badge).
-
-### Dictionary
-
-- **Data sources and licensing:** sources for English definitions, Korean translations, and example sentences; redistribution license compatibility.
-- **Coverage:** target headword count (e.g., top N frequency words).
-- **Storage format:** JSON vs SQLite-WASM (both listed).
-- **Hosting:** which raw content URL host (e.g., GitHub raw, CDN); sharding and lazy-loading strategy; offline caching.
-- **Build pipeline:** scripts/location for compiling source data into the static DB (not in skeleton).
-- **Lemmatization:** wink-nlp provides lemmas (*ran* → *run*); confirm dictionary headwords match wink's lemma forms.
-- **Multiword expressions:** whether phrasal verbs and idioms are supported.
-- **Sense selection:** show all senses, or pick by context/POS.
-- **Lookup trigger:** text selection, hover, click, or tap; popup tooltip vs separate `DictionaryPage`.
-
-### Subword parsing
-
-Method selected: rule-based affix stripping with base validation; inflections via wink lemmas (see `architecture.md`). Remaining:
-
-- **Affix inventory:** source and size of prefix/root/suffix list; definition of "frequently occurring".
-- **Affix content:** whether affixes have Korean glosses and examples, and their data source.
-- **Base validation word list:** `subwordParser` accepts a split only if the base is a known word, but modules cannot import `dictionary/`. Source of the known-word list (dictionary headwords via `subwordService`, or a bundled list in `subword/`) is open.
-
-### Vocabulary lists
-
-- **Entry schema:** fields per item (word, definitions, Korean, example, source sentence, notes, tags, date added).
-- **Export format:** canonical format among JSON, CSV, and zip; schema versioning.
-- **Third-party compatibility:** whether export should target Anki or similar tools.
-- **Import conflicts:** merge, overwrite, or duplicate behavior.
-- **Storage limits:** LocalStorage vs IndexedDB threshold; backup or data-loss warnings.
-
-### UI/UX
-
-- **Interface language:** Korean, English, or bilingual (i18n needed?).
-- **Grammar labels:** whether chunk/phrase labels and explanations are shown in Korean (e.g., 명사구).
-- **Target devices and browsers:** desktop only or mobile/responsive; minimum browser versions.
-- **Visual design:** branding, color palette, and parse-display style (tree, brackets, color-coded chunks).
-- **Attribution display:** where the app shows required data and model attribution (e.g., UD EWT, CC BY-SA 4.0); no page for it exists in the skeleton. Needed before model release (`plan-training.md` Phase 11).
-- **Accessibility:** required standard (e.g., WCAG 2.1 AA).
-
-### Project and process
-
-- **MVP scope:** which features ship first and milestone order.
-- **Deployment target:** static host (e.g., GitHub Pages, Netlify, Cloudflare Pages).
-- **Offline/PWA:** whether the app should work offline.
-- **Tooling:** confirm remaining proposals in `agents.md` → *Tooling and commands* (ESLint + Prettier, React Testing Library, Playwright); choose CI. (npm, Node 20+, TypeScript, Vite, Vitest approved.)
-- **Project license.**
-- **Analytics/privacy:** whether any usage tracking is collected.
+Open decisions and tasks are tracked in [todo.md](todo.md), ordered by dependency. (This section replaced the former *Undecided* list on 2026-11-19.)
 
 ---
 
@@ -120,7 +41,7 @@ Method selected: rule-based affix stripping with base validation; inflections vi
 ### Core features
 
 - **Model choice:** a model library offers up to four parser models (different size, speed, and accuracy); the user chooses and downloads one before parsing, and can switch or delete models later.
-- **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Two views: flat phrases and nested phrases grouped by level (e.g., `[[The [red [dog]]] [rarely [[barks] loudly]]]`). Ambiguous sentences display multiple valid parses.
+- **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Two views: flat phrases and nested phrases grouped by level (e.g., `[[The [red [dog]]] [rarely [[barks] loudly]]]`). **(proposed)** Nested phrases also carry grammatical roles and head-of-parent markers (e.g., `[The red dog]` as `NP(Subject)`, `[rarely barks loudly]` as `VP(Predicate)`, and `[red dog]` as `NP` head of `[The red dog]`). Ambiguous sentences display multiple valid parses.
 - **Automatic dictionary lookup:** Highlighting a word shows its English and Korean definitions and example usages. Dictionary data is compiled into a static local database (hosted via raw content URLs), avoiding live API calls.
 - **Subword parsing:** Frequently occurring prefixes, bases, and suffixes (e.g., *un-*, *-ism*) are parsed and treated as vocabulary items.
 - **Vocabulary list export:** Users create custom vocab lists within the app and can export/import them in a portable file format.
@@ -258,3 +179,14 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 ### 2026-11-18T22:18:20Z — Claude Opus 5.5, Acceptance thresholds decided
 
 - Removed: 'Undecided' → 'Parser' → *Acceptance thresholds*. Decision (owner): a model is offered if test UPOS ≥ 97% and chunk F1 ≥ 94% (and it beats the Phase 5 baselines). Nested-view thresholds are under review (`plan-training.md` → Phase 7).
+
+### 2026-11-19T04:47:11Z — Antigravity, Added phraseLabeler submodule and nested-labeling caveats
+
+- Added: 'Undecided' → 'Parser' → *Nested phrase labeling (`parser/phraseLabeler.ts`)* with open decisions and caveats (role inventory, single-word head wrappers, discontinuous predicates, copula/coordination rules, stripped UD subtypes vs. biaffine relation classifier, UAS/LAS accuracy ceiling and confidence gating).
+- Modified: *Core features* → *Sentence structure breakdown* notes nested phrase grammatical roles and head-of-parent marking.
+
+### 2026-11-19T05:09:52Z — Claude Opus 5.5, Undecided moved to todo.md
+
+- Removed: *Undecided* section. Every open item is now a task in `todo.md` (owner decision). Decided notes it held are already recorded elsewhere: parser engine and no fallback (`architecture.md` → *Parsing engine*), accuracy before speed (`plan-training.md` → *Overview*), model library decisions (`architecture.md` → *Model library*), subword method (`architecture.md` → *Subword segmentation*).
+- Added: *Open items and tasks* pointer to `todo.md`.
+- Modified: *Core features* → *Sentence structure breakdown*: restored the confirmed nested example; grammatical roles and head-of-parent markers (added 2026-11-19 by Antigravity) marked **(proposed)**.

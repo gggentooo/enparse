@@ -15,7 +15,7 @@
  * Dependencies:
  *   Internal: ./types.ts. Used by: ./subwordParser.ts.
  *
- * Open items (plan.md → Undecided): affix inventory (source, size,
+ * Open items (todo.md): affix inventory (source, size,
  *   "frequently occurring"); affix content (Korean glosses, examples).
  *
  * Status: header only; not implemented.

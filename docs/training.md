@@ -108,7 +108,7 @@ How can a token classifier — which only picks one fixed class ID per word — 
 ```
 
 - The sentence's main predicate (the root of the tree) is always `0@ROOT|root`.
-- Any other word encodes its head by **direction** (`+` to the right, `-` to the left), **how many words of the head's UPOS to count** (`k`), the **head's UPOS tag**, and the **base UD relation** (stripping subtypes like `nmod:poss` → `nmod`).
+- Any other word encodes its head by **direction** (`+` to the right, `-` to the left), **how many words of the head's UPOS to count** (`k`), the **head's UPOS tag**, and the **base UD relation** (stripping subtypes like `nmod:poss` → `nmod`). After the planned biaffine retrain, the relation classifier keeps ten learner-relevant subtypes (e.g., `nsubj:pass`, `acl:relcl`, `nmod:poss`, `compound:prt`); see `dev_meta/plan-training.md` → *Head encoding*.
 
 Walking through *The red dog rarely barks loudly .*:
 

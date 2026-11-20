@@ -15,7 +15,7 @@
  * Dependencies:
  *   None. Used by: ./subwordParser.ts, ./affixes.ts, ./index.ts.
  *
- * Open items (plan.md → Undecided): module interfaces (subword segments).
+ * Open items (todo.md): module interfaces (subword segments).
  *
  * Status: header only; not implemented.
  */

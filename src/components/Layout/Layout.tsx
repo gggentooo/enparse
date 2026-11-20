@@ -16,7 +16,7 @@
  *   Internal: ./Header.tsx, ./Sidebar.tsx, ./ContentArea.tsx, ./Layout.module.css.
  *   Used by: components/App.tsx.
  *
- * Open items (plan.md → Undecided): target devices (responsive layout).
+ * Open items (todo.md): target devices (responsive layout).
  *
  * Status: header only; not implemented.
  */

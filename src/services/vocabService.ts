@@ -21,7 +21,7 @@
  *   No React imports; no other services.
  *   Used by: hooks/useVocab.ts.
  *
- * Open items (plan.md → Undecided): export format; import conflicts.
+ * Open items (todo.md): export format; import conflicts.
  *
  * Status: header only; not implemented.
  */

@@ -18,7 +18,7 @@
  *   Browser APIs: localStorage, indexedDB. No external libraries.
  *   Used by: modules/vocab (vocabManager), services (via modules).
  *
- * Open items (plan.md → Undecided): LocalStorage vs IndexedDB threshold;
+ * Open items (todo.md): LocalStorage vs IndexedDB threshold;
  *   backup and data-loss warnings.
  *
  * Status: header only; not implemented.

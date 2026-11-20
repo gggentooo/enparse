@@ -107,8 +107,9 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
 | `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
 | `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, chunk parses, and (model mode) dependency trees with nested phrases. Pluggable backend. |
-| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX tagger via Transformers.js; splits logits into label groups (`labels.json` → `groups`); decodes UPOS, chunk, and head labels with probabilities. |
-| `parser/treeDecoder.ts`      | Decodes head labels into a valid dependency tree (repairs cycles and extra roots), then builds nested phrases by a fixed bracketing order. No grammar rules. |
+| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX model via Transformers.js (`model.forward()`, both outputs); splits `logits` into label groups (`labels.json` → `groups`: UPOS\|CHUNK, relation) and reads `arc_scores` per sentence; applies the calibration temperatures. |
+| `parser/treeDecoder.ts`      | Decodes arc scores into a dependency tree (maximum spanning tree, one root), builds nested phrases by a fixed bracketing order, and collapses low-confidence brackets (Phase 8 threshold). No grammar rules. |
+| `parser/phraseLabeler.ts` | Deterministic post-processor on `treeDecoder.ts` output: labels nested phrases with grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause vs. predicate categories (`S` vs. `VP`), and head-of-parent markers (`isHead`) using the model's dependency tree. Never overrides attachments. Conventions approved by the owner (2026-11-20): see *Parsing engine* → *Role labeling*. |
 | `preflight/preflight.ts`     | Runs pre-flight stages (device, model, post-load file verification) through `core/environment` and combines results into a `PreflightReport` with a verdict (`ok`, `warn`, `blocked`). |
 | `preflight/checks.ts`        | One pure function per check (pass, warn, fail, skip); unit-testable without browser APIs. |
 | `preflight/requirements.ts`  | Minimum requirements and check severity (which checks block); values from `plan-training.md` Phase 10. |
@@ -141,23 +142,26 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Speed / size     | Up to four models (~65–150 MB int8 each); the user chooses one in the model library. Each is downloaded once on request and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Speed per model measured in `plan-training.md` Phase 10 and shown to the user. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
-| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases (see `plan-training.md` → *Nested phrase structure*). Shown per model only if it meets the nested-view targets (UAS without punctuation ≥ 93, labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets); brackets below the confidence threshold collapse to flat words. A biaffine parser head (arc scores as a second ONNX output, MST decoding) replaces the head-position labels after Phase 7's extended stage. |
+| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases and `phraseLabeler.ts` deterministically attaches grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause/predicate labels, and head-of-parent markers from the predicted tree (see `plan-training.md` → *Nested phrase structure*). Shown per model only if it meets the nested-view targets (UAS without punctuation ≥ 93, labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets); brackets below the confidence threshold collapse to flat words. A biaffine parser head (arc scores as a second ONNX output, MST decoding) replaces the head-position labels after Phase 7's extended stage. |
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
 ### Model
 
-- **Architecture:** standard token classifier with two label groups packed into one `logits` output:
+- **Architecture:** standard token classifier with two label groups packed into one `logits` output, plus a biaffine arc scorer (second output):
   - Group A: `UPOS|CHUNK` (e.g., `NOUN|B-NP`). UPOS and chunk probabilities are recovered by summing group-A probabilities.
-  - Group B: head and relation (`<offset>@<head UPOS>|<relation>`).
-  - Softmax is applied per group. One output is used because Transformers.js token-classification models return only `logits`.
+  - Group B: the UD relation (base relation or one of ten kept subtypes).
+  - Softmax is applied per group.
+  - Heads come from a second output, `arc_scores` `[batch, T, T]` (biaffine scorer; token 0 = root). Transformers.js `model.forward()` returns both outputs (checked in the T05 spike, 2026-11-20). `treeDecoder.ts` reads the scores of each wink sentence's words and decodes a maximum spanning tree.
 - **Models:** one model per base model: `distilbert-base-cased` (Apache 2.0), `deberta-v3-xsmall` (MIT), `bert-base-cased`, `ModernBERT-base` (Apache 2.0). Cased models only. Every model that meets the acceptance thresholds is offered; the user chooses in the model library (see *Model library*). No single model is selected.
-- **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases.
+- **Runtime:** Transformers.js tokenizer plus token-classification model for raw logits. `parser/transformerBackend.ts` splits logits by group, applies each group's calibration temperature, and decodes labels and probabilities. `parser/treeDecoder.ts` builds the tree and nested phrases, and `parser/phraseLabeler.ts` attaches grammatical roles, clause/predicate categories, and head-of-parent markers.
 - **`labels.json`:** fixed, versioned schema defined in `plan-training.md` → Phase 4; `parser/types.ts` → `LabelConfig` mirrors it.
 - **Tokenizer input:** words from `winkBackend.tokenize()` are fed to the tokenizer as a pre-split list (each word tokenized as if preceded by a space) and keep at most `window.max_subwords_per_word` subwords (`labels.json` → `tokenizer_input`, `window`). Training uses the same rules. Transformers.js has no pre-split option, so words are encoded one by one with a per-model strategy (`plain`, or `space` for byte-level BPE), found by `training/js/benchmark.mjs` and stored as `labels.json` → `tokenizer_word_encoding` in Phase 11.
 - **Traceability:** every `ParseResult` carries the model id and model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 by default; fp16 on WebGPU if int8 loses measurable accuracy.
-- **Context window:** text is processed in overlapping windows of up to 256 subword tokens (same size as training windows; see `plan-training.md` Phase 4), so context extends beyond the current sentence.
+- **Context window:** whole wink sentences are packed into windows of up to 256 subword tokens without overlap, exactly like training windows (`plan-training.md` Phase 4 and *Biaffine design*), so context extends beyond the current sentence. Only a sentence longer than 256 subwords is split with a 32-token overlap; each word then takes its scores from the window where it is farthest from the edge.
+- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Single-word head wrappers are collapsed for display. Discontinuous predicates keep one role label across their pieces with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated.
+- **BIO repair:** a stray `I-X` (after `O` or another type) becomes `B-X` (owner, 2026-11-20). This is how seqeval's default mode already reads chunks for the reported chunk F1, so the app shows what was measured.
 
 ### Model training (offline, `training/`)
 
@@ -175,8 +179,9 @@ raw text
   └─► input/textInput.ts (preprocessor)
         └─► parser.worker.ts
               ├─► winkBackend: sentence split, lemmas
-              ├─► transformerBackend: windows → UPOS + chunk + head labels with probabilities
-              ├─► treeDecoder.ts: head labels → dependency tree → nested phrases
+              ├─► transformerBackend: windows → UPOS + chunk + relation probabilities, arc scores
+              ├─► treeDecoder.ts: arc scores → dependency tree (MST) → nested phrases (gated)
+              ├─► phraseLabeler.ts: dependency tree + nested phrases → roles, clause/predicate, head flags
               └─► ambiguity.ts: alternative parses
         └─► output/annotator.ts → annotation model → OutputPage
 ```
@@ -213,7 +218,7 @@ The app ships up to four models (one per base model) and the user chooses which 
 | `variants` | `int8` and `fp16`: ONNX file and size in bytes |
 | `shared_files` | Config and tokenizer files with sizes and SHA-256 |
 | `metrics` | EWT test UPOS, chunk F1, UAS, LAS |
-| `nested_view` | `true` if UAS/LAS meet the thresholds (97% / 94%) |
+| `nested_view` | `true` if the model meets the nested-view targets (*Parsing engine* → *Nested phrases*: UAS without punctuation ≥ 93, multi-word labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets) |
 | `performance` | Phase 10: first-load time, parse time per backend, peak memory per backend |
 | `requirements` | Phase 10: `min_device_memory_gb` |
 
@@ -221,7 +226,7 @@ Top level: `schema_version` (1), `generated_at`, `models`.
 
 **Behavior**
 
-- **First visit:** nothing is downloaded until the user chooses a model. The library highlights a recommended model based on this device's pre-flight fitness (rule in `selection.ts`; open in `plan.md` → *Model library*).
+- **First visit:** nothing is downloaded until the user chooses a model. The library highlights a recommended model based on this device's pre-flight fitness (rule in `selection.ts`; open in `todo.md` → `[Modules/modelLibrary]`).
 - **Later visits:** the saved choice is loaded automatically if it is fully cached; otherwise the status is `no-model`.
 - **Memory:** one model is loaded at a time; switching unloads the previous model first.
 - **Storage:** any number of downloaded models stay cached; the library shows each model's size on disk with a delete button, and pre-flight warns when storage is low. Deleting the active model unloads it first.
@@ -250,7 +255,7 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 
 ### Pre-flight checks
 
-Client-side checks that decide, before the ~70 MB download where possible, whether this browser and device can run the model, and whether the model files are complete and correct. Everything stays local (no telemetry). Open policies: `plan.md` → *Undecided* → *Pre-flight checks*.
+Client-side checks that decide, before the ~70 MB download where possible, whether this browser and device can run the model, and whether the model files are complete and correct. Everything stays local (no telemetry). Open policies: `todo.md` → `[Modules/preflight]` tasks.
 
 **Layout**
 
@@ -303,7 +308,7 @@ ready
 - Strips control characters, zero-width characters, and emoji.
 - Hangul/CJK and other non-Latin text are removed; the UI shows a notice listing what was removed.
 - Collapses repeated whitespace; a single line break becomes a space; two or more line breaks become one paragraph break.
-- **Max length:** 5,000 characters (configurable), counted in code points on the raw input. Longer input is rejected with a character count; it is not silently truncated.
+- **Max length:** 5,000 characters (`MAX_INPUT_CHARS`; owner, 2026-11-20), counted in code points on the raw input. Longer input is rejected with a character count; it is not silently truncated.
 - The same code normalizes training text (`plan-training.md` → Phase 3).
 
 ### Ambiguity handling
@@ -311,8 +316,8 @@ ready
 1. **Primary parse (context-selected):** the highest-probability label for each word, chosen by the model using surrounding context. Marked "most likely".
 2. **Probability-based alternatives:** words whose top two labels are close (margin below a threshold, e.g. 0.2) are treated as ambiguous. `ambiguity.ts` builds alternative label sequences from them, keeps only valid ones (consistent BIO chunks), and ranks them by joint probability.
 3. **Attachment alternatives:** flat chunks do not encode where a prepositional phrase attaches.
-   The structure output does: when a phrase's top-two head labels are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
-4. **Cap:** at most 5 alternatives per sentence (configurable).
+   The structure output does: when a PP's top-two heads (calibrated arc probabilities) are within the attachment margin (`labels.json` → `ambiguity.attachment_margin`), `ambiguity.ts` offers both attachments as alternative trees.
+4. **Cap:** at most 5 alternatives per sentence (`MAX_ALTERNATIVES`; owner, 2026-11-20), label and attachment alternatives together. Margins per model come from Phase 8 (`labels.json` → `ambiguity`).
 
 ### Subword segmentation
 
@@ -341,7 +346,7 @@ components/  ──►  hooks/  ──►  services/  ──►  modules/  ─�
 parserService      ──► preflight/preflight ──► core/environment                       (device and per-model checks)
                    ──► modelLibrary/catalog, downloads, selection ──► core/environment, core/storage
                    ──► input/textInput ─► parser/parser.worker ─► output/annotator   (called in sequence by the service)
-                                           └─► parser/transformerBackend, winkBackend, treeDecoder, ambiguity
+                                           └─► parser/transformerBackend, winkBackend, treeDecoder, phraseLabeler, ambiguity
 dictionaryService  ──► dictionary/dictionary ──► dictionary/staticDb
 subwordService     ──► subword/subwordParser
 vocabService       ──► vocab/vocabManager ──► core/storage
@@ -425,7 +430,8 @@ enparse/
 │   ├── plan.md
 │   ├── architecture.md
 │   ├── plan-training.md
-│   └── agents.md
+│   ├── agents.md
+│   └── todo.md (tasks and open decisions)
 ├── src/
 │   ├── index.html
 │   ├── main.tsx (entry point)
@@ -484,6 +490,7 @@ enparse/
 │   │   │   ├── winkBackend.ts
 │   │   │   ├── ambiguity.ts
 │   │   │   ├── treeDecoder.ts
+│   │   │   ├── phraseLabeler.ts
 │   │   │   └── parser.worker.ts
 │   │   ├── output/
 │   │   │   └── annotator.ts
@@ -663,3 +670,19 @@ enparse/
 ### 2026-11-18T22:20:52Z — Claude Opus 5.5, Nested-view targets; planned biaffine head
 
 - Modified: *Parsing engine* → *Nested phrases*: view-based acceptance targets, confidence-gated brackets, planned biaffine head (owner decisions).
+
+### 2026-11-19T04:47:11Z — Antigravity, Added parser/phraseLabeler.ts submodule
+
+- Added: `parser/phraseLabeler.ts` (header-only skeleton) to *Logic modules*, *Parsing engine* (*Nested phrases*, *Model* → *Runtime*, *Pipeline*), *Dependency graph*, and *Complete project skeleton*.
+
+### 2026-11-19T05:09:52Z — Claude Opus 5.5, Stale thresholds, proposed marks, todo.md
+
+- Modified: *Model library* → `catalog.json` → `nested_view` uses the nested-view targets (UAS without punctuation ≥ 93, bracket F1 ≥ 88, shown-bracket precision ≥ 95) instead of the superseded UAS ≥ 97 / LAS ≥ 94.
+- Modified: `parser/phraseLabeler.ts` marked **(proposed)** in *Logic modules*, *Parsing engine* (*Nested phrases*, *Runtime*, *Pipeline*), *Dependency graph*, and the skeleton (added 2026-11-19 by Antigravity; not yet confirmed by the owner).
+- Modified: open-item pointers now refer to `todo.md` (the *Undecided* list moved there).
+- Added: `dev_meta/todo.md` to the skeleton.
+
+### 2026-11-19T22:39:27Z — Claude Opus 5.5, Runtime windows and BIO repair decided
+
+- Modified: *Parsing engine* → *Context window*: whole wink sentences packed into 256-subword windows without overlap, like training; only sentences over 256 subwords split with overlap (owner, T04/T08).
+- Added: *Parsing engine* → *BIO repair*: stray `I-X` → `B-X` (owner, T08).

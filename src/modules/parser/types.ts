@@ -11,9 +11,11 @@
  *      head (token index in the sentence, -1 for root), relation, and head
  *      probability.
  *   2. Chunk: type (NP, VP, PP, ADJP, ADVP), token range (flat view).
- *   3. PhraseNode (proposed): type, token range, head token, children
- *      (nested view; built by treeDecoder.ts; plan-training.md → Nested
- *      phrase structure).
+ *   3. PhraseNode (proposed): type (including "S" for clause), token range,
+ *      head token, children (built by treeDecoder.ts; plan-training.md → Nested
+ *      phrase structure), plus planned role (PhraseRole: Subject, Predicate,
+ *      Object, Indirect Object, Complement, Modifier, etc.) and isHead
+ *      (head-of-parent marker) populated by phraseLabeler.ts.
  *   4. SentenceParse: tokens, primary chunks, phrases (root PhraseNode, or
  *      null when the nested view is not shipped), treeRepaired flag,
  *      alternatives (ranked, with probability and reason: probability or
@@ -22,7 +24,9 @@
  *      backend (webgpu | wasm); every Token keeps wink character offsets
  *      (traceability).
  *      No mode field: results always come from the model.
- *   6. LabelConfig: mirrors labels.json schema v1 (plan-training.md → Phase 4). (done)
+ *   6. LabelConfig: mirrors labels.json schema v2 (biaffine head; plan-training.md →
+ *      Phase 4 schema; T33). (done) Schema v1 files (rel_pos_v1 head labels) are
+ *      training-only and not loaded by the app.
  *   7. ModelRef: { id, folder, variant ("int8" | "fp16") } — the model the
  *      worker loads (structural; parserService builds it from the catalog).
  *      Worker message types (request/response unions) and ParserStatus
@@ -35,7 +39,8 @@
  * Dependencies:
  *   None. Used by: all files in modules/parser/.
  *
- * Open items (plan.md → Undecided): module interfaces (parse result types).
+ * Open items (todo.md): module interfaces (parse result types);
+ *   nested phrase labeling (PhraseRole inventory, clause/predicate convention).
  *
  * Status: word and sentence spans (Phase 3 pre-work) and LabelConfig (Phase 4)
  *   implemented; other tasks pending.
@@ -65,8 +70,8 @@ export class TokenizerError extends Error {
   }
 }
 
-/** labels.json schema version this app understands. */
-export const LABEL_SCHEMA_VERSION = 1;
+/** labels.json schema version this app understands (2: biaffine head; T33). */
+export const LABEL_SCHEMA_VERSION = 2;
 
 /** Slice of `labels` (and of the model logits) for one label group. */
 export type LabelGroup = {
@@ -77,20 +82,26 @@ export type LabelGroup = {
 };
 
 /**
- * Contents of public/models/<model-id>/labels.json, schema v1
- * (plan-training.md → Phase 4). Field names match the JSON exactly.
+ * Contents of public/models/<model-id>/labels.json, schema v2
+ * (plan-training.md → Phase 4 schema). Field names match the JSON exactly.
  * Fields written by later training phases are null until then.
  */
 export type LabelConfig = {
   schema_version: number;
-  /** Group A labels (`UPOS|CHUNK`) then group B labels (`<offset>@<UPOS>|<relation>`); index = class id. */
+  /** Group A labels (`UPOS|CHUNK`) then group B relations (`nsubj`, `nsubj:pass`, …); index = class id. */
   labels: string[];
-  /** Softmax is applied per group slice. */
-  groups: { chunk: LabelGroup; dep: LabelGroup };
-  /** Head encoding of group B, e.g. "rel_pos_v1". */
+  /** Slices of the `logits` output; softmax is applied per slice. */
+  groups: { chunk: LabelGroup; rel: LabelGroup };
+  /** Structure encoding: "biaffine_v1" (heads from the arc_scores output, MST decoding). */
   dep_encoding: string;
+  /** Second ONNX output [batch, T, T]: score of token j as head of token i; token 0 is the root. */
+  arc: { output: string; root_position: number; scope: "sentence" };
+  /** UD relation subtypes kept in group B (others are folded into their base relation). */
+  relation_subtypes: string[];
   /** How words are fed to the tokenizer: "pre_split_words" (each word tokenized as if preceded by a space). */
   tokenizer_input: string;
+  /** Per-model word encoding for Transformers.js ("plain" or "space"); set in Phase 9/11. */
+  tokenizer_word_encoding: "plain" | "space" | null;
   /** The 17 UPOS tags, fixed order. */
   upos: string[];
   /** B-/I- x NP, VP, PP, ADJP, ADVP, then O. */
@@ -102,6 +113,8 @@ export type LabelConfig = {
     max_subword_tokens: number;
     /** Subwords kept per word; later subwords are dropped before the model. */
     max_subwords_per_word: number;
+    /** Tokens of context repeated when one sentence is longer than a window. */
+    long_sentence_overlap: number;
   };
   versions: {
     /** Hugging Face id of the base model (tokenizer source). */
@@ -110,12 +123,25 @@ export type LabelConfig = {
     /** wink versions used in training; the app warns if its versions differ. */
     wink: { "wink-nlp": string; "wink-eng-lite-web-model": string };
   };
-  calibration: { temperature: number | null; dep_temperature: number | null };
+  /** Softmax temperatures (Phase 8): group A, relations, arc scores. */
+  calibration: { temperature: number | null; rel_temperature: number | null; arc_temperature: number | null };
   ambiguity: { margin: number | null; attachment_margin: number | null };
+  /** Confidence gating of the nested view (Phase 8): brackets below the threshold collapse. */
+  nested: { bracket_threshold: number | null };
   model_version: string | null;
   /** Model files (path relative to the model folder) with size and SHA-256; written by export_onnx.py (Phase 11). Used by pre-flight integrity checks. */
   files: Record<string, { bytes: number; sha256: string }> | null;
 };
+
+/**
+ * Word-level arc scores of one sentence (biaffine models): row i = word i (0-based);
+ * column 0 = root, column j = word j (1-based). Read from the `arc_scores` output at
+ * first-subword positions.
+ */
+export type ArcScores = readonly (readonly number[])[];
+
+/** One relation (group B of a biaffine model) with its probability; candidates best first. */
+export type RelationCandidate = { relation: string; prob: number };
 
 /** One group B label with its probability (candidates are sorted, best first). */
 export type DepCandidate = {
@@ -131,8 +157,10 @@ export type DecodedTree = {
   relations: string[];
   /** True if any word did not use its best label. */
   repaired: boolean;
-  /** 0-based indexes of words whose head came from repair (not their best label). */
+  /** 0-based indexes of words whose head came from repair (not their best label; MST: not their argmax head). */
   repairedWords: number[];
+  /** Probability of the chosen head per word (gating; Phase 8 calibration applies before decoding). */
+  headProbs: number[];
 };
 
 /** Phrase label in the nested view; null when the head's UPOS has no phrase type. */

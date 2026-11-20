@@ -18,7 +18,7 @@
  *   Internal: ./Sidebar.module.css.
  *   Used by: ./Layout.tsx.
  *
- * Open items (plan.md → Undecided): interface language.
+ * Open items (todo.md): interface language.
  *
  * Status: header only; not implemented.
  */

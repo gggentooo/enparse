@@ -21,7 +21,7 @@
  *   Internal: ./affixes.ts, ./types.ts. External: none.
  *   Used by: services/subwordService.ts (via ./index.ts).
  *
- * Open items (plan.md → Undecided): affix inventory; source of the
+ * Open items (todo.md): affix inventory; source of the
  *   known-word list used for base validation.
  *
  * Status: header only; not implemented.

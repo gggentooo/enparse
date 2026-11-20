@@ -4,21 +4,28 @@
  * Covers: label parsing and head resolution (rel_pos_v1), best-candidate
  * decoding, root repair (none / several), cycle repair, unresolvable heads,
  * the documented bracketing examples, PP labels, punctuation placement,
- * non-projective trees, and phrase spans.
+ * non-projective trees, and phrase spans; MST decoding over arc scores
+ * (optimality against brute force on small random sentences, single root,
+ * relations) and confidence gating.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   REPAIR_RELATION,
   ROOT_LABEL,
+  ROOT_RELATION,
+  bracketConfidence,
   bracketString,
   buildPhrases,
+  decodeArcTree,
   decodeTree,
+  gatePhrases,
+  maxSpanningTree,
   parseDepLabel,
   phraseSpans,
   resolveHead,
 } from "./treeDecoder";
-import type { DepCandidate } from "./types";
+import type { DepCandidate, PhraseNode, RelationCandidate } from "./types";
 
 const c = (label: string, prob = 0.9): DepCandidate => ({ label, prob });
 
@@ -172,5 +179,141 @@ describe("buildPhrases", () => {
       { type: "NP", start: 0, end: 1 },
       { type: "NP", start: 1, end: 1 },
     ]);
+  });
+});
+
+// -- MST decoding (biaffine) -------------------------------------------------------------
+
+/** All head arrays (node 0 = root) that form a tree with exactly one root child. */
+function allTrees(n: number): number[][] {
+  const out: number[][] = [];
+  const heads = new Array<number>(n + 1).fill(-1);
+  const isTree = (): boolean => {
+    if (heads.slice(1).filter((h) => h === 0).length !== 1) return false;
+    for (let d = 1; d <= n; d++) {
+      const seen = new Set<number>();
+      for (let k = d; k !== 0; k = heads[k] as number) {
+        if (seen.has(k)) return false;
+        seen.add(k);
+      }
+    }
+    return true;
+  };
+  const rec = (d: number): void => {
+    if (d > n) {
+      if (isTree()) out.push(heads.slice());
+      return;
+    }
+    for (let h = 0; h <= n; h++) {
+      if (h === d) continue;
+      heads[d] = h;
+      rec(d + 1);
+    }
+  };
+  rec(1);
+  return out;
+}
+
+function scoreOf(score: number[][], heads: number[]): number {
+  return heads.slice(1).reduce((s, h, i) => s + (score[i + 1]?.[h] as number), 0);
+}
+
+function lcg(seed: number): () => number {
+  let x = seed;
+  return () => {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    return x / 2147483648;
+  };
+}
+
+const rel = (...names: string[]): RelationCandidate[] => names.map((relation, k) => ({ relation, prob: 0.9 - k * 0.1 }));
+
+describe("maxSpanningTree", () => {
+  it("finds the best single-root tree on random graphs (brute force, n ≤ 5)", () => {
+    const rand = lcg(7);
+    for (let trial = 0; trial < 120; trial++) {
+      const n = 2 + (trial % 4);
+      const score = Array.from({ length: n + 1 }, (_, d) =>
+        Array.from({ length: n + 1 }, (_, h) => (d === 0 || h === d ? -Infinity : Math.log(rand() + 1e-3) * 3)),
+      );
+      const best = Math.max(...allTrees(n).map((t) => scoreOf(score, t)));
+      const got = maxSpanningTree(score);
+      expect(got.slice(1).filter((h) => h === 0)).toHaveLength(1);
+      expect(scoreOf(score, got)).toBeCloseTo(best, 9);
+    }
+  });
+
+  it("breaks a cycle", () => {
+    // words 1 and 2 prefer each other; 3 prefers the root
+    const L = Math.log;
+    const score = [
+      [-Infinity, -Infinity, -Infinity, -Infinity],
+      [L(0.1), -Infinity, L(0.8), L(0.1)],
+      [L(0.2), L(0.7), -Infinity, L(0.1)],
+      [L(0.9), L(0.05), L(0.05), -Infinity],
+    ];
+    const heads = maxSpanningTree(score);
+    expect(heads.slice(1)).toEqual([2, 3, 0]);
+  });
+});
+
+describe("decodeArcTree", () => {
+  it("decodes the argmax tree, root relation, and head probabilities", () => {
+    // The dog barks : The→dog, dog→barks, barks→root
+    const L = Math.log;
+    const arc = [
+      [L(0.05), -50, L(0.9), L(0.05)],
+      [L(0.05), L(0.05), -50, L(0.9)],
+      [L(0.9), L(0.05), L(0.05), -50],
+    ];
+    const t = decodeArcTree(arc, [rel("det", "nmod"), rel("nsubj", "obj"), rel("nsubj", ROOT_RELATION)]);
+    expect(t.heads).toEqual([2, 3, 0]);
+    expect(t.relations).toEqual(["det", "nsubj", ROOT_RELATION]);
+    expect(t.repaired).toBe(false);
+    expect(t.headProbs[0]).toBeCloseTo(0.9, 6);
+  });
+
+  it("keeps one root and never gives a non-root word the relation root", () => {
+    const arc = [
+      [5, 0, 0],
+      [4, 0, 0],
+    ];
+    const t = decodeArcTree(arc, [rel(ROOT_RELATION, "nsubj"), rel(ROOT_RELATION, "obj")]);
+    expect(t.heads.filter((h) => h === 0)).toHaveLength(1);
+    expect(t.heads).toEqual([0, 1]);
+    expect(t.relations).toEqual([ROOT_RELATION, "obj"]);
+    expect(t.repairedWords).toEqual([1]);
+  });
+
+  it("falls back to dep when only root is offered for a non-root word", () => {
+    const t = decodeArcTree([[3, 0, 0], [0, 3, 0]], [rel("nsubj"), rel(ROOT_RELATION)]);
+    expect(t.relations).toEqual([ROOT_RELATION, REPAIR_RELATION]);
+  });
+
+  it("rejects malformed input", () => {
+    expect(() => decodeArcTree([[0, 0]], [])).toThrow(/lengths differ/);
+    expect(() => decodeArcTree([[0]], [rel("root")])).toThrow(/columns/);
+    expect(decodeArcTree([], []).heads).toEqual([]);
+  });
+});
+
+describe("confidence gating", () => {
+  // The red dog barks . — heads: The→dog, red→dog, dog→barks, barks→root, .→barks
+  const heads = [3, 3, 4, 0, 4];
+  const upos = ["DET", "ADJ", "NOUN", "VERB", "PUNCT"];
+  const rels = ["det", "amod", "nsubj", "root", "punct"];
+  const words = ["The", "red", "dog", "barks", "."];
+  const items = buildPhrases(heads, upos, rels);
+
+  it("scores a bracket by the product of its non-head words' head probabilities", () => {
+    const np = (items[0] as PhraseNode).children[0] as PhraseNode; // [The [red [dog]]]
+    expect(bracketString([np], words)).toBe("[The [red [dog]]]");
+    expect(bracketConfidence(np, [0.5, 0.8, 1, 1, 1])).toBeCloseTo(0.4, 9);
+  });
+
+  it("collapses brackets below the threshold and keeps the rest", () => {
+    expect(bracketString(gatePhrases(items, [1, 1, 1, 1, 1], 0.9), words)).toBe(bracketString(items, words));
+    const gated = gatePhrases(items, [0.5, 1, 1, 1, 1], 0.9);
+    expect(bracketString(gated, words)).toBe("The [red [dog]] [barks] .");
   });
 });

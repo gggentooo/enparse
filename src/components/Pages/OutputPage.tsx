@@ -24,7 +24,7 @@
  *             hooks/useVocab.ts, components/Shared/*, ./OutputPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Open items (plan.md → Undecided): parse-display style; how alternatives
+ * Open items (todo.md): parse-display style; how alternatives
  *   are displayed; grammar label language; lookup trigger.
  *
  * Status: header only; not implemented.

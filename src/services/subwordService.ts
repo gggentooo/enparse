@@ -19,7 +19,7 @@
  *   No React imports; no other services.
  *   Used by: hooks/useSubword.ts.
  *
- * Open items (plan.md → Undecided): source of the known-word list for base
+ * Open items (todo.md): source of the known-word list for base
  *   validation; affix inventory.
  *
  * Status: header only; not implemented.

@@ -6,7 +6,7 @@ Description:
   dev_meta/agents.md → Tooling and commands (agents.md → Code documentation).
 
 Tasks:
-  1. Fill Setup once tooling is confirmed (plan.md → Undecided → Tooling).
+  1. Fill Setup once tooling is confirmed (dev_meta/todo.md → [Project] tooling task).
   2. Keep the Commands table identical to agents.md.
 
 Dependencies:

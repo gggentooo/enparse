@@ -20,7 +20,7 @@
  *             components/Shared/*, ./DictionaryPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Open items (plan.md → Undecided): lookup trigger; sense selection.
+ * Open items (todo.md): lookup trigger; sense selection.
  *
  * Status: header only; not implemented.
  */

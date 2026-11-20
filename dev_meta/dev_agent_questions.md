@@ -309,3 +309,420 @@ Most of this can wait until after beta. Three things are cheap now and expensive
 - fix the `labels.json` schema by Phase 4
 
 **Follow-up (2026-11-18):** all three items in §e were added to `plan-training.md` (Phases 3, 4, 11 and 12) and `architecture.md` → *Model*. Sections a–d are not yet in the plan.
+
+---
+
+## 2026-11-19 — What can be implemented in parallel during Phase 7, and what conflicts might arise later?
+
+**Question (Hankyung Lee):**
+
+> Review the overall development plan, and list what can begin implementation in parallel while training Phase 7 continues. Ensure the candidates you choose are independent from, or adjustable based on the potential architectural changes that might occur as model training continues and finishes. Additionally, report if you find any potential conflicts that might arise during any step(s) later on in development.
+
+**Answer (Antigravity):**
+
+### Current Baseline
+
+Only 10 files under `src/` have code implemented (`src/index.html`, `src/modules/input/`, and `src/modules/parser/{types,winkBackend,treeDecoder}.ts` plus their tests). The remaining **75 files in `src/` are header-only stubs**, and React, React Router, ESLint, Prettier, and React Testing Library are not yet installed in `package.json`.
+
+Because Phase 7 still has an upcoming **biaffine dependency head + MST decoder** change (plus Phase 8 calibration, Phase 9 quantization/fp16-only fallback risk, and Phase 10 browser benchmarking), parallel work should focus on everything decoupled from model tensor formats and threshold constants.
+
+### 1. What Can Start Immediately in Parallel
+
+#### Tier A — Fully Independent of Model Training & Architecture (Zero Rework Risk)
+
+1. **Frontend Tooling & App Shell** *(requires owner sign-off on React/tooling deps in `plan.md` → Tooling and `package.json`)*
+   - Install `react`, `react-dom`, `react-router-dom`, `@vitejs/plugin-react`, ESLint + Prettier, and React Testing Library; wire `npm run lint` and `vite.config.ts`.
+   - Build `src/css/tokens.css`, `src/css/global.css`, `src/main.tsx`, `src/routes.tsx`, `src/components/App.tsx`, `Layout/` (`Layout`, `Header`, `Sidebar`, `ContentArea`), and `Shared/` (`Button`, `Modal`, `Tooltip`, `LoadingSpinner`).
+   - Add an **Attribution** view/modal (required for UD EWT CC BY-SA 4.0 and model licenses before Phase 11; currently missing from the skeleton, tracked in `plan.md` → UI/UX).
+   - Build `src/components/Pages/InputPage.tsx` — its backing module `src/modules/input/textInput.ts` is already complete.
+
+2. **Core Infrastructure (`src/core/` & `src/utils/`)**
+   - `src/utils/helpers.ts` — string normalization, ISO date formatting, `debounce`/`throttle`, and unit tests.
+   - `src/core/storage.ts` — async LocalStorage/IndexedDB wrapper with namespacing, schema versioning, typed errors, and configurable `STORAGE_SIZE_THRESHOLD`.
+   - `src/core/environment.ts` — browser capability probes (`moduleWorkers`, `wasmSimd`, `wasmThreads`, `webgpu`, `deviceMemory`, `storage.estimate`, `cacheStorage`) and Cache Storage helpers (`listCached`, `downloadToCache`, `digestCachedFiles`, `deleteCachedFiles`). *(Make allowed asset origins configurable rather than strictly hardcoding same-origin; see Conflict #1 below.)*
+
+3. **Vocabulary Lists (Complete Vertical Slice)**
+   - `src/modules/vocab/` → `src/services/vocabService.ts` → `src/hooks/useVocab.ts` → `src/components/Pages/VocabPage.tsx`.
+   - Completely independent of the parser. Only needs confirmation of open schema/export/conflict items in `plan.md` → Vocabulary lists.
+
+4. **Subword Parsing (Complete Vertical Slice)**
+   - `src/modules/subword/affixes.ts`, `subwordParser.ts` → `src/services/subwordService.ts` → `src/hooks/useSubword.ts`.
+   - Consumes only `(word, lemma)` from `wink-nlp` (already pinned at `2.4.0`) and an injected `isKnownWord` predicate. Zero neural-model dependency. *(Resolve Conflict #4 first regarding where `isKnownWord` gets its word list.)*
+
+5. **Static Dictionary & Offline Build Pipeline (Complete Vertical Slice)**
+   - Decide data sources/licensing and storage format (`plan.md` → Dictionary), build the offline dictionary compiler, and implement `src/modules/dictionary/` → `src/services/dictionaryService.ts` → `src/hooks/useDictionary.ts` → `src/components/Pages/DictionaryPage.tsx`.
+   - Completely independent of parser training (headword alignment only depends on already-pinned `wink-nlp` lemmas).
+
+#### Tier B — Safe to Build Now Using Mocks / Configurable Contracts (Easily Adjustable)
+
+6. **Pre-flight Module & Diagnostics UI**
+   - `src/modules/preflight/` (`checks.ts`, `requirements.ts`, `preflight.ts`) and `src/components/Shared/DiagnosticsPanel.tsx`.
+   - Pure check logic and verdicts are model-agnostic; Phase 10 only fills in numeric thresholds in `requirements.ts` (`TODO(preflight-thresholds)`). Keep `ModelManifest` version validation ready for a `labels.json` schema bump (v1 → v2).
+
+7. **Model Library Module & `ModelsPage` (Against a Fixture `catalog.json`)**
+   - `src/modules/modelLibrary/` (`catalog.ts`, `downloads.ts`, `selection.ts`) → `src/hooks/useModelLibrary.ts` → `src/components/Pages/ModelsPage.tsx`.
+   - Design for upcoming changes: make `variants.int8` and `variants.fp16` individually optional (in case ModernBERT ships fp16-only), allow multi-file ONNX artifacts (`.onnx` + `.onnx_data` if split), and support the updated nested-view metrics (see Conflicts #6 and #7).
+
+8. **Output Annotator & `OutputPage` (Against Mock `ParseResult` Fixtures)**
+   - `src/modules/output/annotator.ts` and `src/components/Pages/OutputPage.tsx`.
+   - Flat chunk display, nested `SentencePhrases` rendering, word selection, inline dictionary/subword lookup, and alternative switching all operate on `ParseResult` / `SentencePhrases`, not raw ONNX logits. Even when the biaffine head + MST + confidence-gated bracket collapsing lands, `treeDecoder.ts` still outputs `SentencePhrases` (collapsed brackets simply appear as `WordLeaf` items inside their parent `PhraseNode`).
+
+9. **Parser Orchestration Shell (With a Mocked `ParserBackend`)**
+   - Finalize `ParseResult` / `SentenceParse` / `Token` types in `src/modules/parser/types.ts`, implement BIO grouping & repair in `src/modules/parser/parser.ts`, build the worker message protocol & readiness guard (`ParserNotReadyError`) in `src/modules/parser/parser.worker.ts`, and wire the state machine in `src/services/parserService.ts` + `src/hooks/useParser.ts`.
+
+#### What to Defer Until Phase 7 (Biaffine) & Phases 8–10 Finish
+
+- **`src/modules/parser/transformerBackend.ts`** — tightly coupled to single- vs. dual-output ONNX (`logits` + `arc_scores`), Transformers.js `model.forward()` behavior, `labels.json` schema, and window merging.
+- **`src/modules/parser/ambiguity.ts`** — attachment alternatives will switch from top-two `rel_pos_v1` labels to biaffine arc-score margins / alternative MSTs, and margins come from Phase 8.
+- **Rewriting `src/modules/parser/treeDecoder.ts`** — wait until the biaffine head's exact output shape (word-level vs. subword-level `[T, T]` arc scores) and Phase 8 confidence-gating rule are defined.
+
+### 2. Potential Conflicts & Risks Later in Development
+
+#### High-Impact Conflicts
+
+1. **Same-Origin-Only Network Rule vs. Model/Dictionary Hosting & COOP/COEP**
+   - **Conflict:** `agents.md` and `src/core/environment.ts` prohibit non-same-origin requests (`fetchStaticJson` rejects other origins). Yet all four models total **~1.2 GB** (~0.4 GB int8 + ~0.8 GB fp16), exceeding GitHub's free Git LFS quota (1 GB storage / 1 GB monthly bandwidth) and typical static-host file caps (e.g., Cloudflare Pages' 25 MB per-file limit), while `plan.md` also considers hosting dictionary shards on GitHub raw or a CDN.
+   - **Compounding issue:** If Phase 10 shows multi-threaded WASM (`SharedArrayBuffer`) is needed to meet the 5 s budget, the app host must send `COOP: same-origin` + `COEP: require-corp` headers — which **GitHub Pages does not support**, and which will block cross-origin model/dictionary fetches unless the asset host returns `Cross-Origin-Resource-Policy: cross-origin` (and CORS headers).
+   - **Mitigation:** Decide the hosting topology before implementing `core/environment.ts` (e.g., Cloudflare Pages + Cloudflare R2 mapped to a same-origin path `/models/*`, or an explicit static-asset origin allowlist for Hugging Face Hub with CORP/CORS verification).
+
+2. **Biaffine Head Upgrade Breaks Current ONNX, Transformers.js, Window-Merging, and `labels.json` v1 Contracts**
+   - **Schema break:** `src/modules/parser/types.ts` (`LabelConfig`), `src/modules/preflight/types.ts` (`ModelManifest`), and `plan-training.md` (Phase 4) assume `labels.json` v1 (`dep_encoding: "rel_pos_v1"`, single `logits`, two temperatures). The biaffine head introduces a second ONNX output (`arc_scores`), relation-only Group B logits, arc vs. relation temperatures, and a bracket confidence threshold — requiring a coordinated `schema_version: 2` bump (and updating the `preflight` ↔ `parser` schema-version parity test together).
+   - **Transformers.js / Optimum risk:** Standard `optimum-onnx --task token-classification` only exports a single `logits` tensor, and Transformers.js's `*ForTokenClassification` discards extra outputs (`plan-training.md`). Before retraining all 4 models with a biaffine head, run a 1-epoch smoke test verifying that a custom ONNX export with `logits` + `arc_scores` actually exposes both tensors via Transformers.js 4.3.2 (`model.forward()` or raw `onnxruntime-web` session) and quantizes cleanly to `int8`/`fp16`.
+   - **2D pairwise window-merging problem:** Merging 1D per-token `logits` across overlapping 256-token windows is straightforward, but biaffine `arc_scores` is a **2D `[T, T]` matrix** per window. If a long sentence crosses a window boundary (or multiple wink sentences share a window — 306 EWT train UD sentences had 719 cross-wink-sentence arcs in Phase 3), training and runtime must agree on whether arc scoring is masked per sentence or per window, and how overlapping 2D scores merge.
+
+3. **Cache Storage Desync & Browser OOM Risk Between `modelLibrary` and Transformers.js**
+   - **Conflict:** `src/modules/modelLibrary/downloads.ts` plans to download and hash ONNX files directly into Transformers.js's Cache Storage (`transformers-cache`) so `transformerBackend.ts` hits the cache later.
+   - **Two pitfalls:** (1) Transformers.js 4.3.2 constructs cache keys internally based on `env.localModelPath`, `base: "./"`, and the Web Worker's URL base — any URL normalization mismatch causes a silent cache miss and a duplicate 70–300 MB download (or offline failure). (2) Hashing a 300 MB `fp16` ONNX file via `crypto.subtle.digest` in `core/environment.ts` requires holding the entire uncompressed `ArrayBuffer` in JS heap (plus a copy for `Cache.put`), risking OOM on mobile or 8 GB browsers.
+   - **Mitigation:** Spike a minimal Vite worker + Transformers.js cache-hit test early (can reuse Phase 7 smoke ONNX files) and check whether streaming SHA-256 or splitting `.onnx` + `.onnx_data` is needed.
+
+4. **`subwordService` Known-Word Validation Conflicts With Strict Layer Isolation**
+   - **Conflict:** `architecture.md` forbids both module→module imports (`subword/` cannot import `dictionary/`) and service→service imports (`subwordService` cannot import `dictionaryService`). Yet `plan.md` leaves open passing dictionary headwords to `subwordParser` via `subwordService`. Importing `modules/dictionary` directly from `subwordService` breaks single-owner caching of dictionary shards; not doing so leaves `subwordService` without access to dictionary headwords.
+   - **Mitigation:** Bundle a tiny static known-lemma list (e.g., compressed word set / trie) directly inside `src/modules/subword/`, or explicitly wire the predicate at the hook layer.
+
+5. **Direct Lookups on `DictionaryPage` Have No Access to `wink-nlp` Lemmas**
+   - **Conflict:** `plan.md` relies on `wink-nlp` to lemmatize inflected words (*ran* → *run*) before dictionary lookup. Parsed words on `OutputPage` carry wink lemmas from `parser.worker.ts`, but a user typing *"ran"* directly into `DictionaryPage.tsx` has no wink lemma — and importing `winkBackend` on the main thread would duplicate the **1.0 MB gzipped** `wink-nlp` bundle outside the worker and violate the worker-only rule.
+   - **Mitigation:** Include an inflection→headword index inside the static dictionary database itself so `dictionary/staticDb.ts` resolves inflected queries standalone.
+
+#### Medium-Impact Spec Drifts & Edge Cases
+
+6. **Single-Variant (`fp16`-Only) Models Break `CatalogEntry` Types**
+   - `plan-training.md` flags that ModernBERT may ship as **fp16 (WebGPU) only** if int8 parity fails in Phase 9, yet `src/modules/modelLibrary/types.ts` and `architecture.md` require both `int8` and `fp16` in `variants`. Make both optional and ensure `preflight/assessModels()` marks fp16-only models as `blocked` when WebGPU is unavailable.
+
+7. **Stale Thresholds Across `dev_meta/` and Stubs**
+   - Nested-view acceptance was updated on 2026-11-19 to **UAS (excl. punct) ≥ 93%, multi-word labeled bracket F1 ≥ 88%, shown-bracket precision ≥ 95%** (`plan-training.md`, `architecture.md`), but `architecture.md` (`catalog.json` schema), `plan-training.md` (Phase 7 exit criterion), and `src/modules/modelLibrary/types.ts` still reference the old `UAS ≥ 97% / LAS ≥ 94%` rule and omit `nested_f1` / `shown_bracket_precision` from `catalog.json → metrics`. Likewise, `plan-training.md` → *Open questions* still marks the decided flat thresholds (`97% / 94%`) as proposed.
+
+8. **Train/Eval vs. Runtime BIO Repair & Window-Merge Rule Still Undefined**
+   - Neither the **BIO repair method** (simple rule vs. constrained Viterbi) nor the **overlapping window merge rule** is locked down. If `parser.ts` repairs BIO sequences differently from `training/scripts/metrics.py`, Phase 9/11 parity tests and reported chunk F1 will diverge slightly from browser output.
+
+9. **TypeScript 7.0.2 / Vite 8.3.8 Peer-Dependency Risk When Adding React & ESLint**
+   - `package.json` pins `typescript: 7.0.2`, `vite: 8.3.8`, and `vitest: 5.1.0`. Before adding ESLint/Prettier/`@vitejs/plugin-react`/RTL, verify plugin compatibility (especially `typescript-eslint` with TypeScript 7) so tooling setup does not force a version downgrade or lockfile drift from `training/js/package.json`.
+
+10. **Open Product Decisions Blocking UI Polish**
+    - `plan.md` still has undecided UX items (UI language, Korean vs. English grammar labels, mobile vs. desktop support, vocab schema/Anki export, dictionary data sources). Following `agents.md`, keep all component strings centralized in per-file `strings` constants so i18n/Korean translation can drop in cleanly later.
+
+## 2026-11-19 — Todo.md Stage 0 [Decision] items
+
+**Question (Hankyung Lee):**
+
+> Review the Stage 0 [Decision] items in todo.md. For each [Decision] item, review all relevant files and structures and list all viable options. Specify for each option whether you recommend it or not, and provide reasons for why, such as long-term maintainability, cross-module effects, etc. I will review your output and choose the options I determine to be most appropriate.
+
+**Answer (Claude Opus 5.5):**
+
+I've reviewed the 23 open Stage 0 Decision tasks (T03 is done). For each, ✅ means I recommend it, ➖ means it's viable but not my first choice, and ❌ means I recommend against it. I haven't changed any files; once you choose, I'll record the decisions and close the tasks.
+
+## Findings that affect several decisions
+
+- **ESLint can't run on our TypeScript.** typescript-eslint 8.73 (the TypeScript plugin for ESLint) requires TypeScript below 6.1. Our pinned TypeScript 7.0.2 is the new native build and doesn't provide the interface typescript-eslint uses. This affects T13.
+- **React and React Router have moved on.** The latest React is 19.3.1, while `architecture.md` says "React 18+". The router's main package is now `react-router` 8.5.2, which requires React ≥ 19.2.7. The `react-router-dom` package in our docs is stuck at 7.x. `@vitejs/plugin-react` 6.3 supports Vite 8.
+- **The current chunk F1 already matches the simplest BIO repair.** seqeval's default mode treats a stray `I-X` as the start of a new chunk, which is exactly what a simple "turn it into `B-X`" repair does (T08).
+- **Training and the planned runtime split text into windows differently.**
+  - Training packs whole sentences into each window, with no overlap (~10 sentences per window). Only a sentence longer than 256 subword tokens is split, with overlap, and none needed it.
+  - The `transformerBackend.ts` header plans overlapping windows at runtime.
+  - This affects T04 and T08.
+- **GitHub Pages can't host the models.** Its total site limit is 1 GB, and the four models total about 1.2 GB. It also can't send the COOP/COEP headers that multi-threaded WebAssembly needs. GitHub's Git LFS free quota is now 10 GiB storage and 10 GiB bandwidth per month, so LFS itself is no longer the bottleneck. The repo is on GitHub.
+- **Two stale details I noticed:**
+  - The `OutputPage.tsx` header still lists a "Basic-mode notice", but there is no fallback mode.
+  - The catalog descriptions exist for DistilBERT and BERT, but both currently miss the UPOS ≥ 97 threshold (96.67 and 96.89), so neither would be offered as things stand.
+
+---
+
+## [Training]
+
+### T04 — Biaffine arc-score scope and window merging
+**a. Which words can be scored as a word's head**
+- ✅ **Only words in the same sentence (UD sentence in training, wink sentence at runtime), plus a root token.** This matches the Phase 3 decision, is what the current tree decoder already does, and keeps each tree to one sentence.
+- ➖ **Re-split the training trees at wink's sentence boundaries**, so training and runtime see the same sentences. It removes a mismatch for the ~4.7% of sentences wink splits, but it reverses a Phase 3 decision and changes the data. Worth doing only if Phase 7 shows that mismatch matters.
+- ❌ **Any word in the window.** It can produce trees that span sentences, which the nested view can't show, and it wastes model capacity.
+
+**b. Word-level or subword-level score matrix**
+- ✅ **Subword-level `[T, T]` scores.** The training loss and the runtime read only first subwords. The exported model keeps the standard `input_ids`/`attention_mask` inputs, so Transformers.js can call it without custom inputs. The output is 256×256 floats per window (~256 KB). T05 should confirm this.
+- ➖ **Word-level `[W, W]` scores**, gathered inside the model. This is the textbook design and gives a smaller matrix, but it needs an extra word-index input, which Transformers.js may not pass through, plus more custom export work.
+
+**c. Long sentences that span two windows**
+- ✅ **Runtime packs whole sentences into windows exactly like training.** Only sentences over 256 subword tokens use overlapping windows. For those, each word's head scores come from the window where that word sits farthest from the edge, and heads outside that window score −∞ (very rare).
+- ➖ **Average the overlapping scores.** It's simple, but the averaged scores no longer match what calibration measured.
+- ❌ **Overlapping windows for all text.** It differs from training and forces 2D merging for every sentence.
+
+### T06 — Learner-style noise augmentation
+- ✅ **Run `lowercase_sentence_start` + `drop_final_punct` as an experiment in the biaffine retrain.** Both are already implemented and disabled. Learners often paste text without capitals or final punctuation. Keep them only if dev scores don't drop, as Phase 4 says.
+- ➖ **Also add `learner_typos`.** It needs a typo list with a compatible license (there's a TODO for it) and more work. Better as a v2 experiment.
+- ➖ **Drop augmentation for v1.** It's the least work, but the domain-shift risk the plan identified stays open.
+
+### T07 — Proposed Phase 7 settings
+- ✅ **Confirm both: the selection score (mean of dev chunk F1 and LAS) and the λ already fixed.** λ moved dev scores by at most 0.4 points, and the extended stage already reuses the base choice. Settling the selection score now means the retrain compares like with like.
+- ➖ **Score selection on the nested-view targets** (UAS without punctuation + multi-word bracket F1). This fits the goal better, but those metrics aren't computed during training (only at evaluation). It would need training-code changes before the retrain.
+- ❌ **Re-sweep λ for the biaffine head.** The head changes, but λ had almost no effect before, and the sweep costs hours per model.
+
+### T08 — BIO repair and window merge
+**BIO repair**
+- ✅ **Rule repair: a stray `I-X` becomes `B-X`.** It's identical to how seqeval already scores chunks, so the reported F1 equals what the browser shows, and no metric changes are needed.
+- ➖ **Constrained Viterbi decoding** over the group A labels with a mask that forbids invalid sequences. It usually gains a little F1 and can also fix the UPOS tag on the same word. It must be added to `metrics.py` and the app together, and all reported numbers re-measured. Good as a later experiment.
+
+**Window merge:** ✅ **Pack whole sentences exactly like training** (same as T04c). This also cuts runtime work. Overlapping windows with a "farthest from edge" rule are ➖: viable, but they differ from training.
+
+---
+
+## [Modules/parser]
+
+### T09 — Input limit defaults
+- ✅ **Keep 5,000 characters and 5 alternatives.** The speed budget is set per 5,000 characters, Phase 10 measures at that size, and 5 is already `MAX_ALTERNATIVES`.
+- ➖ **A smaller limit (e.g., 2,000)** for mobile, if Phase 10 shows slow phones. It can be lowered later without code changes because it's a constant.
+- ❌ **No limit.** It risks running out of memory on large pastes, and the result would be hard to read anyway.
+
+### T10 — Approve phraseLabeler.ts and its conventions
+- **Module:** ✅ approve it. Without it, the view has only bracket types (NP, VP…) and no roles. Roles are the main teaching value for learners, and the labeler is deterministic over the model's tree, so it fits the no-hand-written-grammar rule. ❌ Rejecting it would drop "Subject/Object" labels from the product.
+- **Role set:**
+  - ✅ A small school-grammar set: Subject, Predicate, Object, Indirect Object, Complement, Modifier (adjective/adverb-type), plus labels from the T03 subtypes (Passive subject, *by*-agent, Relative clause, Possessive, Particle).
+  - ➖ A fuller, more traditional grammar set (e.g., subject and object complements separated). More teaching value, but more rules that depend on relations the model may get wrong.
+- **Clause convention:** ✅ Promote subject + predicate to `S` (Clause). This matches how Korean school grammar teaches 주어 + 서술어, and it makes embedded clauses visible.
+- **Single-word head wrappers** (`[dog]` inside `[red dog]`):
+  - ✅ Collapse them for display. They add bracket noise with no teaching value, and the multi-word metric already ignores them.
+  - ➖ Keep them, but only in an "expert" toggle.
+- **Discontinuous predicates** (questions, inversion, fronted adjuncts):
+  - ✅ Highlight the pieces with the same role color/label and a "split predicate" note, without inventing a contiguous bracket.
+  - ❌ Force a contiguous bracket. It would show learners a wrong structure.
+- **Copula** (*is*, *was*):
+  - ✅ `cop` + the predicative word → `VP(Predicate)`, with the adjective or noun labeled `Complement`. This is how learners are taught it (2형식 = sentence pattern 2).
+  - ➖ Mirror UD literally, with the adjective as the head. That's confusing for learners.
+- **Coordination:**
+  - ✅ The outer bracket of the conjoined phrases takes the shared role, and the conjuncts are marked as coordinated.
+  - ❌ Labeling the second conjunct a modifier of the first (UD's literal structure) is wrong for learners.
+
+### T11 — How alternatives are displayed
+- ✅ **The primary parse is shown, with an "other readings (n)" control per sentence that switches the whole view.** Ambiguous words or phrases are marked in the primary view. This is simple, accessible, and fits per-sentence alternatives, capped at 5.
+- ➖ **Show alternatives side by side.** It's easy to compare, but cluttered with 5 alternatives and on mobile.
+- ➖ **Show a PP-attachment-only toggle** (e.g., "*on the river* modifies *see* / *boat*"). Very clear for the main ambiguity type, but it doesn't cover label alternatives.
+- ❌ **Hide alternatives behind a settings page.** That defeats the "ambiguous sentences show multiple parses" core feature.
+
+---
+
+## [Project]
+
+### T12 — Deployment target and asset hosting
+- ✅ **Cloudflare Pages for the app + R2 for models and dictionary shards, served on the same origin through a Pages Function at `/models/*`.**
+  - The same-origin rule in `agents.md` stays as it is.
+  - `_headers` can send COOP/COEP, so multi-threaded WebAssembly is possible.
+  - R2 has no egress fees and a free storage tier.
+  - Pages' 25 MiB per-file limit doesn't apply to R2 objects.
+  - LFS stays the source of truth for model files.
+  - Cons: vendor lock-in, Function request quotas, and Range-request streaming must be verified (T31).
+- ➖ **Cloudflare Pages alone, with ONNX split into ≤ 25 MiB external-data pieces.** Pure static hosting with no Function. But it needs multi-piece external-data support in ONNX Runtime and Transformers.js (unverified) and many files per model.
+- ➖ **Netlify or Vercel.** Both support custom headers. Their per-file and bandwidth limits for ~1.2 GB of models need checking, and they have no equivalent of R2's free egress.
+- ❌ **Host the models on Hugging Face Hub.** Transformers.js supports it natively, but:
+  - it breaks the same-origin rule;
+  - every user's IP goes to a third party;
+  - COEP needs the hub to send CORP headers (unconfirmed) or `credentialless` mode (not in Safari).
+- ❌ **GitHub Pages.** The 1 GB site limit, no custom headers, and Pages doesn't serve LFS content directly.
+
+### T13 — Tooling and frontend dependencies
+**React and router**
+- ✅ React 19.3 with `react-router` 8 (`createHashRouter`). These are current and supported. Update `architecture.md` from "React 18+ / react-router-dom".
+- ❌ React 18 with `react-router-dom` 7. That's already the legacy line, and we'd face a migration soon.
+
+**Build plugin:** ✅ `@vitejs/plugin-react` 6.3, which supports Vite 8.
+
+**Lint and format**
+- ✅ **Biome** (one tool for both, MIT/Apache, no TypeScript dependency, includes a hooks-dependency rule). It works with TypeScript 7 today.
+- ➖ **oxlint (+ Prettier).** Fast, MIT, with React and react-hooks rules. Type-aware rules come from a separate tool built on TypeScript 7; check how mature it is first.
+- ❌ **ESLint + typescript-eslint** (the current proposal). It's blocked by TypeScript 7. It would need a second TypeScript 6.0 in a separate lint package, which means two compilers that can drift apart.
+
+**Component tests**
+- ✅ React Testing Library 16 + jsdom under Vitest. This is the existing proposal and the standard choice.
+- ➖ Vitest browser mode. It runs in real browsers, but it's heavier and needs Playwright.
+
+**End-to-end tests**
+- ✅ Playwright (Apache-2.0). It's the only one that easily covers Chrome, Firefox and WebKit, which matters for WebGPU and WebAssembly.
+- ➖ Cypress. Its WebKit support is weaker.
+
+**CI**
+- ✅ GitHub Actions, since the repo is already on GitHub. Check out without LFS (`lfs: false`) so CI doesn't use LFS bandwidth.
+- ➖ Local checks only (pre-commit hooks). That works for a single developer, but nothing catches what's missed.
+
+### T14 — MVP scope and milestone order
+- ✅ **M1: model library + parse + flat/nested views (no alternatives) → M2: alternatives + dictionary → M3: vocab + subword.** The parser is the core value and the longest path, so it ships first. Dictionary data and licensing (T25) can settle in the meantime.
+- ➖ **M1 includes the dictionary.** More useful as a learning tool from day one, but it's blocked on the data-source decision.
+- ❌ **Everything at once.** It's the longest time to any usable build, with no early feedback from colleagues.
+
+### T15 — Offline / PWA
+- ✅ **No PWA for v1, but don't rule it out.** Models are already cached in Cache Storage. Only the small app shell would need a service worker, which can be added later with `vite-plugin-pwa` (MIT, supports Vite 8).
+- ➖ **Full PWA in v1.** Useful for studying offline, but the service worker must not conflict with Transformers.js's cache (an added risk on top of T31), and it adds update and stale-version handling.
+
+### T16 — Project license
+- ✅ **MIT** for the app code. It matches the permissive dependency policy and makes reuse simple. Models stay CC BY-SA 4.0 and dictionary data keeps its own licenses, documented separately.
+- ➖ **Apache-2.0.** Adds an explicit patent grant. A good choice if you expect outside contributors.
+- ➖ **All rights reserved (proprietary).** Keeps commercial options fully open. The CC BY-SA obligations on the models and EWT-derived data still apply.
+- ❌ **GPL/AGPL.** Allowed for your own code, but it limits reuse and adds nothing here.
+
+### T17 — Analytics and privacy
+- ✅ **No tracking at all** (confirm the current `agents.md` rule). It fits "fully client-side, no network calls". The beta feedback plan (T44) already works by having users export a file.
+- ➖ **Local-only usage stats** shown to the user (e.g., words looked up), never sent anywhere.
+- ❌ **Any remote analytics.** It breaks the network rule and adds a privacy notice.
+
+---
+
+## [UI]
+
+### T18 — Interface language and grammar labels
+- ✅ **Korean UI with English kept in grammar labels, e.g. "명사구 (NP)" and "주어 (Subject)".** The target users are beginner-to-intermediate Korean speakers. Keeping the English term also teaches the vocabulary used in English materials. Strings are already centralized per file.
+- ➖ **Bilingual with a toggle.** Flexible, but it needs i18n infrastructure (a dependency or our own) and every string written twice.
+- ❌ **English-only UI.** It's a barrier for beginners.
+
+### T19 — Target devices, browsers, and accessibility
+- ✅ **Responsive layout, but desktop/laptop is the primary target.** Phones are supported only with the smallest offered model, as pre-flight allows. Support the last two versions of Chrome, Edge, Firefox and Safari. Target WCAG 2.1 AA.
+  - Why: model sizes of 66–300 MB and the 5 s budget favor laptops.
+  - Mobile Safari memory limits are strict.
+  - AA is the common standard, and `agents.md` already requires keyboard access.
+- ➖ **Desktop only.** Simpler layout, but students often study on phones.
+- ➖ **WCAG 2.2 AA.** Newer, slightly stricter; little extra cost if adopted from the start.
+
+### T20 — Visual design
+- ✅ **Flat view: color-coded chunk highlights with type labels. Nested view: nested boxes or indented brackets with role badges.** A colorblind-safe palette, with type also shown as text, not only color. Learners read this easily, it works with the keyboard, and it fits mobile.
+- ➖ **A drawn dependency or constituency tree diagram.** Precise, but hard for beginners, hard on mobile, and hard to make accessible.
+- ➖ **Plain bracket text.** Easy to build, poor for learners.
+- Branding and palette are your call; I'd start from neutral tokens.
+
+### T21 — Attribution display
+- ✅ **An "About & licenses" page** (route + sidebar link) listing app, model, data and dictionary sources and their licenses. It also shows each model's license and source on its model card. CC BY-SA needs visible attribution, and one page scales as dictionary sources are added.
+- ➖ **A footer link to a modal.** Less navigation, but a cramped place for the growing list of sources.
+- ❌ **README/MODEL_CARD only.** That doesn't count as attribution shown to users of the deployed app.
+
+---
+
+## [Modules/modelLibrary]
+
+### T22 — Recommendation rule and model card presentation
+**Rule**
+- ✅ **Confirm the proposed rule:** among models not blocked and without memory warnings, the highest chunk F1 that meets the 5 s budget, with ties going to the smaller download. It's simple and uses measured data.
+- ➖ **Rank by nested-view availability first.** Better if the nested view becomes the main feature, but no model qualifies yet.
+- ➖ **Always recommend the smallest model.** Safe, but it would steer users away from accuracy.
+
+**Card presentation**
+- ✅ A label first ("가장 정확함 / Most accurate", "가장 빠름 / Fastest"), with numbers (UPOS, chunk F1, size, expected speed on this device) behind a "details" toggle. Learners understand labels; numbers stay available.
+- ➖ Numbers only. Transparent, but meaningless to most learners.
+
+### T23 — catalog.json schema changes
+- ✅ **Accept all three proposals:**
+  1. int8 and fp16 variants each optional (ModernBERT may ship fp16 only);
+  2. multi-file ONNX (`.onnx` + `.onnx_data`);
+  3. the nested-view metrics added to `metrics`.
+  Adding fields doesn't break schema v1 if the new fields are optional. They cover the known Phase 9 risks before `catalog.ts` is written.
+- ➖ **Accept only the metrics now** and defer the variant change until Phase 9. Less work now, but it may mean a breaking change after `catalog.ts` exists.
+
+---
+
+## [Modules/preflight]
+
+### T24 — Pre-flight policies
+- **Scope:** ✅ Confirm all proposed checks. Each one maps to a real failure mode, and all are cheap.
+- **Low memory:**
+  - ✅ Warn. Memory hints exist only in Chromium, and they're rough; the real test is the load plus self-test.
+  - ❌ Block. It would turn away capable Safari and Firefox users.
+- **Low storage:**
+  - ✅ Warn, and call `navigator.storage.persist()` after the first successful download. That protects a ~100 MB download from being evicted; Firefox asks the user.
+  - ➖ Block. Safer against failed downloads, but quota estimates are unreliable.
+- **Integrity failure:** ✅ Delete the bad files, re-download once, then fail with a clear reason. It recovers from interrupted downloads without retrying forever.
+- **Diagnostics panel:** ✅ Reachable from a Header status badge at all times. It shows a summary by default and expands to per-check details. It's useful for supporting colleagues during the beta.
+
+---
+
+## [Modules/dictionary]
+
+### T25 — Dictionary content
+I can't verify these licenses from here, so confirm each before choosing. Note that CC BY-SA data would make the compiled dictionary share-alike, as you already accepted for the models.
+
+**English definitions**
+- ✅ **Open English WordNet (CC BY 4.0).** Clean structure and a permissive license. Its definitions are terse for beginners.
+- ➖ **English Wiktionary via kaikki.org extracts (CC BY-SA 4.0).** Rich learner-friendly senses and examples, plus Korean translations in the same source. Share-alike, with noisy data that needs heavy cleaning.
+- ❌ **GCIDE / Webster 1913.** GPL or archaic definitions.
+
+**Korean translations**
+- ✅ **Wiktionary translation sections (CC BY-SA)** as the base.
+- ➖ **KRDict / 한국어기초사전 (reportedly CC BY-SA 2.0 KR).** High quality, but it's Korean→English, so it would need reverse mapping.
+- ➖ **Kengdic.** The license needs checking.
+
+**Examples**
+- ✅ **Tatoeba English–Korean sentence pairs (CC BY 2.0 FR).** Bilingual examples suited to learners.
+- ➖ Wiktionary examples.
+
+**Coverage**
+- ✅ **About 10–20k headwords from a learner word list such as NGSL (CC BY-SA 4.0)**, plus frequent EWT words. That covers most text beginners and intermediate learners read, at a small download.
+- ➖ The full source (100k+ entries). Better coverage, but a much bigger download.
+
+**Multiword expressions**
+- ✅ **Phrasal verbs only in v1.** They come for free via the kept `compound:prt` subtype.
+- ➖ Idioms too. That needs fuzzy matching.
+
+**Sense selection**
+- ✅ **Show all senses, with those matching the predicted part of speech first.** Robust to tagging errors and simple to build.
+- ❌ Pick a single sense from context. That needs word-sense disambiguation, a new model.
+
+**Lookup trigger**
+- ✅ **Click or tap a word → popup with a short entry and "more" → DictionaryPage.** Works on touch and with the keyboard, which hover doesn't.
+- ➖ Text selection. Natural for phrases, awkward on mobile.
+
+---
+
+## [Modules/subword]
+
+### T26 — Affix data and known-word list
+**Affix inventory**
+- ✅ **A curated list we write ourselves (~80–120 affixes), guided by the Bauer & Nation (1993) affix levels.** The levels are published facts, not copyrighted data. It's ordered by how often learners meet each affix, and we can write Korean glosses ourselves. We own the license.
+- ➖ **Wiktionary's affix categories (CC BY-SA).** Larger, but noisy and share-alike.
+- ❌ **CELEX** (paid license) or other non-commercial lexicons.
+
+**Content:** ✅ Korean gloss + 1–2 examples per affix, written by us. That's the actual learning value, and the list is small enough to write by hand.
+
+**Known-word list**
+- ✅ **A bundled list inside `subword/`** (e.g., NGSL plus lemma forms, a compressed word set). The module stays self-contained, there's no cross-module wiring, and it works before the dictionary exists.
+- ➖ **Dictionary headwords combined at the hook layer.** One source of truth, but subword depends on T25 and T46 and on loading dictionary data first.
+- ❌ **wink's lexicon.** It lives in the parser worker; using it on the main thread would duplicate the ~1 MB bundle or need a new worker message.
+
+---
+
+## [Modules/vocab]
+
+### T27 — Vocabulary list design
+**Entry schema**
+- ✅ `word`, `lemma`, `upos`, `definitionEn`, `definitionKo`, `example`, `sourceSentence`, `notes`, `tags[]`, `addedAt`, `id`, `schemaVersion`. It covers the plan's fields; storing the lemma and part of speech allows dictionary re-lookup.
+- ➖ A minimal schema (word, notes, date) that re-fetches definitions on display. Smaller, but it depends on the dictionary staying the same.
+
+**Export format**
+- ✅ **JSON as the canonical, versioned format (no new dependency) plus CSV export.** JSON round-trips losslessly. CSV opens in spreadsheets and imports into Anki as plain fields.
+- ➖ An Anki `.apkg` package. Best for Anki users, but it needs SQLite or zip libraries (new dependencies).
+- ❌ Zip as the main format. No benefit for small text data.
+
+**CSV library:** ✅ A small hand-written CSV writer and parser to avoid `csv-*` dependencies, or ➖ approve `csv-stringify`/`csv-parse` (MIT) if robustness matters more.
+
+**Import conflicts:** ✅ Merge by `id`; same word with a different `id` → keep both and flag it as a duplicate; ask the user only when list names collide. Nothing is lost silently.
+
+**Storage**
+- ✅ IndexedDB for lists (no size limit worth worrying about), LocalStorage only for small settings. Show a periodic "export a backup" reminder, since browser storage can be cleared.
+- ➖ LocalStorage only. Simpler, but the ~5 MB limit is reachable with examples.
+
+---
+
+Sources (T12 hosting limits):
+- [GitHub Docs — Git LFS billing](https://docs.github.com/en/billing/concepts/product-billing/git-lfs)
+- [GitHub Docs — About storage and bandwidth usage](https://docs.github.com/enterprise-cloud@latest/repositories/working-with-files/managing-large-files/about-storage-and-bandwidth-usage)
+- [Cloudflare Pages — Limits](https://developers.cloudflare.com/pages/platform/limits)
+- [huggingface_hub — CORS headers for model files (older issue)](https://lightrun.com/answers/huggingface-huggingface_hub-cors-headers-for-model-files)

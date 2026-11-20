@@ -24,7 +24,7 @@
  *             ./Header.module.css.
  *   Used by: ./Layout.tsx.
  *
- * Open items (plan.md → Undecided): branding; interface language.
+ * Open items (todo.md): branding; interface language.
  *
  * Status: header only; not implemented.
  */

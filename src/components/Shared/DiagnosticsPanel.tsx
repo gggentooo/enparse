@@ -26,7 +26,7 @@
  *   Used by: Layout/Header.tsx (details popover/modal), Pages/InputPage.tsx,
  *            Pages/ModelsPage.tsx (why a model is not supported).
  *
- * Open items (plan.md → Undecided): pre-flight checks (diagnostics display);
+ * Open items (todo.md): pre-flight checks (diagnostics display);
  *   interface language.
  *
  * Status: header only; not implemented.

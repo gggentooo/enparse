@@ -15,7 +15,7 @@
  * Dependencies:
  *   None. Used by: ./vocabManager.ts, ./index.ts.
  *
- * Open items (plan.md → Undecided): entry schema; export format.
+ * Open items (todo.md): entry schema; export format.
  *
  * Status: header only; not implemented.
  */

@@ -47,10 +47,10 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Labels on first subword.** Only the first subword of each word carries a label; others are ignored in the loss (`-100`).
 - **Partial labels.** Words without a checked label (e.g., unreviewed words in user feedback) also get `-100`, so the loss uses only labels a person or the treebank confirmed (Phase 4).
 - **Traceable outputs.** `labels.json` has a fixed, versioned schema (Phase 4), and the app's `ParseResult` carries the model version and wink word offsets (Phase 11), so any parse, including user feedback, can be traced to the model and word split that produced it.
-- **Multi-sentence context.** Training examples are windows of consecutive sentences from the same document, matching the runtime's overlapping context windows.
+- **Multi-sentence context.** Training examples are windows of consecutive sentences from the same document, packed the same way at runtime (whole sentences up to 256 subword tokens, no overlap; *Biaffine design* below).
 - **Cased models only.** Capitalization is a strong cue for proper nouns and sentence boundaries.
-- **Every candidate is trained and may ship.** Phases 7–11 run for each of the four candidates. A model is offered only if its test metrics meet the acceptance thresholds; its nested view is enabled only if its UAS/LAS meet theirs. Each offered model ships with its measured size, accuracy, speed, and memory in `public/models/catalog.json`.
-- **No rule-based nesting.** The nested phrase view comes from the model's structure output, not from hand-written rules. The only runtime step is deterministic decoding (`parser/treeDecoder.ts`, below).
+- **Every candidate is trained and may ship.** Phases 7–11 run for each of the four candidates. A model is offered only if its test metrics meet the acceptance thresholds; its nested view is enabled only if it meets the nested-view targets (*Nested phrase structure*). Each offered model ships with its measured size, accuracy, speed, and memory in `public/models/catalog.json`.
+- **No rule-based nesting.** The nested phrase view comes from the model's structure output, not from hand-written rules. Runtime steps are strictly deterministic over the predicted tree: decoding and bracketing (`parser/treeDecoder.ts`) plus grammatical role and head-of-parent labeling (`parser/phraseLabeler.ts`, below; approved 2026-11-20); neither overrides attachments with hand-written grammar rules.
 
 ### Nested phrase structure
 
@@ -63,7 +63,15 @@ Confirmed by owner (2026-11-18): two views, bracketing order, and phrase labels 
 
 A model that misses them is offered without the nested view (the flat view is unaffected).
 
-**Planned change (owner, 2026-11-19): biaffine parser head.** After the Phase 7 extended stage, group B (head-position labels) is replaced by a biaffine arc scorer (every word scores every head in its sentence; root via the first special token) plus a per-word relation classifier in the packed logits. Arc scores ship as a second ONNX output (Transformers.js `model.forward()` returns all outputs); `treeDecoder.ts` decodes trees with maximum spanning tree (Chu-Liu-Edmonds), so no head is unresolvable and no root or cycle repair is needed. Measured motivation (Phase 7 test, DeBERTa): the correct head is in the top 5 head labels for 96.7% of words, but 23% of sentences needed repair; MST over the current labels gives no gain. Expected +1–2 UAS (to be measured). All four models are retrained with it (Phase 7 again), then Phases 8–9.
+**Planned change (owner, 2026-11-19): biaffine parser head.** After the Phase 7 extended stage, group B (head-position labels) is replaced by a biaffine arc scorer (every word scores every head in its sentence; root via the first special token) plus a per-word relation classifier in the packed logits. Arc scores ship as a second ONNX output (Transformers.js `model.forward()` returns all outputs); `treeDecoder.ts` decodes trees with maximum spanning tree (Chu-Liu-Edmonds), so no head is unresolvable and no root or cycle repair is needed. Measured motivation (Phase 7 test, DeBERTa): the correct head is in the top 5 head labels for 96.7% of words, but 23% of sentences needed repair; MST over the current labels gives no gain. Expected +1–2 UAS (to be measured). All four models are retrained with it (Phase 7 again), with the relation classifier keeping the ten-subtype allowlist (*Head encoding*), then Phases 8–9.
+
+**Biaffine design (owner, 2026-11-20; `todo.md` T04, T06, T07, T08):**
+- **Arc scope:** a word scores only heads in its own sentence, plus the root (first special token). Training masks by UD sentence, the runtime by wink sentence (same as the Phase 3 decision; arcs that cross wink sentences attach to the sentence root).
+- **Score matrix:** subword-level `[T, T]` (`arc_scores`), read at first-subword positions by the loss and the runtime. The export keeps the standard `input_ids` / `attention_mask` inputs; T05 checks that Transformers.js returns both outputs.
+- **Windows:** the runtime packs whole wink sentences into windows of up to 256 subword tokens, exactly like training (no overlap). Only a sentence longer than 256 subwords is split with overlap (32 tokens): each word takes its scores from the window where it is farthest from the edge, and heads outside that window score −∞.
+- **BIO repair:** a stray `I-X` (after `O` or another type) becomes `B-X`, the same reading seqeval's default mode already uses for reported chunk F1, so app and metrics agree. Constrained Viterbi stays a possible later experiment.
+- **Augmentation:** `lowercase_sentence_start` and `drop_final_punct` run as an experiment in the retrain (kept only if dev scores do not drop); `learner_typos` stays out of v1.
+- **Settings:** selection score (mean of dev chunk F1 and LAS) and λ per model (fixed from the base sweep) are confirmed. The learning-rate sweep adds 4e-4 and 5e-4 for DeBERTa-v3-xsmall and ModernBERT, which picked the top rate (3e-4) in the extended stage.
 
 The app shows two views of each sentence:
 
@@ -73,23 +81,25 @@ The app shows two views of each sentence:
 | Nested phrases | `[[The [red [dog]]] [rarely [[barks] loudly]]] .` | Group B (dependency tree) |
 
 - **Training data:** EWT already contains gold dependency trees. No new annotation is needed; the Phase 2 chunked files keep `HEAD` and `DEPREL`.
-- **Head encoding:** relative-POS encoding from dependency parsing as sequence labeling (Strzyż et al., 2019). Each word's label is `<offset>@<head UPOS>|<relation>`; for example, `+1@NOUN|amod` means "head is the next NOUN to the right; relation amod". The root is `0@ROOT|root`. Base relations only; subtypes such as `nmod:poss` are dropped from group B. They stay in the data and still drive the Phase 2 chunk rules. Decoding uses group A's predicted UPOS to find the head.
+- **Head encoding:** relative-POS encoding from dependency parsing as sequence labeling (Strzyż et al., 2019). Each word's label is `<offset>@<head UPOS>|<relation>`; for example, `+1@NOUN|amod` means "head is the next NOUN to the right; relation amod". The root is `0@ROOT|root`. Base relations only; subtypes such as `nmod:poss` are dropped from group B. They stay in the data and still drive the Phase 2 chunk rules. **Subtypes after the biaffine change (owner, 2026-11-19):** the relation classifier keeps ten learner-relevant subtypes — `nsubj:pass`, `aux:pass`, `obl:agent`, `acl:relcl`, `nmod:poss`, `compound:prt`, `obl:unmarked`, `det:predet`, `advcl:relcl`, `cc:preconj` (passive voice, relative clauses, possessives, phrasal-verb particles, preposition-less time/measure phrases, predeterminers, correlative conjunctions). The other five EWT r2.19 subtypes (`nmod:unmarked`, `nmod:desc`, `nsubj:outer`, `csubj:outer`, `csubj:pass`) fold into their base relation. These are all 15 subtypes in EWT r2.19; the allowlist goes into `configs/` with the biaffine implementation. Decoding uses group A's predicted UPOS to find the head.
 - **Decoding (`parser/treeDecoder.ts`):** turns group-B labels into a tree, then into nested phrases.
   1. Read each word's head from its label. If a head cannot be found or makes a cycle, use the next-best label for that word. If that fails too, attach the word to the root.
   2. Exactly one root per sentence: if several, keep the most probable one and attach the others to it.
   3. Build phrases head-outward: right dependents first (closest first), then left dependents (closest first). Each step adds one nesting level, which gives `[The [red [dog]]]` and `[rarely [[barks] loudly]]`.
   4. Punctuation is not bracketed; it is shown at the level of its head.
   5. Each phrase is labeled from its head word (noun → NP, verb → VP, adjective → ADJP, adverb → ADVP; a noun phrase with a `case` dependent → PP).
-- **Why decoding is still needed:** a neural network outputs scores for each word, not brackets. Turning per-word head labels into a valid tree and then into brackets is a fixed procedure (like BIO decoding for chunks). It holds no grammar rules, so it is not a separate nesting module.
+- **Role and head labeling (`parser/phraseLabeler.ts`; approved by the owner 2026-11-20, conventions in `architecture.md` → *Parsing engine* → *Role labeling*):** deterministic post-processor over `treeDecoder.ts` output that uses `heads`, `relations`, and `upos` to attach learner-facing grammatical roles on maximal projections (e.g., `nsubj` → `NP(Subject)`, predicate → `VP(Predicate)` inside outer clause `S`), mark each parent's head constituent (`isHead`, e.g., `[red dog]` as head of `[The red dog]`), and handle UD copulas (`cop`) and head-initial coordination (`conj` + `cc`).
+  - **Caveats for training and evaluation:**
+    - `phraseLabeler.ts` runs after `treeDecoder.ts` and does not change the nested-phrase F1 span metric evaluated in Phase 7; its accuracy is strictly bounded by the model's UAS/LAS (wrong attachments or relations propagate directly into wrong roles), reinforcing the need for the biaffine head and Phase 8 confidence gating.
+    - Group B currently strips UD subtypes. The biaffine relation classifier keeps the ten-subtype allowlist (*Head encoding* above), so `phraseLabeler.ts` can label passives, relative clauses, possessives, and phrasal-verb particles. Rare kept subtypes (`cc:preconj` 81, `advcl:relcl` 121, `det:predet` 177 train words) will have noisy test scores.
+    - Discontinuous predicates (questions, inversion, fronted adjuncts where `contiguous: false`) and collapsed low-confidence brackets cannot always be wrapped in a single contiguous `VP(Predicate)` bracket; open conventions are tracked in `todo.md` → `[Modules/parser]` tasks.
+- **Why decoding and role labeling are still needed:** a neural network outputs scores for each word, not brackets or learner role badges. Turning per-word predictions into a valid tree, brackets (`treeDecoder.ts`), and grammatical role/head labels (`phraseLabeler.ts`) is a fixed deterministic procedure (like BIO decoding for chunks) and never overrides attachments with hand-written grammar rules.
 - **Flat and nested views can differ:** the views use different conventions (for example, `[NP the man] [PP in] [NP the car]` versus `[the [[man] [in [the [car]]]]]`). Both are shown as-is; the UI does not force one to match the other.
 - **Expected accuracy:** see *Nested-view acceptance* and *Planned change* above (Phase 7 base results: tree UAS 88–92, LAS 86–90).
 
 ### Open questions
 
-- **Acceptance thresholds:** minimum UPOS accuracy and chunk F1 to ship (proposed ≥ 97% / ≥ 94%). Tracked in `plan.md` → *Undecided*.
-- **Hosting limits:** several models (~0.4 GB int8 + ~0.8 GB fp16 for all four) may exceed static-host or Git LFS limits. Tracked in `plan.md` → *Undecided* → *Model library*. (The download size cap is no longer needed: each model's size is shown to the user.)
-- **Extra data:** learner-style noise augmentation (Phase 4). No extra treebanks for now (owner, 2026-11-18): GUM excluded (Phase 1, non-commercial); other CC BY-SA UD English treebanks (ESLSpok, CHILDES, Atis) and the Penn Treebank (LDC license, conversion needed) were considered and dropped.
-
+Moved to `todo.md` (2026-11-19). Decided items are recorded in the phases below.
 
 ---
 
@@ -190,10 +200,12 @@ training/
 ├── js/
 │   ├── package.json (scripts: align, test)
 │   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
-│   ├── lib/ (conllu.mjs, align.mjs: Phase 3; baselines.mjs, metrics.mjs: Phase 5; inference.mjs: word encoding and argmax, Phases 7–10)
+│   ├── lib/ (conllu.mjs, align.mjs: Phase 3; baselines.mjs, metrics.mjs: Phase 5; inference.mjs: word encoding and argmax, Phases 7–10; nested.mjs, errors.mjs: Phase 7)
 │   ├── tests/ (node:test unit tests, e.g. align.test.mjs)
 │   ├── evaluate_baselines.mjs (wink-nlp POS, compromise)
 │   ├── benchmark.mjs (Transformers.js speed and parity)
+│   ├── nested_eval.mjs (nested-phrase F1 via treeDecoder.ts; Phase 7)
+│   ├── error_analysis.mjs (reports/errors.md; Phase 7 task 5)
 │   └── bench-page/ (minimal Vite page for Phase 10: index.html, bench.worker.mjs)
 ├── tests/ (pytest for derive_chunks and prepare_data; conftest.py)
 ├── reports/ (metrics, error samples, benchmark results; README.md index)
@@ -237,12 +249,12 @@ Pre-flight review run on 2026-11-17 against the training machine and the reposit
 | Phase 1 exit | CC BY-SA 4.0 position for derived data and trained weights (legal advice before commercial release); GUM decision | Owner | Done: Phase 1 *Outcome* |
 | Phase 3 | `src/modules/parser/winkBackend.ts` tokenization and `src/modules/input/textInput.ts` preprocessing implemented (alignment runs them via `tsx`); root `package.json` pins the same `wink-nlp` and `@huggingface/transformers` versions as `training/js/` | Dev | Done 2026-11-18 (Phase 3 *Pre-flight check 2*) |
 | Phase 7 | `src/modules/parser/treeDecoder.ts` implemented (nested-phrase F1 runs it via `tsx`) | Dev | Done 2026-11-18 |
-| Phase 7 exit | Acceptance thresholds (proposed ≥ 97% UPOS / ≥ 94% chunk F1); they decide which models are offered | Owner | `plan.md` → *Acceptance thresholds*. Nested view thresholds decided: UAS ≥ 97%, LAS ≥ 94% (per model) |
+| Phase 7 exit | Acceptance thresholds; they decide which models are offered | Owner | Done: UPOS ≥ 97%, chunk F1 ≥ 94% (2026-11-18); nested-view targets (2026-11-19, *Nested phrase structure*) |
 | Phase 10 | Vite tooling set up in the app (bench page uses the same Vite version) | Dev | Done 2026-11-18: Vite 8.3.8 in root and `training/js` |
-| Phase 10 exit | Pre-flight policies (memory, storage, multi-threaded WASM) | Owner | `plan.md` → *Pre-flight checks* |
+| Phase 10 exit | Pre-flight policies (memory, storage, multi-threaded WASM) | Owner | `todo.md` → `[Modules/preflight]` |
 | Phase 4 exit | `LabelConfig` in `src/modules/parser/types.ts` matches `labels.json` schema v1 | Dev | Done 2026-11-18 (Phase 4 *Outcome*) |
-| Phase 11 | Hosting and storage limits for several models (file size, LFS quota) | Owner | `plan.md` → *Model library* |
-| Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `plan.md` → *Attribution display*; `architecture.md` → *Model* |
+| Phase 11 | Hosting and storage limits for several models (file size, LFS quota) | Owner | `todo.md` → `[Project]` deployment and hosting |
+| Phase 11 | Where the app shows attribution; `transformerBackend.ts` implemented for the integration test; `ParseResult` carries model version and wink word offsets | Owner, dev | `todo.md` → `[UI]` attribution display; `architecture.md` → *Model* |
 
 **Deliverables:** git-lfs active; Python 3.12 pinned for `training/`; Python tool config; Unsloth support note; confirmed gate schedule.
 **Exit criterion:** every row in *Machine check* is Ready, tasks 1–4 are done, and the owner has confirmed the gate schedule.
@@ -472,7 +484,7 @@ Known weakness (no rule; for Phase 7 error analysis): wink treats some sentence-
    - Chunk F1 is computed only on sentences where every word is reviewed; UPOS accuracy uses all reviewed words.
    - Unit tests in `tests/test_prepare_data.py` cover fully, partly, and un-reviewed windows.
 5. Keep the official EWT train/dev/test splits. Test is used only in Phase 7 final evaluation.
-6. Optional augmentation (train split only, ≤ 15% of windows): lowercase sentence starts, drop final punctuation, common learner typos. Evaluate the effect in Phase 7; keep only if dev F1 does not drop.
+6. Optional augmentation (train split only, ≤ 15% of windows): lowercase sentence starts, drop final punctuation, common learner typos. Evaluate the effect in Phase 7; keep only if dev F1 does not drop. Owner (2026-11-20): the first two run as an experiment in the biaffine retrain; learner typos are out of v1.
 7. Save processed datasets with `datasets` to `training/data/processed/`.
 8. Write `labels.json` following the schema below (schema version 1).
 
@@ -505,6 +517,24 @@ Single contract between training and the app. Later phases fill their fields; th
 - Fields are `null` until their phase writes them. The app throws `ParserLoadError` if a field it needs is `null`.
 - Adding an optional field does not change `schema_version`; anything else does.
 - `src/modules/parser/types.ts` → `LabelConfig` mirrors this table (Phase 4 exit gate).
+
+**`labels.json` schema (version 2, biaffine head; T33, 2026-11-20).** Written by `prepare_data.py --encoding arc` to `data/processed/dataset_arc/<model>/` (the v1 datasets stay for the Phase 7 base and extended runs). The app understands only v2 (`LABEL_SCHEMA_VERSION = 2`; `LabelConfig` mirrors it). Fields as in v1, except:
+
+| Field | Type | Written by (phase) | Meaning |
+|-------|------|--------------------|---------|
+| `groups` | object | `prepare_data.py` (4) | `chunk` (group A, `UPOS\|CHUNK`) and `rel` (group B, relation) slices of `logits`. |
+| `labels` (group B part) | string[] | `prepare_data.py` (4) | UD relations: base relation, or one of `relation_subtypes`; includes `root`. 45 relations from EWT train (≥ 5 words). |
+| `dep_encoding` | string | `prepare_data.py` (4) | `biaffine_v1`: heads come from `arc_scores`, decoded with MST (`treeDecoder.ts`). |
+| `arc` | object | `prepare_data.py` (4) | `{output: "arc_scores", root_position: 0, scope: "sentence"}`: second ONNX output `[batch, T, T]`; token 0 (first special token) is the root; heads are read only within the word's sentence. |
+| `relation_subtypes` | string[] | `prepare_data.py` (4) | The ten kept subtypes (`configs/data.yaml` → `labels.relation_subtypes`; T03). |
+| `tokenizer_word_encoding` | `"plain"` \| `"space"` \| null | Phase 9/11 | Per-model word encoding for Transformers.js (was a planned optional v1 field). |
+| `window.long_sentence_overlap` | int | `prepare_data.py` (4) | `32`; context tokens repeated when one sentence is longer than a window (runtime must match). |
+| `calibration` | object | `calibrate.py` (8) | `temperature` (group A), `rel_temperature`, `arc_temperature` (replaces `dep_temperature`). |
+| `ambiguity.attachment_margin` | number \| null | `calibrate.py` (8) | Top-two head-probability margin for PP-attachment alternatives. |
+| `nested.bracket_threshold` | number \| null | `calibrate.py` (8) | Bracket-confidence threshold for gating (`treeDecoder.ts` → `gatePhrases`). |
+
+- Dataset columns (v2): `labels_chunk`, `labels_rel` (group-local ids), `labels_head` (token position of the head's first subword; `0` = root; `-100` = ignored), `token_sent` (sentence index at first subwords, `-1` elsewhere), plus the v1 word-level fields. Check (2026-11-20): all 253,269 train/dev/test words map to their gold head token and relation for every model; 3 train words have a relation seen < 5 times and no kept base (`-100`).
+- `validate_labels_json` dispatches on `schema_version` (1 or 2); `tests/test_biaffine.py` covers v2. The pre-flight ↔ parser schema-version parity test is written with the pre-flight module (T36); its header names `SUPPORTED_SCHEMA_VERSION = 2`.
 
 **Deliverables:** processed datasets, `labels.json` (schema v1, Phase 4 fields filled), dataset statistics report.
 **Exit criterion:** dataset loads; label and window statistics reviewed; `labels.json` validates against schema v1, and `LabelConfig` matches it.
@@ -541,7 +571,7 @@ Sets the bar the model must beat.
 | dev | 88.93% | 83.07% | 69.48% (71.84% / 67.28%) |
 | test | **88.76%** | 82.36% | **69.65%** (72.38% / 67.11%) |
 
-- **Bar for Phase 7 (test):** UPOS > 88.76% (wink-nlp); chunk F1 > 69.65% (compromise). The proposed acceptance thresholds (97% / 94%) are far above both.
+- **Bar for Phase 7 (test):** UPOS > 88.76% (wink-nlp); chunk F1 > 69.65% (compromise). The acceptance thresholds (97% / 94%, confirmed by owner) are far above both.
 - Method: `js/evaluate_baselines.mjs` (`npm run baselines`, ~2 s). Each library gets the runtime words joined by single spaces (same view as the model); tokens map back to words by offset, the last alphanumeric token deciding (`js/lib/baselines.mjs`). Feeding wink-nlp the original text instead gives the same score (88.88% vs 88.93% on dev).
 - compromise mapping: punctuation by form; `Conjunction` → CCONJ / SCONJ by a closed coordinator list, `to` → PART; chunk boundaries from compromise's own chunks, prepositions as single-word PP. Its tag set lacks some UD distinctions (possessive pronouns, auxiliary `be`/`have`/`do`), and it has no ADVP chunk (ADVP F1 0%). No word-specific rules were added.
 - wink-nlp's weakest tags on EWT web text: ADJ (70%), SCONJ (60%), INTJ (63%), NOUN/VERB (~84%); common errors NOUN/ADJ → PROPN (capitalized words).
@@ -566,12 +596,12 @@ Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts
 | Schedule | Linear decay, 10% warmup |
 | Batch size | 8 windows (~80 sentences per update; was 32 windows ≈ 320 sentences, which gave only ~40 updates per epoch) |
 | Epochs | Up to 15, early stopping on the dev selection score (patience 3) |
-| Selection score | Mean of dev chunk F1 and LAS: early stopping, best checkpoint, learning rate, λ, and offered seed (proposed; LAS improves more slowly than chunk F1, so stopping on chunk F1 alone under-trains the nested view) |
+| Selection score | Mean of dev chunk F1 and LAS: early stopping, best checkpoint, learning rate, λ, and offered seed (confirmed by owner 2026-11-20; LAS improves more slowly than chunk F1, so stopping on chunk F1 alone under-trains the nested view) |
 | Weight decay | 0.01 |
 | Max sequence length | 256 subword tokens |
 | Precision | fp32 on MPS (switch to bf16 only if stable and faster) |
 | Seeds | 3 seeds for the final configuration; report mean and spread |
-| Loss | Group A loss + λ × group B loss; λ = 1.0 (sweep 0.5, 1.0, 2.0) (proposed) |
+| Loss | Group A loss + λ × group B loss; λ swept (0.5, 1.0, 2.0) in the base run, then fixed per model (DeBERTa 2, others 1; confirmed by owner 2026-11-20) |
 
 **Tasks**
 0. **Smoke test** (before any full run; ~30 min for all four): for each candidate, `train.py --smoke` trains 1 epoch on a small train subset, exports fp32 / int8 / fp16 ONNX (`export_onnx.py`), loads the int8 export with Transformers.js in Node (`benchmark.mjs`, `tokenizer_input` and the per-word subword cap applied), and parses a fixed sentence: logits have the `labels.json` group sizes, labels decode, and the result matches PyTorch on that sentence. A candidate that fails is fixed or dropped before full training. Results in `reports/smoke_test.md`.
@@ -592,28 +622,47 @@ Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts
      - Disk after the smoke test: ~1.2 GB checkpoints, ~3.1 GB exports.
 1. `train.py` with configs from `configs/train_<model>.yaml`; log to TensorBoard. `Trainer` subclass with per-group `compute_loss`; the model class stays `AutoModelForTokenClassification`.
 2. Per candidate: learning-rate sweep; λ sweep; then the final run with 3 seeds; keep the best checkpoint by dev chunk F1 (only the best checkpoint of each run is kept on disk).
-3. Optional experiments, kept only if they improve dev F1 or LAS: augmentation (Phase 4, task 6); biaffine head for group B if LAS misses its threshold (needs custom export).
-4. Final evaluation on the test split, run once per candidate: UPOS accuracy, chunk F1 overall and per type, comparison with Phase 5 baselines; UAS, LAS, and nested-phrase F1 (predicted vs gold-tree brackets, both built by `src/modules/parser/treeDecoder.ts` run via `tsx`, so training and the app share one implementation), and the share of sentences that needed tree repair.
-5. Error analysis per candidate: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`.
+3. Optional experiments, kept only if they improve dev F1 or LAS: augmentation (Phase 4, task 6); the biaffine head for group B is no longer optional: it is planned after the extended stage (*Nested phrase structure* → *Planned change*).
+4. Final evaluation on the test split, run once per candidate: UPOS accuracy, chunk F1 overall and per type, comparison with Phase 5 baselines; UAS, LAS, UAS without punctuation, nested-phrase F1 and multi-word bracket F1 (predicted vs gold-tree brackets, both built by `src/modules/parser/treeDecoder.ts` run via `tsx`, so training and the app share one implementation; multi-word = brackets of two or more words), and the share of sentences that needed tree repair. The report marks a model's nested view *pending Phase 8* when it meets the UAS and bracket F1 targets; shown-bracket precision is measured after Phase 8 gating.
+5. Error analysis per candidate: 100 test errors grouped by type (e.g., noun/verb homographs, PP chunks, coordination, PP attachment) in `reports/errors.md`. Done 2026-11-20: `js/error_analysis.mjs` (`npm run errors` in `training/js`; settings `configs/eval.yaml` → `error_analysis`) also counts all test errors by type, classifies missed nested-view brackets by cause, and lists attachment errors shared by all models.
 
 **Deliverables:** best checkpoint per candidate, `reports/smoke_test.md`, `reports/training.md` (one table row per candidate), `reports/errors.md`.
-**Outcome, base run (2026-11-18, 5.9 h unattended, 32 runs, 0 failures; `reports/training.md`):** test UPOS / chunk F1 / tree UAS / tree LAS / nested F1 — DistilBERT 96.67 / 95.20 / 88.15 / 86.05 / 79.26; DeBERTa-v3-xsmall 97.62 / 96.75 / 91.57 / 89.79 / 85.36; BERT 96.89 / 95.81 / 89.68 / 87.73 / 81.11; ModernBERT 97.67 / 96.94 / 91.42 / 89.68 / 83.76 (seed sd ≤ 0.2). DeBERTa and ModernBERT meet the flat thresholds; no model meets the nested ones. Every model picked the top learning rate (2e-4) and most runs peaked at the 15-epoch cap, so an extended stage runs next (`--stage extended`: learning rates 1e-4 – 3e-4, up to 30 epochs, λ fixed; `reports/training_extended.md`). Flat thresholds confirmed by owner: UPOS ≥ 97, chunk F1 ≥ 94. Task 5 (`reports/errors.md`) pending.
+**Outcome, base run (2026-11-18, 5.9 h unattended, 32 runs, 0 failures; `reports/training.md`):** test UPOS / chunk F1 / tree UAS / tree LAS / nested F1 — DistilBERT 96.67 / 95.20 / 88.15 / 86.05 / 79.26; DeBERTa-v3-xsmall 97.62 / 96.75 / 91.57 / 89.79 / 85.36; BERT 96.89 / 95.81 / 89.68 / 87.73 / 81.11; ModernBERT 97.67 / 96.94 / 91.42 / 89.68 / 83.76 (seed sd ≤ 0.2). DeBERTa and ModernBERT meet the flat thresholds; no model meets the nested ones. Every model picked the top learning rate (2e-4) and most runs peaked at the 15-epoch cap, so an extended stage runs next (`--stage extended`: learning rates 1e-4 – 3e-4, up to 30 epochs, λ fixed; `reports/training_extended.md`). Against the nested-view targets (rescored 2026-11-19): UAS without punctuation 89.02 / 92.17 / 90.60 / 92.17 (target 93) and multi-word bracket F1 73.10 / 81.18 / 75.56 / 78.84 (target 88), same model order. Flat thresholds confirmed by owner: UPOS ≥ 97, chunk F1 ≥ 94. Task 5 done 2026-11-20 (below).
 
-**Exit criterion:** every candidate passed the smoke test or was dropped with a reason; every remaining candidate is trained and evaluated once on test; at least one candidate meets the acceptance thresholds and beats the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). Candidates that meet the thresholds go on to Phases 8–11 and are offered in the app; the others are recorded and not shipped. Per model, UAS ≥ 97% and LAS ≥ 94% decide whether its nested view is enabled. Test scores are not used to rank models; the app shows each model's metrics and the user chooses.
+**Outcome, extended stage (2026-11-19, resumed once after an interruption, 0 failures; `reports/training_extended.md`):** test UPOS / chunk F1 / UAS excl. punct / multi-word bracket F1 at the dev-selected seed — DistilBERT 96.73 / 95.34 / 89.08 / 72.24; DeBERTa-v3-xsmall 97.52 / 96.68 / 92.72 / 82.59; BERT 96.98 / 96.09 / 91.13 / 77.12; ModernBERT 97.70 / 96.68 / 92.06 / 79.44. Gains are small (DeBERTa and BERT +0.5 UAS, +1.5 bracket F1); most runs stopped early before epoch 30. DeBERTa and ModernBERT again picked the top learning rate (3e-4). Same flat-threshold result as the base run; no model meets the nested-view targets.
+
+**Checkpoints carried forward (owner, 2026-11-20; `configs/eval.yaml` → `phase7_checkpoints`):** extended stage for DeBERTa-v3-xsmall, BERT, and ModernBERT; base stage for DistilBERT (its extended dev selection score was lower, 89.34 vs 89.72). Each uses its stage's dev-selected seed run. Test was reported for both stages; it was not used for any choice.
+
+**Outcome, error analysis (2026-11-20; `reports/errors.md`, carried-forward checkpoints, test):**
+- Attachment errors are 56–60% of all error units (1,931–2,957 per model). By type: clause attachment 22–26%, modifier attachment ~21%, punctuation 17–20% (excluded from the UAS target), coordination 11–12%, PP attachment ~10%.
+- 87–90% of missed multi-word brackets come from attachment errors: 62–67% have a wrong head inside the span, 23–26% grow because an outside word attaches into them. Label-only misses are 1–2%; the rest (9–12%) come from punctuation or UPOS differences. Each attachment error costs ~1.8 multi-word brackets, so the bracket-F1 gap is a UAS gap.
+- 17–19% of attachment errors are on words whose head came from tree repair (not the top candidate), which MST decoding replaces. 982 attachment errors are shared by all four models (51% of DeBERTa's), mostly clause and modifier attachment.
+- UPOS: PROPN vs NOUN is the largest group (31–37% of UPOS errors), then adjective vs noun/verb (15–18%); noun/verb homographs are only 3–5%.
+- Chunks: NP boundaries are 42–48% of chunk errors (split and joined about equally); PP chunk errors are rare.
+
+**Exit criterion:** every candidate passed the smoke test or was dropped with a reason; every remaining candidate is trained and evaluated once on test; at least one candidate meets the acceptance thresholds and beats the baselines (UPOS: wink-nlp and compromise; chunk F1: compromise). Candidates that meet the thresholds go on to Phases 8–11 and are offered in the app; the others are recorded and not shipped. Per model, the nested-view targets (*Nested phrase structure* → *Nested-view acceptance*) decide whether its nested view is enabled; shown-bracket precision is measured after Phase 8 confidence gating. Test scores are not used to rank models; the app shows each model's metrics and the user chooses.
+
+**Biaffine head, T05 spike (2026-11-20; `reports/smoke_test_biaffine.md`):** `scripts/biaffine.py` adds the arc scorer to each candidate's `*ForTokenClassification` class (Optimum's ONNX config of the base architecture plus the output `arc_scores` `[batch, T, T]`). Transformers.js 4.3.2 returns both outputs from `model.forward()` (`model()` drops `arc_scores`), so no raw `onnxruntime-web` session is needed. All four 1-epoch smoke models export fp32 / int8 / fp16, pass `onnx.checker`, and match PyTorch exactly in fp32 (labels, relations, heads). Fixes: the arc head bias is a multiply-and-sum (a 1-D MatMul made int8 models that onnxruntime could not load); the arc scorer's nodes stay fp32 in int8 (`export.int8_keep_arc_fp32`, ~3 MB). DistilBERT, DeBERTa-v3-xsmall, and BERT pass int8 and fp16 on confident words (arc ≥ 0.977); **ModernBERT passes fp16 but not int8** (confident agreement A 0.875 / relation 0.849 / arc 0.775), the Phase 9 risk noted in the smoke test; Phase 9 judges trained models.
+
+**Biaffine stage (T51; started 2026-11-19 23:14 UTC):** `python scripts/run_phase7.py --stage biaffine` (`configs/eval.yaml` → `phase7_stages.biaffine`; report `reports/training_biaffine.md`; record `phase7_biaffine.json`). Data `dataset_arc` (schema v2); learning rates 1e-4, 2e-4, 3e-4 (+ 4e-4, 5e-4 for DeBERTa and ModernBERT), up to 30 epochs, patience 3, λ fixed from the base run; at the best rate, the first seed is also trained on `dataset_arc_aug` (augmentation, T06) and the seeds use it if its dev selection score is not lower. Dev UAS/LAS during training use argmax heads; test trees use MST (`treeDecoder.ts`). Probe before the run (DistilBERT, 2 epochs, lr 2e-4): dev UAS 90.1 / LAS 86.5 (rel_pos best after 15 epochs: 86.0 / 84.2).
+
+**Exit status (2026-11-20): met.** All four passed the smoke test and were trained and evaluated on test; DeBERTa-v3-xsmall and ModernBERT meet the flat thresholds and beat the baselines; no model meets the nested-view targets with the current head. Deliverables done (`reports/training.md`, `reports/training_extended.md`, `reports/errors.md`). Next: the biaffine retrain (*Planned change*), then Phase 8 on the retrained models (`todo.md`).
 
 ### Phase 8 — Calibration and ambiguity threshold
 
-Alternatives at runtime are built from label probabilities, so the probabilities must be reliable. Runs for every offered candidate (separate temperatures and margins per model, in each model's `labels.json`).
+Alternatives and the nested view's confidence gating are built from model probabilities, so the probabilities must be reliable. Runs for every offered biaffine model (flat thresholds met after the retrain), with its own temperatures, margins, and threshold in its `labels.json` (schema v2). Script: `scripts/calibrate.py` (all offered models: `python scripts/calibrate.py`; one run: `--model m --run r`), which calls `js/gating_eval.mjs` for the bracket threshold. Settings: `configs/eval.yaml` → `calibration`, `ambiguity` (rewritten 2026-11-20 for the biaffine head; the earlier tasks assumed head-position labels).
 
 **Tasks**
-1. `calibrate.py`: fit a single temperature on dev logits; report expected calibration error before and after.
-2. Tune the ambiguity margin (proposed 0.2): for each margin, measure on dev how often the correct label is in the alternatives versus the average number of alternatives per sentence.
-3. Pick the margin that best balances coverage and a cap of 5 alternatives per sentence.
-4. Fit a separate temperature for group B and tune the attachment margin: how often the correct head is among the top-two head labels for `obl`/`nmod` words with a `case` dependent (PP attachment).
-5. Store temperatures and margins in `labels.json` (`calibration.temperature`, `calibration.dep_temperature`, `ambiguity.margin`, `ambiguity.attachment_margin`; see the Phase 4 schema).
+1. Collect, on dev and test, each word's group A logits (`UPOS|CHUNK`), relation logits, and arc scores over its sentence plus root (first subwords), at the carried-forward checkpoint (dev-selected seed of the biaffine stage).
+2. Fit one temperature per output on dev by minimizing NLL: `calibration.temperature` (group A), `rel_temperature`, `arc_temperature`. Report top-1 expected calibration error (ECE) before and after, dev and test. (MST trees do not change with the arc temperature: each word keeps exactly one head, so only head probabilities change.)
+3. Ambiguity margins on dev, with calibrated probabilities. A word is ambiguous if its top-two group A probabilities differ by less than `ambiguity.margin`; a PP-attachment word (gold `obl`/`nmod` with a `case` dependent) gets an attachment alternative if its top-two head probabilities differ by less than `ambiguity.attachment_margin`. Alternatives per sentence = min(5, 2^k − 1) for k ambiguous words, plus attachment alternatives, capped at `MAX_ALTERNATIVES` = 5 (T09). For each margin pair: share of errors recovered (the gold label or head is offered as an alternative) and mean alternatives per sentence.
+4. Choose the margin pair: most errors recovered with mean alternatives per sentence ≤ `ambiguity.max_mean_alternatives` (proposed 1.0; owner may change it after seeing the curve).
+5. Bracket gating (`treeDecoder.ts` → `bracketConfidence`, `gatePhrases`): decode MST trees with calibrated head probabilities, build nested phrases, and for thresholds 0 – 0.99 measure the precision of the shown multi-word brackets (labeled), their coverage (shown / predicted), and recall. Choose the lowest threshold whose dev precision is ≥ `acceptance.nested_view.min_shown_precision` (95%); report test precision and coverage there. Bracket confidence (proposed): the product of the chosen-head probabilities of the words a bracket covers, except its head word.
+6. Nested-view decision per model (test): UAS without punctuation ≥ 93, multi-word bracket F1 ≥ 88 (Phase 7 biaffine stage), and shown-bracket precision ≥ 95% at the chosen threshold, with coverage reported.
+7. Write temperatures, margins, and the threshold into the checkpoint's `labels.json` (export copies it) and `reports/calibration.md`; record the margins per model in `architecture.md`.
 
-**Deliverables:** calibration report; updated `labels.json`.
-**Exit criterion:** calibration error reduced for every offered model; margins chosen and recorded in `architecture.md` (per model).
+**Deliverables:** `reports/calibration.md`; calibrated `labels.json` per offered model.
+**Exit criterion:** calibration error reduced for every offered model (group A, relation, arc); margins and bracket threshold chosen and recorded in `architecture.md` (per model); nested-view decision recorded per model.
 
 ### Phase 9 — ONNX export and quantization
 
@@ -625,7 +674,7 @@ Runs for every offered candidate.
 3. Parity check (`benchmark.mjs` + `evaluate.py`):
    - fp32 ONNX vs PyTorch: ≥ 99.9% label agreement on dev.
    - int8 and fp16: chunk F1 and LAS drop ≤ 0.3 points each vs fp32.
-4. If int8 fails parity, try excluding sensitive layers (e.g., embeddings, classifier) from quantization (`configs/eval.yaml` → `export.int8_exclude_nodes`). ModernBERT is the most likely case (Phase 7 smoke test); if it still fails, offer it with fp16 (WebGPU) only.
+4. If int8 fails parity, try excluding sensitive layers (e.g., embeddings, classifier) from quantization (`configs/eval.yaml` → `export.int8_exclude_nodes`). ModernBERT is the most likely case (Phase 7 smoke test; the biaffine smoke test failed int8 even with the arc scorer kept fp32); if it still fails, offer it with fp16 (WebGPU) only. Biaffine exports also compare `arc_scores` (argmax head per word; `js/benchmark.mjs` group "arc").
 
 **Deliverables:** ONNX files; parity report.
 **Exit criterion:** both variants pass parity for every offered model (a model whose variant fails is not offered with that variant).
@@ -837,3 +886,30 @@ Runs for every offered candidate.
 
 - Modified: *Nested phrase structure* — nested-view acceptance is UAS without punctuation ≥ 93, labeled multi-word bracket F1 ≥ 88, and ≥ 95% precision of shown brackets after confidence gating (owner); low-confidence brackets collapse.
 - Added: planned biaffine parser head after the extended stage (owner), with the measurements that motivate it.
+
+### 2026-11-19T04:47:11Z — Antigravity, Documented parser/phraseLabeler.ts and training caveats
+
+- Modified: *Key design decisions* → *No rule-based nesting* and *Nested phrase structure* to include `parser/phraseLabeler.ts` (deterministic role, clause/predicate, and head-of-parent labeling over `treeDecoder.ts` output) and its training-side caveats (UAS/LAS accuracy ceiling, stripped UD subtypes vs. upcoming biaffine relation classifier, discontinuous predicates, and confidence-gating interaction).
+
+### 2026-11-19T05:09:52Z — Claude Opus 5.5, Stale thresholds, proposed marks, todo.md
+
+- Modified: *Key design decisions*, Phase 5 bar, Phase 7 exit criterion, and the pre-0 gate table use the current thresholds (flat: owner-confirmed 97% / 94%; nested view: UAS without punctuation ≥ 93, bracket F1 ≥ 88, shown-bracket precision ≥ 95) instead of the superseded UAS ≥ 97 / LAS ≥ 94.
+- Modified: Phase 7 task 3 — the biaffine head is planned, not an optional experiment.
+- Modified: `parser/phraseLabeler.ts` passages marked **(proposed)** (added 2026-11-19 by Antigravity; not yet confirmed by the owner).
+- Modified: pointers to `plan.md` → *Undecided* now point to `todo.md`.
+- Removed: *Open questions* contents (moved to `todo.md`; acceptance thresholds item dropped as decided).
+
+### 2026-11-19T05:31:24Z — Claude Opus 5.5, Nested-view target metrics in Phase 7 evaluation
+
+- Modified: Phase 7 task 4 adds UAS without punctuation and multi-word bracket F1 (the measurable nested-view targets); the report judges the nested view by `acceptance.nested_view` and marks models meeting both *pending Phase 8*.
+- Modified: Phase 7 base outcome adds the rescored target metrics (no model meets them yet).
+
+### 2026-11-19T06:59:42Z — Claude Opus 5.5, Relation subtype allowlist decided
+
+- Modified: *Nested phrase structure* → *Head encoding*, *Planned change*, and the `phraseLabeler.ts` caveat: the biaffine relation classifier keeps ten subtypes (`nsubj:pass`, `aux:pass`, `obl:agent`, `acl:relcl`, `nmod:poss`, `compound:prt`, `obl:unmarked`, `det:predet`, `advcl:relcl`, `cc:preconj`); `nmod:unmarked`, `nmod:desc`, `nsubj:outer`, `csubj:outer`, `csubj:pass` fold into their base relation (owner decision). Current (`rel_pos_v1`) models are unchanged.
+
+### 2026-11-19T22:39:04Z — Claude Opus 5.5, Phase 7 closed; biaffine design decided
+
+- Added: Phase 7 extended-stage outcome, carried-forward checkpoints (owner: extended for DeBERTa, BERT, ModernBERT; base for DistilBERT), error-analysis outcome, and exit status (met).
+- Added: *Nested phrase structure* → *Biaffine design* (owner decisions T04, T06, T07, T08): per-sentence arc scope, subword-level `[T, T]` arc scores, runtime windows packed like training, stray `I-X` → `B-X` repair, augmentation experiment, learning rates 4e-4 / 5e-4 for DeBERTa and ModernBERT.
+- Modified: Phase 4 task 6 (augmentation decision), Phase 7 hyperparameters (selection score and λ confirmed), Phase 7 task 5 (done), *Key design decisions* → *Multi-sentence context* (no runtime overlap).

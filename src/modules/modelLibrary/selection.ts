@@ -14,8 +14,8 @@
  *      is no longer in the catalog is cleared.
  *   2. recommendModel(catalog, fitness): ModelId | null — fitness is plain
  *      data per model from pre-flight (blocked / warn / ok, expected parse
- *      time on this device's backend). Rule (proposed; plan.md →
- *      Undecided → Model library): among models not blocked and without
+ *      time on this device's backend). Rule (proposed; todo.md →
+ *      [Modules/modelLibrary]): among models not blocked and without
  *      memory warnings, the highest chunk F1 whose expected parse time meets
  *      the 5 s budget; ties → smaller download.
  *   3. On later visits parserService auto-loads the saved choice only if it
@@ -26,7 +26,7 @@
  *   Internal: ./types.ts; core/storage.ts.
  *   Used by: ./index.ts.
  *
- * Open items (plan.md → Undecided): model library (recommendation rule).
+ * Open items (todo.md): model library (recommendation rule).
  *
  * Status: header only; not implemented.
  */

@@ -5,6 +5,6 @@
  * Tasks: 1. Chunk styles per type (tokens.css chunk colors). 2. Selected/focused token.
  *        3. Alternatives list. 4. Basic-mode notice.
  * Dependencies: src/css/tokens.css. Used by: OutputPage.tsx.
- * Open items (plan.md → Undecided): parse-display style (tree, brackets, color-coded).
+ * Open items (todo.md): parse-display style (tree, brackets, color-coded).
  * Status: header only; not implemented.
  */

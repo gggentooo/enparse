@@ -18,7 +18,7 @@
  *   External: possibly SQLite-WASM (only if chosen; needs approval).
  *   Used by: ./dictionary.ts.
  *
- * Open items (plan.md → Undecided): data sources and licensing; storage
+ * Open items (todo.md): data sources and licensing; storage
  *   format (JSON vs SQLite-WASM); hosting, sharding, offline caching; build
  *   pipeline location.
  *

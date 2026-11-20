@@ -50,7 +50,7 @@
  * Network: fetchStaticJson only loads assets from the app's own static host
  *   (agents.md → Parser and worker code). No telemetry; results stay local.
  *
- * Open items (plan.md → Undecided): pre-flight checks (scope, thresholds);
+ * Open items (todo.md): pre-flight checks (scope, thresholds);
  *   deployment target (COOP/COEP headers decide wasmThreads).
  *
  * Status: header only; not implemented.

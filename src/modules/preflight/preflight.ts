@@ -28,7 +28,7 @@
  *   5. Never throws for an unsupported feature: probe errors become "skip"
  *      or "fail" results. Only programming errors throw.
  *   6. Optionally requestPersistentStorage() when the model is cached
- *      (plan.md → Undecided → Pre-flight checks).
+ *      (todo.md → [Modules/preflight]).
  *   7. Unit tests in preflight.test.ts with a stubbed core/environment.
  *
  * Dependencies:
@@ -38,7 +38,7 @@
  *   Used by: ./index.ts → services/parserService.ts. Does not import
  *            modules/modelLibrary: model data is passed in as plain values.
  *
- * Open items (plan.md → Undecided): pre-flight checks (scope, policies).
+ * Open items (todo.md): pre-flight checks (scope, policies).
  *
  * Status: header only; not implemented.
  */

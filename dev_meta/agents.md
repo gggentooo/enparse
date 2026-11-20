@@ -46,20 +46,21 @@ Rules and reference for AI agents (and humans) developing Enparse. Read this doc
 
 | Document | Contains | Read when |
 |----------|----------|-----------|
-| `dev_meta/plan.md` | Project overview, **Undecided** list | Always, before starting a task |
+| `dev_meta/plan.md` | Project overview and core features | Always, before starting a task |
+| `dev_meta/todo.md` | Tasks and open owner decisions, ordered by dependency (replaces the former *Undecided* list) | Always, before starting a task |
 | `dev_meta/architecture.md` | Stack, layers, modules, parsing engine, skeleton | Before writing or moving any code |
 | `dev_meta/plan-training.md` | Parser model training phases | Before working in `training/` or on the model |
 | `dev_meta/agents.md` | This guide | Always |
 
 - Documents win over code. If code and documents disagree, stop and report the conflict; do not silently follow either.
-- If a task needs a decision listed under **Undecided** in `plan.md`, ask the owner. Do not decide it yourself. If you must proceed, use a clearly marked **(proposed)** default and add it to the Undecided item.
+- If a task needs an open **Decision** task in `todo.md`, ask the owner. Do not decide it yourself. If you must proceed, use a clearly marked **(proposed)** default and note it in that task.
 
 ---
 
 ## Agent workflow
 
-1. **Read** the four documents above (at least the sections relevant to the task).
-2. **Check Undecided.** If the task depends on an open item, ask before proceeding.
+1. **Read** the documents above (at least the sections relevant to the task).
+2. **Check `todo.md`.** If the task's *Needs* are not done (especially owner **Decision** tasks), ask before proceeding.
 3. **Plan** the change: list files to add or modify; confirm they fit the layer rules.
 4. **Implement** in small, reviewable steps.
 5. **Verify:** typecheck, lint, tests, and (for UI) a manual check in the browser.
@@ -164,7 +165,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 6. **Components:** add components in `src/components/`, each with a `.module.css` file.
 7. **Route (pages only):** add the route to `src/routes.tsx` and a link in `Sidebar.tsx`.
 8. **Tests:** unit tests for the module and service; component tests for new UI.
-9. **Documents:** update `plan.md` (resolved Undecided items) and changelogs.
+9. **Documents:** update `todo.md` (finished tasks to *Done*) and changelogs.
 
 ### Adding a parser backend
 
@@ -190,7 +191,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ## Tooling and commands
 
-Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
+Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
 
 | Item | Choice | Status |
 |------|--------|--------|
@@ -239,11 +240,12 @@ Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 
 | Change | Update |
 |--------|--------|
-| Decision on an Undecided item | Remove it from `plan.md` → *Undecided*; record the decision in `plan.md` or `architecture.md` |
+| Decision on a `todo.md` **Decision** task | Record the decision in `plan.md`, `architecture.md`, or `plan-training.md`; move the task to `todo.md` → *Done* |
+| Task finished | Move it to `todo.md` → *Done*; update tasks that list it under *Needs* |
 | New/changed module, service, hook, component, route, or dependency | `architecture.md` (modules table, graph, skeleton, stack) |
 | Parser model, training data, or training process | `plan-training.md` (and `architecture.md` → *Parsing engine* if runtime behavior changes) |
 | Agent workflow, conventions, or tooling | `agents.md` |
-| New open question found during work | Add to `plan.md` → *Undecided* |
+| New open question or task found during work | Add a task to `todo.md` at the right dependency stage |
 
 ### Writing rules
 
@@ -306,3 +308,8 @@ Remaining open items are tracked under *Tooling* in `plan.md` → *Undecided*.
 ### 2026-11-18T06:56:29Z — Claude Opus 5.5, No fallback mode
 
 - Modified: testing guide and *Adding a parser backend* — no fallback backend; parsing refused before the model is ready.
+
+### 2026-11-19T05:09:52Z — Claude Opus 5.5, todo.md replaces Undecided
+
+- Added: `dev_meta/todo.md` to *Source-of-truth documents*.
+- Modified: agent workflow, *Adding a new module or feature*, *Tooling and commands*, and *Documentation guide* point to `todo.md` instead of `plan.md` → *Undecided* (owner decision: the Undecided list moved to `todo.md`).

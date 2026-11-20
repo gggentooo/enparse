@@ -25,7 +25,7 @@
  *             components/Shared/LoadingSpinner.tsx, ./InputPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Open items (plan.md → Undecided): limit defaults; interface language.
+ * Open items (todo.md): limit defaults; interface language.
  *
  * Status: header only; not implemented.
  */

@@ -18,7 +18,9 @@
  *      variants: { int8: { file, bytes }, fp16: { file, bytes } } (int8 for
  *      WASM, fp16 for WebGPU), shared_files (config and tokenizer files with
  *      bytes and sha256), metrics: { upos, chunk_f1, uas, las } (EWT test),
- *      nested_view (true if UAS/LAS meet the thresholds),
+ *      nested_view (true if the model meets the nested-view targets:
+ *      UAS excl. punctuation, multi-word bracket F1, shown-bracket precision;
+ *      plan-training.md → Nested phrase structure),
  *      performance: { first_load_s, parse_5000_chars_s: { wasm, webgpu },
  *      peak_memory_mb: { wasm, webgpu } } (Phase 10), requirements:
  *      { min_device_memory_gb } (Phase 10).
@@ -34,7 +36,7 @@
  *   Internal: core/environment.ts (cache result types only).
  *   Used by: all files in modules/modelLibrary/.
  *
- * Open items (plan.md → Undecided): model library (catalog contents and
+ * Open items (todo.md): model library (catalog contents and
  *   description language).
  *
  * Status: header only; not implemented.

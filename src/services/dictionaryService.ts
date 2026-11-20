@@ -18,7 +18,7 @@
  *   No React imports; no other services.
  *   Used by: hooks/useDictionary.ts.
  *
- * Open items (plan.md → Undecided): lookup trigger (popup vs DictionaryPage).
+ * Open items (todo.md): lookup trigger (popup vs DictionaryPage).
  *
  * Status: header only; not implemented.
  */

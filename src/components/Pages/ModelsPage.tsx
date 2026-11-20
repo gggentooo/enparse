@@ -33,7 +33,7 @@
  *             components/Shared/DiagnosticsPanel.tsx, ./ModelsPage.module.css.
  *   Used by: src/routes.tsx (#/models).
  *
- * Open items (plan.md → Undecided): model library (presentation, description
+ * Open items (todo.md): model library (presentation, description
  *   language); interface language.
  *
  * Status: header only; not implemented.

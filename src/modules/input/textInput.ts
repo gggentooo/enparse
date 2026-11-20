@@ -25,7 +25,7 @@
  *   Internal: ./types.ts. External: none.
  *   Used by: ./index.ts; training/js/align_tokens.mjs (via tsx).
  *
- * Open items (plan.md → Undecided): limit defaults (5,000 characters).
+ * Limit: MAX_INPUT_CHARS = 5,000 (owner, 2026-11-20; T09).
  *
  * Status: implemented (Phase 3 pre-work).
  */

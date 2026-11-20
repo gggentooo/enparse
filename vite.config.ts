@@ -19,7 +19,7 @@
  *   Related: src/index.html, src/main.tsx, src/modules/parser/parser.worker.ts,
  *            public/models/ (catalog.json + one folder per model).
  *
- * Open items (plan.md → Undecided): deployment target (affects base path),
+ * Open items (todo.md): deployment target (affects base path),
  *   Offline/PWA (would add a plugin here).
  *
  * Status: tasks 1, 3, 4, 5, 6 implemented; task 2 (React plugin) added with React.

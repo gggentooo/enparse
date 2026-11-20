@@ -16,9 +16,13 @@
  *      ParserLoadError on failure.
  *   1b. unload(): dispose the ONNX session and tokenizer to free memory
  *      (before switching models or deleting the active one).
- *   2. Build overlapping windows of up to WINDOW_TOKENS = 256 subword tokens
- *      from wink words (same size as training; plan-training.md Phase 4).
- *   3. Take first-subword logits per word; merge overlapping windows.
+ *   2. Pack whole wink sentences into windows of up to WINDOW_TOKENS = 256
+ *      subword tokens, no overlap, exactly like training (plan-training.md
+ *      Phase 4 and Nested phrase structure → Biaffine design). Only a sentence
+ *      longer than 256 subwords is split, with a 32-token overlap.
+ *   3. Take first-subword logits per word. For a split sentence, each word
+ *      takes its scores from the window where it is farthest from the edge
+ *      (arc scores to heads outside that window: −∞).
  *   4. Apply calibration temperature from labels.json; softmax.
  *   5. Decode: top combined label per word; UPOS and chunk probabilities by
  *      summing combined-label probabilities; keep top-k for ambiguity.ts.
@@ -42,7 +46,7 @@
  *           offered model, listed in public/models/catalog.json).
  *   Used by: ./parser.worker.ts.
  *
- * Open items (plan.md → Undecided): model library (hosting limits).
+ * Open items (todo.md): model library (hosting limits).
  *
  * Status: header only; not implemented.
  */

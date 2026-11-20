@@ -20,7 +20,7 @@
  *   External (optional): csv-stringify, csv-parse, jszip.
  *   Used by: services/vocabService.ts (via ./index.ts).
  *
- * Open items (plan.md → Undecided): entry schema; export format and
+ * Open items (todo.md): entry schema; export format and
  *   versioning; third-party compatibility (Anki); import conflicts;
  *   storage limits.
  *

@@ -17,7 +17,7 @@
  *   None (no external libraries, no other layers).
  *   Used by: modules/*, services/*, hooks/*.
  *
- * Open items (plan.md → Undecided): interface language (date display format).
+ * Open items (todo.md): interface language (date display format).
  *
  * Status: header only; not implemented.
  */

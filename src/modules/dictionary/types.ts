@@ -15,7 +15,7 @@
  * Dependencies:
  *   None. Used by: ./dictionary.ts, ./staticDb.ts, ./index.ts.
  *
- * Open items (plan.md → Undecided): module interfaces (dictionary entries).
+ * Open items (todo.md): module interfaces (dictionary entries).
  *
  * Status: header only; not implemented.
  */
