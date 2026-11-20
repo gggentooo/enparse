@@ -8,6 +8,11 @@ Description:
     type), and UAS/LAS from group B (rel_pos_v1, decoded with the predicted
     UPOS). Raw argmax decoding; tree repair and nested phrases are done by the
     app's treeDecoder.ts (Phase 7 evaluation via tsx).
+    Biaffine models (labels.json schema v2): heads are the per-word argmax of
+    the arc scores over the word's sentence plus root (no tree constraint;
+    the final evaluation decodes trees with MST in treeDecoder.ts), and the
+    relation is the group B argmax, "root" exactly when the head is the root
+    (the same rule as treeDecoder.ts).
 
 Phase: 7 — Full training and tuning (also 9, 12).
 
@@ -16,7 +21,8 @@ Rules:
     - Chunk F1 per (window, sentence) sequence, only over sentences whose
       words are all reviewed (plan-training.md → Phase 4 partial labels).
     - UAS/LAS: every labeled word whose gold head lies in the same window;
-      LAS also needs the base relation to match.
+      LAS also needs the base relation to match (subtypes are not compared, so
+      the score is comparable with rel_pos_v1 models).
 
 Dependencies:
     Python: numpy, seqeval; prepare_data.decode_head, prepare_data.base_relation.
@@ -46,18 +52,26 @@ class LabelSpace:
     chunk_end: int
     dep_start: int
     dep_end: int
+    biaffine: bool = False
 
     @classmethod
     def from_labels_json(cls, obj: dict[str, Any]) -> LabelSpace:
-        """Build from a labels.json object (schema v1)."""
+        """Build from a labels.json object (schema v1: group B = dep; v2: group B = rel)."""
         g = obj["groups"]
+        b = g["rel"] if obj.get("schema_version") == 2 else g["dep"]
         return cls(
             obj["labels"],
             g["chunk"]["start"],
             g["chunk"]["end"],
-            g["dep"]["start"],
-            g["dep"]["end"],
+            b["start"],
+            b["end"],
+            obj.get("schema_version") == 2,
         )
+
+    @property
+    def root_rel(self) -> int:
+        """Group-local id of the relation "root" (biaffine models)."""
+        return self.labels[self.dep_start : self.dep_end].index("root")
 
     @property
     def n_chunk(self) -> int:
@@ -75,7 +89,7 @@ class LabelSpace:
         return upos, chunk
 
     def dep_label(self, local_id: int) -> str:
-        """rel_pos_v1 label of a group-local B id."""
+        """Group B label of a local id (rel_pos_v1 label, or the relation for biaffine models)."""
         return self.labels[self.dep_start + local_id]
 
 
@@ -103,10 +117,47 @@ def word_argmax(
 
 @dataclass
 class WindowPrediction:
-    """Predictions for one window: group-local ids per word (-1 = no subword)."""
+    """Predictions for one window: group-local ids per word (-1 = no subword).
+
+    Biaffine models also set heads: per window word, the head's window word
+    index, -1 for the root, -2 if the word has no subword.
+    """
 
     chunk_ids: list[int]
     dep_ids: list[int]
+    heads: list[int] | None = None
+
+
+def biaffine_words(
+    logits: np.ndarray,
+    arc: np.ndarray,
+    token_word: Sequence[int],
+    word_sent: Sequence[int],
+    space: LabelSpace,
+) -> WindowPrediction:
+    """Per-word group A argmax, argmax head (sentence + root), and relation (root iff head root)."""
+    from biaffine import word_heads
+
+    firsts = first_subword_positions(token_word)
+    heads, _ = word_heads(arc, token_word, word_sent)
+    a = logits[:, space.chunk_start : space.chunk_end].argmax(-1)
+    rel = logits[:, space.dep_start : space.dep_end].copy()
+    root = space.root_rel
+    pa, pb = [], []
+    for w in range(len(word_sent)):
+        t = firsts.get(w)
+        if t is None:
+            pa.append(-1)
+            pb.append(-1)
+            continue
+        pa.append(int(a[t]))
+        if heads[w] == -1:
+            pb.append(root)
+        else:
+            row = rel[t].copy()
+            row[root] = -np.inf
+            pb.append(int(row.argmax()))
+    return WindowPrediction(pa, pb, heads)
 
 
 def _sentences(row: dict[str, Any]) -> dict[int, list[int]]:
@@ -153,17 +204,23 @@ def score(
                 if did < 0:
                     continue
                 label = space.dep_label(did)
-                k = local[row["word_index"][w]]
-                ph = decode_head(label, sent_upos, k)
-                # Map the predicted sentence-local head back to the word index space.
-                ph_index = (
-                    None
-                    if ph is None
-                    else (0 if ph == 0 else row["word_index"][s_words[ph - 1]] + 1)
-                )
+                if pred.heads is not None:
+                    hw = pred.heads[w]
+                    ph_index = None if hw == -2 else (0 if hw == -1 else row["word_index"][hw] + 1)
+                    relation = base_relation(label)
+                else:
+                    k = local[row["word_index"][w]]
+                    ph = decode_head(label, sent_upos, k)
+                    # Map the predicted sentence-local head back to the word index space.
+                    ph_index = (
+                        None
+                        if ph is None
+                        else (0 if ph == 0 else row["word_index"][s_words[ph - 1]] + 1)
+                    )
+                    relation = label.partition("|")[2]
                 if ph_index == gold_head:
                     uas_ok += 1
-                    if label.partition("|")[2] == base_relation(row["gold_deprel"][w]):
+                    if relation == base_relation(row["gold_deprel"][w]):
                         las_ok += 1
     report = (
         classification_report(gold_seqs, pred_seqs, output_dict=True, zero_division=0)

@@ -17,6 +17,7 @@
 #
 # Dependencies:
 #   Read by: scripts/check_env.py, scripts/calibrate.py, scripts/export_onnx.py, scripts/evaluate.py,
+#            scripts/run_phase7.py, js/error_analysis.mjs (phase7_checkpoints, error_analysis),
 #            js/benchmark.mjs, js/evaluate_baselines.mjs.
 #   Related: architecture.md → Ambiguity handling (margin, alternatives cap);
 #            agents.md → Parser and worker code (limits live in constants or
@@ -40,9 +41,10 @@
 #     sample_chars        — 5000
 #     runs                — 10 (median reported)
 #     budget_seconds      — 5
-#   acceptance (open; plan.md → Undecided):
-#     min_upos_accuracy   — proposed 0.97
-#     min_chunk_f1        — proposed 0.94
+#   acceptance (owner, 2026-11-18 / 2026-11-19; values below):
+#     min_upos_accuracy   — 0.97
+#     min_chunk_f1        — 0.94
+#     nested_view         — UAS excl. punct 0.93, multi-word bracket F1 0.88, shown precision 0.95
 #
 # Status: env_check (Phase 0), smoke, export, parity, acceptance (Phase 7/9) set; calibration,
 #   ambiguity, benchmark pending.
@@ -75,6 +77,7 @@ export:
   variants: [fp32, int8, fp16]        # fp32 for parity only; int8 (WASM) and fp16 (WebGPU) ship
   int8_per_channel: true              # per-channel scales: ~3x lower int8 error in the smoke test, same size
   int8_exclude_nodes: []              # filled only if int8 fails parity (e.g., embeddings, classifier)
+  int8_keep_arc_fp32: true            # biaffine: arc scorer nodes (/arc/*) stay fp32 (~4 MB); T05 smoke test
   fp16_keep_io_types: true            # fp32 inputs/outputs, fp16 inside
   report_margin: 0.1                  # export_report.json: also agreement on words with fp32 margin > this
 
@@ -93,8 +96,6 @@ parity:
 acceptance:
   min_upos_accuracy: 0.97
   min_chunk_f1: 0.94
-  min_uas: 0.97              # superseded for the nested view (owner, 2026-11-19); kept for older reports
-  min_las: 0.94              # superseded, see nested_view below
   nested_view:               # owner, 2026-11-19 (plan-training.md → Nested phrase structure)
     min_uas_no_punct: 0.93
     min_bracket_f1: 0.88     # labeled, multi-word brackets
@@ -103,12 +104,18 @@ acceptance:
 # Phase 7 orchestration (scripts/run_phase7.py) and test evaluation (scripts/evaluate.py).
 phase7:
   models: [distilbert_base_cased, deberta_v3_xsmall, bert_base_cased, modernbert_base]  # smallest first
-  # Score for picking the learning rate and λ from dev: mean of chunk F1 and LAS (both views
-  # matter; early stopping inside a run still uses dev chunk F1). (proposed)
+  # Score for early stopping, best checkpoint, learning rate, λ, and offered seed (dev): mean of
+  # chunk F1 and LAS (both views matter). Confirmed by owner 2026-11-20.
   selection: [chunk_f1, las]
   prune_unselected: true     # delete weights of sweep runs not used for the final seeds (keeps summary.json)
   dep_top_k: 5               # group B candidates per word written for tree decoding (treeDecoder.ts)
   eval_splits: [dev, test]   # test is evaluated once per final seed run; never used for choices
+
+# Biaffine arc scorer (scripts/biaffine.py; T51). MLP size and dropout of the dependent and head
+# projections (proposed: common sizes for transformer encoders; not swept).
+biaffine:
+  arc_mlp_dim: 512
+  arc_dropout: 0.1
 
 # Phase 5 results (reports/baselines.md, EWT test) that Phase 7 must beat.
 baselines:
@@ -126,3 +133,32 @@ phase7_stages:
     fix_dep_weight: true     # λ from the base Phase 7 choice (λ changed dev scores by ≤ 0.4 points)
     record: phase7_extended.json
     report: reports/training_extended.md
+  biaffine:                  # T51 (owner, 2026-11-20; plan-training.md → Biaffine design)
+    tag: bf
+    head: biaffine           # train.py --head biaffine: relation group B + arc_scores (scripts/biaffine.py)
+    epochs: 30
+    early_stopping_patience: 3
+    lr_sweep: [1.0e-4, 2.0e-4, 3.0e-4]
+    lr_sweep_extra:          # picked the top rate (3e-4) in the extended stage (owner, 2026-11-20)
+      deberta_v3_xsmall: [4.0e-4, 5.0e-4]
+      modernbert_base: [4.0e-4, 5.0e-4]
+    fix_dep_weight: true     # λ from the base Phase 7 choice (owner, 2026-11-20; T07)
+    augmentation_experiment: true  # T06: augmented train split at the best rate; kept if dev selection does not drop
+    record: phase7_biaffine.json
+    report: reports/training_biaffine.md
+
+# Checkpoint carried forward per model after Phase 7 (owner, 2026-11-20): the stage whose dev-selected
+# seed run is used (record selected_run in data/eval/<model>/<record>). Base = phase7.json.
+# Read by js/error_analysis.mjs (reports/errors.md).
+phase7_checkpoints:
+  distilbert_base_cased: base          # extended was lower on dev (selection 89.34 vs 89.72)
+  deberta_v3_xsmall: extended
+  bert_base_cased: extended
+  modernbert_base: extended
+
+# Phase 7 task 5: error analysis (js/error_analysis.mjs → reports/errors.md).
+error_analysis:
+  split: test
+  sample_size: 100           # errors sampled per model and grouped by type
+  seed: 7
+  examples_per_group: 2      # shown in the report; the full sample goes to data/eval/<model>/<run>/

@@ -27,10 +27,20 @@ Output (data/onnx/<model>/<run>/):
     export_report.json                 sizes, onnx.checker results, onnxruntime
                                        agreement with PyTorch per variant
 
+Biaffine checkpoints (config.json enparse_head = biaffine; labels.json
+schema v2; T05): the export has two outputs, `logits` [batch, T, labels] and
+`arc_scores` [batch, T, T] (Optimum's token-classification ONNX config of the
+base architecture plus one output, so the architecture-specific export
+patches still apply). Transformers.js returns both from `model.forward()`.
+Agreement is also measured for the arc output: per-word argmax head over the
+word's sentence plus root (biaffine.word_heads), reported as group "arc".
+
 Steps:
-    1. main_export (Optimum) to a temp folder; move model.onnx to onnx/.
+    1. main_export (Optimum) to a temp folder; move model.onnx to onnx/
+       (biaffine: onnx_export_from_model with the two-output config).
     2. int8: onnxruntime quantize_dynamic, per-channel by default
-       (configs/eval.yaml → export).
+       (configs/eval.yaml → export). Biaffine: the arc scorer's nodes stay
+       fp32 (export.int8_keep_arc_fp32; ~1M parameters, ~4 MB).
     3. fp16: onnxruntime.transformers.float16 (keep_io_types).
     4. Topologically re-sort each graph, counting values that If/Loop
        subgraphs read from the outer graph (quantization can leave DeBERTa's
@@ -54,7 +64,7 @@ Dependencies:
     Consumed by: js/benchmark.mjs (smoke, parity, speed), scripts/evaluate.py
                  (Phase 9 parity), scripts/package_models.py (Phase 11).
 
-Status: implemented (Phase 7 pre-work). Not yet run on a trained candidate.
+Status: implemented (Phase 7 smoke test run; biaffine two-output export for T05).
 """
 
 from __future__ import annotations
@@ -122,8 +132,57 @@ def export_fp32(checkpoint: Path, out: Path, opset: int) -> None:
                 shutil.copy2(f, out / f.name)
 
 
+def export_fp32_biaffine(checkpoint: Path, out: Path, opset: int) -> None:
+    """Optimum export of a biaffine checkpoint with outputs logits and arc_scores."""
+    from optimum.exporters.onnx import onnx_export_from_model
+    from optimum.exporters.tasks import TasksManager
+    from transformers import AutoTokenizer
+
+    from biaffine import ARC_OUTPUT, load_biaffine
+
+    model = load_biaffine(str(checkpoint), local_files_only=True).eval()
+    task = "token-classification"
+    ctor = TasksManager.get_exporter_config_constructor(
+        "onnx", model=model, task=task, library_name="transformers"
+    )
+    base_cls = type(ctor(model.config, task=task))
+
+    class ArcOnnxConfig(base_cls):  # type: ignore[misc, valid-type]
+        @property
+        def outputs(self) -> dict[str, dict[int, str]]:
+            outs = dict(super().outputs)
+            outs[ARC_OUTPUT] = {0: "batch_size", 1: "sequence_length", 2: "sequence_length"}
+            return outs
+
+    with tempfile.TemporaryDirectory() as tmp:
+        onnx_export_from_model(
+            model,
+            output=tmp,
+            opset=opset,
+            task=task,
+            custom_onnx_configs={"model": ArcOnnxConfig(model.config, task=task)},
+            do_validation=True,
+            preprocessors=[AutoTokenizer.from_pretrained(str(checkpoint), local_files_only=True)],
+        )
+        tmp_dir = Path(tmp)
+        (out / "onnx").mkdir(parents=True, exist_ok=True)
+        for f in tmp_dir.iterdir():
+            if f.suffix == ".onnx" or f.name.endswith(".onnx_data"):
+                shutil.move(str(f), out / "onnx" / f.name)
+            elif f.is_file():
+                shutil.copy2(f, out / f.name)
+
+
+def arc_nodes(path: Path) -> list[str]:
+    """Names of the arc scorer's nodes (module `arc` in scripts/biaffine.py) in an ONNX graph."""
+    import onnx
+
+    model = onnx.load(str(path), load_external_data=False)
+    return [n.name for n in model.graph.node if n.name.startswith("/arc/")]
+
+
 def make_int8(out: Path, per_channel: bool, exclude: list[str]) -> None:
-    """Dynamic int8 quantization of the fp32 model."""
+    """Dynamic int8 quantization of the fp32 model (nodes in exclude stay fp32)."""
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
     quantize_dynamic(
@@ -266,6 +325,86 @@ def ort_argmax(
     return out, width
 
 
+def _biaffine_preds(
+    logits: np.ndarray, arc: np.ndarray, w: dict[str, Any], space: LabelSpace
+) -> dict[str, list[Any]]:
+    """Ids and margins per word for a biaffine window: chunk, dep (relation), arc (head)."""
+    from biaffine import word_heads
+    from metrics import biaffine_words
+
+    pred = biaffine_words(logits, arc, w["token_word"], w["word_sent"], space)
+    _, arc_margin = word_heads(arc, w["token_word"], w["word_sent"])
+    ma, mb = word_margins(logits, w["token_word"], space)
+    return {
+        "chunk": pred.chunk_ids,
+        "dep": pred.dep_ids,
+        "arc": pred.heads or [],
+        "chunk_margin": ma,
+        "dep_margin": mb,
+        "arc_margin": arc_margin,
+    }
+
+
+def torch_predict_biaffine(
+    checkpoint: Path, windows: list[dict[str, Any]], space: LabelSpace
+) -> list[dict[str, list[Any]]]:
+    """PyTorch (CPU) predictions and margins per word for each window (biaffine)."""
+    import torch
+
+    from biaffine import load_biaffine
+
+    model = load_biaffine(str(checkpoint), local_files_only=True).eval()
+    out = []
+    with torch.no_grad():
+        for w in windows:
+            ids = torch.tensor([w["input_ids"]])
+            res = model(input_ids=ids, attention_mask=torch.ones_like(ids))
+            out.append(_biaffine_preds(res.logits[0].numpy(), res.arc_scores[0].numpy(), w, space))
+    return out
+
+
+def ort_predict_biaffine(
+    model_path: Path, windows: list[dict[str, Any]], space: LabelSpace
+) -> tuple[list[dict[str, list[Any]]], int, list[str]]:
+    """onnxruntime (CPU) predictions per word (biaffine); logits width; output names."""
+    import onnxruntime as ort
+
+    sess = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+    names = {i.name for i in sess.get_inputs()}
+    outputs = [o.name for o in sess.get_outputs()]
+    res = []
+    width = 0
+    for w in windows:
+        ids = np.array([w["input_ids"]], dtype=np.int64)
+        feed = {"input_ids": ids, "attention_mask": np.ones_like(ids)}
+        if "token_type_ids" in names:
+            feed["token_type_ids"] = np.zeros_like(ids)
+        got = dict(
+            zip(outputs, sess.run(None, {k: v for k, v in feed.items() if k in names}), strict=True)
+        )
+        logits = got["logits"][0].astype(np.float32)
+        width = int(logits.shape[-1])
+        res.append(_biaffine_preds(logits, got["arc_scores"][0].astype(np.float32), w, space))
+    return res, width, outputs
+
+
+def agreement_biaffine(
+    ref: list[dict[str, list[Any]]], other: list[dict[str, list[Any]]], margin: float = 0.0
+) -> dict[str, float]:
+    """Share of words with the same prediction per group (chunk, dep, arc), optionally only
+    over words whose reference margin > margin."""
+    out: dict[str, float] = {}
+    for g in ("chunk", "dep", "arc"):
+        same = total = 0
+        for r, o in zip(ref, other, strict=True):
+            for x, y, gap in zip(r[g], o[g], r[f"{g}_margin"], strict=True):
+                if margin == 0.0 or gap > margin:
+                    total += 1
+                    same += int(x == y)
+        out[g] = same / total if total else 1.0
+    return out
+
+
 def agreement(
     ref: list[tuple[list[int], list[int], list[float], list[float]]],
     other: list[tuple[list[int], list[int]]],
@@ -295,7 +434,12 @@ def reference_windows(
         words = text.split()
         ids, wids = encode_words(tokenizer, words, max_per_word)
         out.append(
-            {"words": words, "input_ids": ids, "token_word": [-1 if w is None else w for w in wids]}
+            {
+                "words": words,
+                "input_ids": ids,
+                "token_word": [-1 if w is None else w for w in wids],
+                "word_sent": [0] * len(words),
+            }
         )
     return out
 
@@ -304,7 +448,11 @@ def dev_windows(dataset: Dataset, n: int | None) -> list[dict[str, Any]]:
     """First n dev windows (all if None) with the fields the checks need."""
     count = len(dataset) if n is None else min(n, len(dataset))
     return [
-        {"input_ids": dataset[i]["input_ids"], "token_word": dataset[i]["token_word"]}
+        {
+            "input_ids": dataset[i]["input_ids"],
+            "token_word": dataset[i]["token_word"],
+            "word_sent": dataset[i]["word_sent"],
+        }
         for i in range(count)
     ]
 
@@ -328,9 +476,18 @@ def export(
     tokenizer = AutoTokenizer.from_pretrained(str(checkpoint), local_files_only=True)
     variants = list(export_cfg["variants"])
 
-    export_fp32(checkpoint, out, int(export_cfg["opset"]))
+    from biaffine import is_biaffine
+
+    biaffine = is_biaffine(str(checkpoint))
+    if biaffine:
+        export_fp32_biaffine(checkpoint, out, int(export_cfg["opset"]))
+    else:
+        export_fp32(checkpoint, out, int(export_cfg["opset"]))
     if "int8" in variants:
-        make_int8(out, bool(export_cfg["int8_per_channel"]), list(export_cfg["int8_exclude_nodes"]))
+        exclude = list(export_cfg["int8_exclude_nodes"])
+        if biaffine and export_cfg.get("int8_keep_arc_fp32", True):
+            exclude += arc_nodes(out / VARIANT_FILES["fp32"])
+        make_int8(out, bool(export_cfg["int8_per_channel"]), exclude)
     if "fp16" in variants:
         make_fp16(out, bool(export_cfg["fp16_keep_io_types"]))
     resorted = [v for v in variants if topo_sort(out / VARIANT_FILES[v])]
@@ -338,9 +495,6 @@ def export(
 
     max_per_word = int(labels_json["window"]["max_subwords_per_word"])
     ref = reference_windows(tokenizer, reference_sentences, max_per_word)
-    ref_torch = torch_argmax(checkpoint, ref, space)
-    dev_torch = torch_argmax(checkpoint, dev, space)
-
     report: dict[str, Any] = {
         "checkpoint": str(checkpoint),
         "checker": checker,
@@ -348,6 +502,40 @@ def export(
         "variants": {},
     }
     report_margin = float(export_cfg.get("report_margin", 0.1))
+    if biaffine:
+        report["head"] = "biaffine"
+        ref_t = torch_predict_biaffine(checkpoint, ref, space)
+        dev_t = torch_predict_biaffine(checkpoint, dev, space)
+        for v in variants:
+            path = out / VARIANT_FILES[v]
+            ref_o, width, outputs = ort_predict_biaffine(path, ref, space)
+            dev_o, _, _ = ort_predict_biaffine(path, dev, space)
+            report["variants"][v] = {
+                "file": VARIANT_FILES[v],
+                "bytes": path.stat().st_size,
+                "outputs": outputs,
+                "logits_width": width,
+                "logits_width_ok": width == len(labels_json["labels"]),
+                "reference_agreement": agreement_biaffine(ref_t, ref_o),
+                "dev_agreement": agreement_biaffine(dev_t, dev_o),
+                "dev_confident_agreement": agreement_biaffine(dev_t, dev_o, report_margin),
+                "dev_windows": len(dev),
+            }
+        ref_rows = [
+            {**r, **{f"torch_{k}": p[k] for k in ("chunk", "dep", "arc")}}
+            | {f"torch_{k}": p[k] for k in ("chunk_margin", "dep_margin", "arc_margin")}
+            for r, p in zip(ref, ref_t, strict=True)
+        ]
+        dev_rows = [
+            {**w, **{f"torch_{k}": p[k] for k in ("chunk", "dep", "arc")}}
+            | {f"torch_{k}": p[k] for k in ("chunk_margin", "dep_margin", "arc_margin")}
+            for w, p in zip(dev, dev_t, strict=True)
+        ]
+        _write_reference(out, max_per_word, ref_rows, dev_rows, biaffine=True)
+        return _finish(out, labels_json, report, started)
+
+    ref_torch = torch_argmax(checkpoint, ref, space)
+    dev_torch = torch_argmax(checkpoint, dev, space)
     for v in variants:
         path = out / VARIANT_FILES[v]
         ref_ort, width = ort_argmax(path, ref, space)
@@ -363,30 +551,57 @@ def export(
             "dev_windows": len(dev),
         }
 
+    ref_rows = [
+        {
+            **r,
+            "torch_chunk_ids": pa,
+            "torch_dep_ids": pb,
+            "torch_chunk_margin": ma,
+            "torch_dep_margin": mb,
+        }
+        for r, (pa, pb, ma, mb) in zip(ref, ref_torch, strict=True)
+    ]
+    dev_rows = [
+        {**w, "torch_chunk_ids": pa, "torch_dep_ids": pb}
+        | {"torch_chunk_margin": ma, "torch_dep_margin": mb}
+        for w, (pa, pb, ma, mb) in zip(dev, dev_torch, strict=True)
+    ]
+    _write_reference(out, max_per_word, ref_rows, dev_rows, biaffine=False)
+    return _finish(out, labels_json, report, started)
+
+
+def _write_reference(
+    out: Path,
+    max_per_word: int,
+    ref_rows: list[dict[str, Any]],
+    dev_rows: list[dict[str, Any]],
+    biaffine: bool,
+) -> None:
+    """reference.json and parity_inputs.jsonl for js/benchmark.mjs."""
+    if biaffine:  # same field names as schema v1 rows, plus the arc output
+        rename = {
+            "torch_chunk": "torch_chunk_ids",
+            "torch_dep": "torch_dep_ids",
+            "torch_arc": "torch_heads",
+        }
+        ref_rows = [{rename.get(k, k): v for k, v in r.items()} for r in ref_rows]
+        dev_rows = [{rename.get(k, k): v for k, v in r.items()} for r in dev_rows]
     (out / "reference.json").write_text(
         json.dumps(
-            {
-                "max_subwords_per_word": max_per_word,
-                "sentences": [
-                    {
-                        **r,
-                        "torch_chunk_ids": pa,
-                        "torch_dep_ids": pb,
-                        "torch_chunk_margin": ma,
-                        "torch_dep_margin": mb,
-                    }
-                    for r, (pa, pb, ma, mb) in zip(ref, ref_torch, strict=True)
-                ],
-            },
+            {"max_subwords_per_word": max_per_word, "biaffine": biaffine, "sentences": ref_rows},
             indent=1,
         )
         + "\n"
     )
     with (out / "parity_inputs.jsonl").open("w") as f:
-        for w, (pa, pb, ma, mb) in zip(dev, dev_torch, strict=True):
-            row = {**w, "torch_chunk_ids": pa, "torch_dep_ids": pb}
-            f.write(json.dumps(row | {"torch_chunk_margin": ma, "torch_dep_margin": mb}) + "\n")
+        for row in dev_rows:
+            f.write(json.dumps(row) + "\n")
 
+
+def _finish(
+    out: Path, labels_json: dict[str, Any], report: dict[str, Any], started: float
+) -> dict[str, Any]:
+    """labels.json `files`, validation, and the export report."""
     shipped = sorted(
         p
         for p in out.rglob("*")
@@ -449,6 +664,7 @@ def main() -> None:
             f"{args.model}/{args.run} {v}: {r['bytes'] / 1e6:.1f} MB, "
             f"checker {report['checker'][v]}, "
             f"dev agreement A {r['dev_agreement']['chunk']:.4f} / B {r['dev_agreement']['dep']:.4f}"
+            + (f" / arc {r['dev_agreement']['arc']:.4f}" if "arc" in r["dev_agreement"] else "")
         )
     print(f"-> {out}")
 

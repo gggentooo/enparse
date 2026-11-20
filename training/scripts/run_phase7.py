@@ -15,6 +15,7 @@ Per model:
     3. Seeds (seeds) at the best learning rate and λ.
     4. Evaluate every seed run on dev and test (scripts/evaluate.py) and score
        nested phrases with the app's treeDecoder.ts (js/nested_eval.mjs).
+       Cached nested scores missing a NESTED_KEYS metric are recomputed.
     5. Delete the weights of sweep runs not used as seeds (keeps summary.json and
        TensorBoard logs), if phase7.prune_unselected.
     Selection uses dev only: mean of phase7.selection metrics (chunk F1 and
@@ -31,8 +32,23 @@ Unattended operation:
     - Progress: data/logs/phase7_status.json (current step, finished and failed
       steps, timestamps).
 
+Biaffine stage (--stage biaffine; T51): every run uses --head biaffine
+    (scripts/biaffine.py); the learning-rate sweep adds
+    phase7_stages.biaffine.lr_sweep_extra[<model>]; λ is fixed from the base
+    run. Augmentation experiment: at the best learning rate, the first seed is
+    also trained on the augmented train split (tag `<tag>aug`); if its dev
+    selection score is not lower, the seed runs use the augmented split.
+
+Report: a model is offered if it meets acceptance.min_upos_accuracy and
+    min_chunk_f1 and beats the baselines. Its nested view is judged by
+    acceptance.nested_view: UAS without punctuation and multi-word bracket F1
+    are checked here; shown-bracket precision needs Phase 8 confidence gating,
+    so a model that meets both is marked "pending Phase 8".
+
 Usage (from training/, venv active):
     python scripts/run_phase7.py [--models m1 m2] [--dry-run] [--report-only]
+    --report-only merges the current <split>_nested.json files into the saved
+    records before rendering.
     Overnight: sh scripts/run_phase7_overnight.sh (detached, caffeinate)
 
 Dependencies:
@@ -66,6 +82,8 @@ TRAINING_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = TRAINING_DIR / "configs"
 REPORT = TRAINING_DIR / "reports" / "training.md"
 METRICS = ("upos_acc", "chunk_f1", "uas", "las")
+# Nested scores the report needs; older *_nested.json files without them are recomputed.
+NESTED_KEYS = ("tree_uas_no_punct", "nested_multiword_f1")
 
 
 def run_name(lr: float, w: float, seed: int, tag: str = "") -> str:
@@ -74,10 +92,13 @@ def run_name(lr: float, w: float, seed: int, tag: str = "") -> str:
 
 
 def in_stage(run: str, tag: str) -> bool:
-    """True if a run folder belongs to the stage with this tag ("" = base Phase 7)."""
+    """True if a run folder belongs to the stage with this tag ("" = base Phase 7); a stage's
+    augmented runs (`<tag>aug`) belong to it too."""
     import re
 
-    return run.endswith(f"_{tag}") if tag else re.fullmatch(r"lr[^_]+_w[^_]+_s\d+", run) is not None
+    if not tag:
+        return re.fullmatch(r"lr[^_]+_w[^_]+_s\d+", run) is not None
+    return run.endswith(f"_{tag}") or run.endswith(f"_{tag}aug")
 
 
 def selection_score(dev: dict[str, Any], keys: list[str]) -> float:
@@ -109,6 +130,15 @@ def matches(settings: dict[str, Any], expected: dict[str, Any]) -> bool:
     return all(settings.get(k) == v for k, v in expected.items())
 
 
+def has_nested_keys(path: Path) -> bool:
+    """True if a cached *_nested.json has every metric in NESTED_KEYS."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return all(k in data for k in NESTED_KEYS)
+
+
 def now() -> str:
     """UTC timestamp."""
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -125,9 +155,11 @@ class Runner:
         dry: bool,
         expected: dict[str, Any] | None = None,
         tag: str = "",
+        head: str = "rel_pos",
     ) -> None:
         self.expected = expected or {}
         self.tag = tag
+        self.head = head
         self.model = model
         self.paths = paths
         self.status = status
@@ -149,13 +181,20 @@ class Runner:
             proc = subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT, check=False)
         return proc.returncode == 0
 
-    def train(self, lr: float, w: float, seed: int) -> dict[str, Any] | None:
+    def run_for(self, lr: float, w: float, seed: int, augment: bool = False) -> str:
+        """Run name; augmented runs get the tag suffix `aug`."""
+        return run_name(lr, w, seed, self.tag + ("aug" if augment else ""))
+
+    def train(self, lr: float, w: float, seed: int, augment: bool = False) -> dict[str, Any] | None:
         """Train (or reuse) one run; None if it failed or in dry-run mode."""
-        run = run_name(lr, w, seed, self.tag)
+        run = self.run_for(lr, w, seed, augment)
         path = self.summary_path(run)
+        expected = self.expected | (
+            {"head": self.head, "augment": augment} if self.head != "rel_pos" else {}
+        )
         if path.exists():
             old = json.loads(path.read_text())
-            if matches(old.get("settings", {}), self.expected):
+            if matches(old.get("settings", {}), expected):
                 return old
             # Same name, different settings (e.g., changed batch size): keep it aside and retrain.
             stale = path.parent.with_name(f"{run}.stale-{int(time.time())}")
@@ -163,6 +202,8 @@ class Runner:
             self.status.append("stale", f"{self.model}/{run} → {stale.name}")
         cmd = [sys.executable, "scripts/train.py", "--model", self.model]
         cmd += ["--lr", f"{lr:g}", "--dep-weight", f"{w:g}", "--seed", str(seed), "--run-name", run]
+        if self.head != "rel_pos":
+            cmd += ["--head", self.head] + (["--augment"] if augment else [])
         cmd += (
             ["--epochs", str(self.expected.get("epochs", ""))] if "epochs" in self.expected else []
         )
@@ -188,7 +229,7 @@ class Runner:
             cmd = [sys.executable, "scripts/evaluate.py", "--model", self.model, "--run", run]
             if not self._call(cmd + ["--split", split], log, TRAINING_DIR):
                 return None
-        if not nested_path.exists():
+        if not nested_path.exists() or not has_nested_keys(nested_path):
             cmd = [
                 "npx",
                 "tsx",
@@ -235,13 +276,16 @@ def run_model(
     for k in ("epochs", "early_stopping_patience", "lr_sweep"):
         if k in stage:
             mcfg[k] = stage[k]
+    extra_lr = (stage.get("lr_sweep_extra") or {}).get(model, [])
+    mcfg["lr_sweep"] = list(mcfg["lr_sweep"]) + [x for x in extra_lr if x not in mcfg["lr_sweep"]]
     tag = str(stage.get("tag", ""))
+    head = str(stage.get("head", "rel_pos"))
     keys = list(cfg["phase7"]["selection"])
     expected = {
         k: mcfg[k]
         for k in ("batch_size", "epochs", "early_stopping_patience", "weight_decay", "warmup_ratio")
     }
-    r = Runner(model, paths, status, dry, expected, tag)
+    r = Runner(model, paths, status, dry, expected, tag, head)
     base_w, seed0 = float(mcfg["dep_loss_weight"]), int(mcfg["seeds"][0])
     record: dict[str, Any] = {"model": model, "base_model": mcfg["model_name"], "started_at": now()}
     record["stage"] = stage.get("name", "base")
@@ -274,7 +318,26 @@ def run_model(
     w = float(best_w[0])
     record["chosen"] = {"learning_rate": lr, "dep_loss_weight": w}
 
-    seed_runs = {run_name(lr, w, int(s), tag): r.train(lr, w, int(s)) for s in mcfg["seeds"]}
+    augment = False
+    if stage.get("augmentation_experiment"):
+        plain = best_w[1]
+        aug = r.train(lr, w, seed0, augment=True)
+        if aug is not None:
+            s_plain = selection_score(plain["best_dev"], keys)
+            s_aug = selection_score(aug["best_dev"], keys)
+            augment = s_aug >= s_plain
+            record["augmentation"] = {
+                "plain_dev": plain["best_dev"],
+                "augmented_dev": aug["best_dev"],
+                "plain_select": s_plain,
+                "augmented_select": s_aug,
+                "used": augment,
+            }
+        record["chosen"]["augment"] = augment
+
+    seed_runs = {
+        r.run_for(lr, w, int(s), augment): r.train(lr, w, int(s), augment) for s in mcfg["seeds"]
+    }
     record["seeds"] = {}
     for run, summary in seed_runs.items():
         if summary is None:
@@ -317,9 +380,32 @@ def _mean_sd(values: list[float]) -> str:
     return f"{100 * statistics.mean(values):.2f} ± {100 * statistics.stdev(values):.2f}"
 
 
+def nested_view_verdict(test: dict[str, Any], nv: dict[str, Any]) -> str:
+    """Nested-view column: "no", "pending Phase 8", or "—" when scores are missing."""
+    uas, f1 = test.get("tree_uas_no_punct"), test.get("nested_multiword_f1")
+    if uas is None or f1 is None:
+        return "— (rescore)"
+    if uas >= nv["min_uas_no_punct"] and f1 >= nv["min_bracket_f1"]:
+        return "pending Phase 8"
+    return "no"
+
+
+def refresh_record(rec: dict[str, Any], model_eval_dir: Path) -> dict[str, Any]:
+    """Merge the current <split>_nested.json of every seed run into a saved record."""
+    for run, entry in (rec.get("seeds") or {}).items():
+        if not entry:
+            continue
+        for split in ("dev", "test"):
+            path = model_eval_dir / run / f"{split}_nested.json"
+            if entry.get(split) and path.exists():
+                entry[split] = entry[split] | json.loads(path.read_text())
+    return rec
+
+
 def render_report(records: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
     """reports/training.md from the per-model records."""
     acc, base = cfg["acceptance"], cfg["baselines"]
+    nv = acc["nested_view"]
     keys = " + ".join(cfg["phase7"]["selection"])
     L = [
         "# Training report (Phase 7)",
@@ -327,24 +413,28 @@ def render_report(records: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
         "Generated by `scripts/run_phase7.py`. Dev chooses the learning rate, λ, and the offered seed "  # noqa: E501
         f"(mean of {keys}); test is reported for every seed and never used for choices. Raw scores are "  # noqa: E501
         "word-level argmax; *tree* scores and nested-phrase F1 use the app's `treeDecoder.ts` (repaired "  # noqa: E501
-        "trees). Percentages.",
+        "trees; MST over arc scores for biaffine models, where *Repaired* = words whose tree head is "  # noqa: E501
+        "not their argmax head). Percentages.",
         "",
         f"Thresholds: offered if test UPOS ≥ {_pct(acc['min_upos_accuracy'])} and chunk F1 ≥ "
         f"{_pct(acc['min_chunk_f1'])} and both baselines are beaten (UPOS > {_pct(base['upos_accuracy'])}, "  # noqa: E501
-        f"chunk F1 > {_pct(base['chunk_f1'])}); nested view if tree UAS ≥ {_pct(acc['min_uas'])} and "  # noqa: E501
-        f"tree LAS ≥ {_pct(acc['min_las'])} (proposed thresholds; `configs/eval.yaml`).",
+        f"chunk F1 > {_pct(base['chunk_f1'])}). Nested view (`acceptance.nested_view`): tree UAS "
+        f"without punctuation ≥ {_pct(nv['min_uas_no_punct'])}, multi-word bracket F1 ≥ "
+        f"{_pct(nv['min_bracket_f1'])}, and shown-bracket precision ≥ {_pct(nv['min_shown_precision'])} "  # noqa: E501
+        "after confidence gating; the last is measured in Phase 8, so a model meeting the first "
+        "two is marked *pending Phase 8*. Thresholds: `configs/eval.yaml` → `acceptance`.",
         "",
         "## Summary (offered seed, test)",
         "",
-        "| Model | Seed run | UPOS | Chunk F1 | Tree UAS | Tree LAS | Nested F1 | Repaired | Offered | Nested view |",  # noqa: E501
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Model | Seed run | UPOS | Chunk F1 | Tree UAS | Tree LAS | UAS excl. punct | Nested F1 | Multi-word F1 | Repaired | Offered | Nested view |",  # noqa: E501
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rec in records:
         sel = rec.get("selected_run")
         t = (rec.get("seeds", {}).get(sel) or {}).get("test") if sel else None
         if not t:
             L.append(
-                f"| {rec['model']} | — | — | — | — | — | — | — | {rec.get('error', 'not finished')} | — |"  # noqa: E501
+                f"| {rec['model']} | — | — | — | — | — | — | — | — | — | {rec.get('error', 'not finished')} | — |"  # noqa: E501
             )
             continue
         offered = (
@@ -353,11 +443,12 @@ def render_report(records: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
             and t["upos_acc"] > base["upos_accuracy"]
             and t["chunk_f1"] > base["chunk_f1"]
         )
-        nested = t["tree_uas"] >= acc["min_uas"] and t["tree_las"] >= acc["min_las"]
         L.append(
             f"| {rec['model']} | `{sel}` | {_pct(t['upos_acc'])} | {_pct(t['chunk_f1'])} | {_pct(t['tree_uas'])} | "  # noqa: E501
-            f"{_pct(t['tree_las'])} | {_pct(t['nested_f1'])} | {_pct(t['repaired_share'])} | "
-            f"{'yes' if offered else '**no**'} | {'yes' if nested else 'no'} |"
+            f"{_pct(t['tree_las'])} | {_pct(t.get('tree_uas_no_punct'))} | "
+            f"{_pct(t['nested_f1'])} | {_pct(t.get('nested_multiword_f1'))} | "
+            f"{_pct(t['repaired_share'])} | "
+            f"{'yes' if offered else '**no**'} | {nested_view_verdict(t, nv)} |"
         )
     for rec in records:
         L += ["", f"## {rec['model']} (`{rec['base_model']}`)", ""]
@@ -388,25 +479,40 @@ def render_report(records: list[dict[str, Any]], cfg: dict[str, Any]) -> str:
                     f"Chosen: learning rate {c['learning_rate']:g}, λ {c['dep_loss_weight']:g}."
                 )
                 L.append("")
+            a = rec.get("augmentation")
+            if a:
+                L.append(
+                    "Augmentation experiment (dev selection score, first seed): "
+                    f"{_pct(a['plain_select'])} without, {_pct(a['augmented_select'])} with → "
+                    f"{'used for the seed runs' if a['used'] else 'not used'}."
+                )
+                L.append("")
             done = [v for v in seeds.values() if v and v.get("test")]
             L += [
-                "| Seeds (test) | UPOS | Chunk F1 | Tree UAS | Tree LAS | Nested F1 |",
-                "|---|---|---|---|---|---|",
+                "| Seeds (test) | UPOS | Chunk F1 | Tree UAS | Tree LAS | UAS excl. punct | Nested F1 | Multi-word F1 |",  # noqa: E501
+                "|---|---|---|---|---|---|---|---|",
             ]
             for run, v in seeds.items():
                 if not v or not v.get("test"):
-                    L.append(f"| `{run}` | failed or not run | | | | |")
+                    L.append(f"| `{run}` | failed or not run | | | | | | |")
                     continue
                 t = v["test"]
                 L.append(
                     f"| `{run}` | {_pct(t['upos_acc'])} | {_pct(t['chunk_f1'])} | {_pct(t['tree_uas'])} | "  # noqa: E501
-                    f"{_pct(t['tree_las'])} | {_pct(t['nested_f1'])} |"
+                    f"{_pct(t['tree_las'])} | {_pct(t.get('tree_uas_no_punct'))} | {_pct(t['nested_f1'])} | "  # noqa: E501
+                    f"{_pct(t.get('nested_multiword_f1'))} |"
                 )
             if done:
-                vals = {
-                    k: [v["test"][k] for v in done]
-                    for k in ("upos_acc", "chunk_f1", "tree_uas", "tree_las", "nested_f1")
-                }
+                cols = (
+                    "upos_acc",
+                    "chunk_f1",
+                    "tree_uas",
+                    "tree_las",
+                    "tree_uas_no_punct",
+                    "nested_f1",
+                    "nested_multiword_f1",
+                )
+                vals = {k: [v["test"][k] for v in done if k in v["test"]] for k in cols}
                 L.append("| mean ± sd | " + " | ".join(_mean_sd(vals[k]) for k in vals) + " |")
             total = sum(v["train_seconds"] for v in seeds.values() if v)
             L += ["", f"Training time of the seed runs: {total / 60:.0f} min."]
@@ -441,7 +547,7 @@ def main() -> None:
         for m in models:
             p = paths["eval"] / m / str((stage or {}).get("record", "phase7.json"))
             if p.exists():
-                records.append(json.loads(p.read_text()))
+                records.append(refresh_record(json.loads(p.read_text()), paths["eval"] / m))
         report.write_text(render_report(records, cfg), encoding="utf-8")
         print(f"report -> {report.relative_to(TRAINING_DIR)}")
         return

@@ -38,7 +38,14 @@
  *           <export>/labels.json, reference.json, parity_inputs.jsonl, model files.
  *   Writes: <export>/benchmark_<mode>.json, <export>/js_predictions_<variant>.jsonl (parity).
  *
- * Status: implemented (Phase 7 pre-work). Not yet run on a trained candidate.
+ * Biaffine exports (labels.json schema v2, T05): the model is run with
+ * `model.forward()`, which returns every ONNX output (`logits` and
+ * `arc_scores`); `model()` would wrap the result in TokenClassifierOutput and
+ * drop arc_scores. Agreement adds group "arc" (argmax head per word over its
+ * sentence plus root, lib/inference.mjs → argmaxHeads); relations use the
+ * root-iff-head-root rule.
+ *
+ * Status: implemented (Phase 7 smoke test run; biaffine exports for T05).
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -47,7 +54,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { AutoModelForTokenClassification, AutoTokenizer, Tensor, env } from "@huggingface/transformers";
 import * as yaml from "js-yaml";
-import { STRATEGIES, agreement, argmaxWords, encodeWords, sameIds } from "./lib/inference.mjs";
+import { STRATEGIES, agreement, argmaxHeads, argmaxWords, biaffineRelations, encodeWords, sameIds } from "./lib/inference.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TRAINING = resolve(HERE, "..");
@@ -80,9 +87,10 @@ async function logitsFor(model, ids) {
   const n = ids.length;
   const inputIds = new Tensor("int64", BigInt64Array.from(ids.map(BigInt)), [1, n]);
   const mask = new Tensor("int64", new BigInt64Array(n).fill(1n), [1, n]);
-  const out = await model({ input_ids: inputIds, attention_mask: mask });
+  // forward() returns all ONNX outputs (logits and, for biaffine models, arc_scores).
+  const out = await model.forward({ input_ids: inputIds, attention_mask: mask });
   const [, t, c] = out.logits.dims;
-  return { data: out.logits.data, tokens: t, width: c };
+  return { data: out.logits.data, tokens: t, width: c, arc: out.arc_scores?.data ?? null, arcDims: out.arc_scores?.dims ?? null };
 }
 
 function checkTokenizer(tokenizer, reference) {
@@ -97,13 +105,23 @@ function checkTokenizer(tokenizer, reference) {
   return { strategy, matches: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.filter(Boolean).length])) };
 }
 
-async function predictWindows(model, windows, groups, nLabels) {
+async function predictWindows(model, windows, labels, nLabels) {
   const preds = [];
   let widthOk = true;
+  const biaffine = labels.schema_version === 2;
+  const groups = biaffine ? { chunk: labels.groups.chunk, dep: labels.groups.rel } : labels.groups;
+  const rootRel = biaffine ? labels.labels.slice(labels.groups.rel.start, labels.groups.rel.end).indexOf("root") : -1;
   for (const w of windows) {
-    const { data, width } = await logitsFor(model, w.input_ids);
+    const { data, width, tokens, arc, arcDims } = await logitsFor(model, w.input_ids);
     widthOk &&= width === nLabels;
-    preds.push(argmaxWords(data, width, w.token_word, groups));
+    const p = argmaxWords(data, width, w.token_word, groups);
+    if (biaffine) {
+      widthOk &&= arc !== null && arcDims[1] === tokens && arcDims[2] === tokens;
+      const { heads } = argmaxHeads(arc, tokens, w.token_word, w.word_sent);
+      p.arc = heads;
+      p.dep = biaffineRelations(data, width, w.token_word, { ...groups, rel: labels.groups.rel }, heads, rootRel);
+    }
+    preds.push(p);
   }
   return { preds, widthOk };
 }
@@ -113,6 +131,7 @@ const refOf = (w) => ({
   dep: w.torch_dep_ids,
   chunkMargin: w.torch_chunk_margin,
   depMargin: w.torch_dep_margin,
+  ...(w.torch_heads ? { arc: w.torch_heads, arcMargin: w.torch_arc_margin } : {}),
 });
 
 async function runVariant(dir, variant, labels, reference, parity, mode, margin) {
@@ -138,15 +157,15 @@ async function runVariant(dir, variant, labels, reference, parity, mode, margin)
     const ms = times.reduce((s, x) => s + x.ms, 0);
     Object.assign(result, { median_window_ms: +median.ms.toFixed(1), window_tokens: median.tokens, tokens_per_second: Math.round((tokens / ms) * 1000) });
   } else {
-    const ref = await predictWindows(model, reference.sentences, labels.groups, nLabels);
-    const par = await predictWindows(model, parity, labels.groups, nLabels);
+    const ref = await predictWindows(model, reference.sentences, labels, nLabels);
+    const par = await predictWindows(model, parity, labels, nLabels);
     result.logits_width_ok = ref.widthOk && par.widthOk;
     result.reference_agreement = agreement(ref.preds.map((js, i) => ({ js, ref: refOf(reference.sentences[i]) })));
     result.parity_agreement = agreement(par.preds.map((js, i) => ({ js, ref: refOf(parity[i]) })));
     const all = [...ref.preds.map((js, i) => ({ js, ref: refOf(reference.sentences[i]) })), ...par.preds.map((js, i) => ({ js, ref: refOf(parity[i]) }))];
     result.confident_agreement = agreement(all, margin);
     if (mode === "parity") {
-      const lines = par.preds.map((p) => JSON.stringify({ chunk_ids: p.chunk, dep_ids: p.dep }));
+      const lines = par.preds.map((p) => JSON.stringify({ chunk_ids: p.chunk, dep_ids: p.dep, ...(p.arc ? { heads: p.arc } : {}) }));
       writeFileSync(join(dir, `js_predictions_${variant}.jsonl`), lines.join("\n") + "\n");
     }
   }
@@ -159,9 +178,10 @@ function verdict(mode, tok, variants, limits) {
   if (mode === "smoke" && tok.strategy === null) problems.push("no word-encoding strategy reproduces Python's token ids");
   if (mode === "speed") return problems;
   for (const v of variants) {
-    if (!v.logits_width_ok) problems.push(`${v.variant}: logits width differs from labels.json`);
-    for (const g of ["chunk", "dep"]) {
-      const name = g === "chunk" ? "A" : "B";
+    if (!v.logits_width_ok) problems.push(`${v.variant}: logits width (or arc_scores shape) differs from labels.json`);
+    const groups = "arc" in v.parity_agreement ? ["chunk", "dep", "arc"] : ["chunk", "dep"];
+    for (const g of groups) {
+      const name = { chunk: "A", dep: "B", arc: "arc" }[g];
       if (v.variant === "fp32") {
         const got = Math.min(v.reference_agreement[g], v.parity_agreement[g]);
         if (got < limits.fp32_min_agreement) problems.push(`fp32: group ${name} agreement ${got.toFixed(4)} < ${limits.fp32_min_agreement}`);
@@ -205,7 +225,8 @@ async function main() {
     const summary =
       values.mode === "speed"
         ? `median ${r.median_window_ms} ms / ${r.window_tokens}-token window, ${r.tokens_per_second} tokens/s`
-        : `agreement A ${r.parity_agreement.chunk.toFixed(4)} / B ${r.parity_agreement.dep.toFixed(4)} ` +
+        : `agreement A ${r.parity_agreement.chunk.toFixed(4)} / B ${r.parity_agreement.dep.toFixed(4)}` +
+          (r.parity_agreement.arc !== undefined ? ` / arc ${r.parity_agreement.arc.toFixed(4)} ` : " ") +
           `(${r.parity_agreement.words} words), reference A ${r.reference_agreement.chunk.toFixed(4)} / B ${r.reference_agreement.dep.toFixed(4)}, ` +
           `confident A ${r.confident_agreement.chunk.toFixed(4)} (${r.confident_agreement.words}) / B ${r.confident_agreement.dep.toFixed(4)} (${r.confident_agreement.dep_words})`;
     console.log(`${variant}: load ${r.load_seconds} s, ${summary}`);

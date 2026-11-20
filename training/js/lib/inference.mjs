@@ -9,6 +9,10 @@
  *   logic the app's transformerBackend.ts must follow; js/benchmark.mjs checks
  *   it against Python's token ids for every exported model.
  *
+ * Biaffine models (labels.json schema v2) have a second output, arc_scores
+ * [T, T]; argmaxHeads reads it like the runtime: per word, the best head among
+ * the first subwords of its sentence's other words plus the root (token 0).
+ *
  * Phase: 7 (smoke test), 9 (parity), 10 (speed).
  *
  * Word encoding strategies (Transformers.js has no pre-split input option):
@@ -95,16 +99,81 @@ export function argmaxWords(data, width, tokenWord, groups) {
 }
 
 /**
+ * Per word: argmax head (window word index, -1 = root, -2 = no subword) and the
+ * top-two gap, over heads in the word's sentence (wordSent) plus the root.
+ * @param {Float32Array | number[]} data arc scores, row-major [T, T]
+ * @param {number} T tokens
+ * @param {number[]} tokenWord token → word index (-1 = special)
+ * @param {number[]} wordSent word → sentence index in the window
+ */
+export function argmaxHeads(data, T, tokenWord, wordSent) {
+  const first = new Map();
+  tokenWord.forEach((w, t) => {
+    if (w >= 0 && !first.has(w)) first.set(w, t);
+  });
+  const heads = [];
+  const margins = [];
+  for (let w = 0; w < wordSent.length; w++) {
+    const t = first.get(w);
+    if (t === undefined) {
+      heads.push(-2);
+      margins.push(0);
+      continue;
+    }
+    const cand = [0, ...[...first.entries()].filter(([v, j]) => v !== w && wordSent[v] === wordSent[w]).map(([, j]) => j)];
+    let best = -1;
+    let top = -Infinity;
+    let second = -Infinity;
+    for (const j of cand) {
+      const v = data[t * T + j];
+      if (v > top) {
+        second = top;
+        top = v;
+        best = j;
+      } else if (v > second) second = v;
+    }
+    heads.push(best === 0 ? -1 : tokenWord[best]);
+    margins.push(Number.isFinite(second) ? top - second : 0);
+  }
+  return { heads, margins };
+}
+
+/** Relation ids for biaffine models: "root" exactly when the head is the root (treeDecoder.ts rule). */
+export function biaffineRelations(data, width, tokenWord, groups, heads, rootRel) {
+  const first = new Map();
+  tokenWord.forEach((w, t) => {
+    if (w >= 0 && !first.has(w)) first.set(w, t);
+  });
+  return heads.map((h, w) => {
+    const t = first.get(w);
+    if (t === undefined) return -1;
+    if (h === -1) return rootRel;
+    let arg = -1;
+    let max = -Infinity;
+    for (let c = groups.rel.start; c < groups.rel.end; c++) {
+      if (c - groups.rel.start === rootRel) continue;
+      const v = data[t * width + c];
+      if (v > max) {
+        max = v;
+        arg = c - groups.rel.start;
+      }
+    }
+    return arg;
+  });
+}
+
+/**
  * Share of words with equal ids, per group, over many windows. With `margin`,
  * only words whose reference top-two logit gap exceeds it count (ref.chunkMargin /
  * ref.depMargin); `words` is then the counted words per group.
  */
 export function agreement(pairs, margin = null) {
-  const same = { chunk: 0, dep: 0 };
-  const total = { chunk: 0, dep: 0 };
+  const groups = pairs.length > 0 && pairs[0].ref.arc !== undefined ? ["chunk", "dep", "arc"] : ["chunk", "dep"];
+  const same = { chunk: 0, dep: 0, arc: 0 };
+  const total = { chunk: 0, dep: 0, arc: 0 };
   for (const { js, ref } of pairs) {
     if (js.chunk.length !== ref.chunk.length) throw new Error("word counts differ");
-    for (const g of ["chunk", "dep"]) {
+    for (const g of groups) {
       const gaps = margin === null ? null : ref[`${g}Margin`];
       js[g].forEach((x, i) => {
         if (gaps !== null && !(gaps[i] > margin)) return;
@@ -114,9 +183,10 @@ export function agreement(pairs, margin = null) {
     }
   }
   const share = (g) => (total[g] ? same[g] / total[g] : 1);
+  const arc = groups.includes("arc") ? { arc: share("arc") } : {};
   return margin === null
-    ? { chunk: share("chunk"), dep: share("dep"), words: total.chunk }
-    : { chunk: share("chunk"), dep: share("dep"), words: total.chunk, dep_words: total.dep };
+    ? { chunk: share("chunk"), dep: share("dep"), ...arc, words: total.chunk }
+    : { chunk: share("chunk"), dep: share("dep"), ...arc, words: total.chunk, dep_words: total.dep };
 }
 
 /** Equal arrays (token ids). */

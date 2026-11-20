@@ -83,6 +83,8 @@ paths:
   chunked: data/processed/chunked
   aligned: data/processed/aligned
   dataset: data/processed/dataset   # <model_key>/ = save_to_disk dataset + labels.json
+  dataset_arc: data/processed/dataset_arc          # biaffine head (prepare_data.py --encoding arc; schema v2)
+  dataset_arc_aug: data/processed/dataset_arc_aug  # same, train split augmented (--augment)
   checkpoints: data/checkpoints     # <model_key>/<run>/best (+ summary.json, tensorboard/)
   onnx: data/onnx                   # <model_key>/<run>/ (export_onnx.py)
   eval: data/eval                   # <model_key>/<run>/<split>_{metrics,predictions,nested}.* (evaluate.py)
@@ -111,14 +113,17 @@ windows:
   max_subwords_per_word: 16    # longer words (URLs, symbol runs) keep their first 16 subwords; runtime too
 labels:
   min_label_count: 5           # rarer labels (train, reviewed words) are merged
-  dep_encoding: rel_pos_v1
-augmentation:                  # Phase 7 experiment; train split only
-  enabled: false
+  dep_encoding: rel_pos_v1     # schema v1; --encoding arc writes the biaffine datasets (schema v2)
+  # Relation subtypes kept by the biaffine relation classifier (owner, 2026-11-19; T03); others fold to base.
+  relation_subtypes: [nsubj:pass, aux:pass, obl:agent, acl:relcl, nmod:poss, compound:prt, obl:unmarked, det:predet, advcl:relcl, cc:preconj]
+augmentation:                  # Phase 7 biaffine experiment (owner, 2026-11-20); train split only
+  enabled: false               # prepare_data.py --augment turns it on for dataset_arc_aug
   max_fraction: 0.15
-  kinds: [lowercase_sentence_start, drop_final_punct]   # TODO(augmentation): learner_typos needs a typo list
+  kinds: [lowercase_sentence_start, drop_final_punct]   # learner_typos: out of v1 (owner, 2026-11-20)
 dataset:
   splits: [train, dev, test]
   report: reports/dataset.md
+  report_arc: reports/dataset_arc.md
 seed: 13
 
 # Phase 5 — baselines (js/evaluate_baselines.mjs).

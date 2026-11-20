@@ -344,7 +344,8 @@ def test_labels_json_validates() -> None:
     ("mutate", "message"),
     [
         (lambda d: d.pop("dep_encoding"), "top-level keys"),
-        (lambda d: d.__setitem__("schema_version", 2), "schema_version"),
+        (lambda d: d.__setitem__("schema_version", 3), "schema_version"),
+        (lambda d: d.__setitem__("schema_version", 2), "top-level keys differ"),
         (lambda d: d["groups"]["dep"].__setitem__("end", 999), "groups.dep.end"),
         (lambda d: d["labels"].__setitem__(0, "BAD|B-NP"), "bad group A label"),
         (lambda d: d["upos"].reverse(), "upos"),

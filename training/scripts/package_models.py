@@ -17,7 +17,9 @@ Tasks:
        (data/onnx/<model>/), and Phase 10 results (reports/benchmark.md data).
     2. Offer a model only if test UPOS and chunk F1 meet the acceptance
        thresholds (configs/eval.yaml → acceptance); set nested_view = true
-       only if UAS and LAS meet theirs (97% / 94%). Report skipped models.
+       only if it meets the nested-view targets (acceptance.nested_view:
+       UAS excl. punctuation 93%, multi-word bracket F1 88%, shown-bracket
+       precision 95%). Report skipped models.
     3. Copy config, tokenizer files, labels.json (with `files` and
        `model_version` filled), onnx/model_quantized.onnx (int8) and
        onnx/model_fp16.onnx to public/models/<model-id>/ (ONNX via Git LFS).

@@ -10,7 +10,7 @@
     "",
     "Tasks:",
     "  1. Phase 0: add dependencies and pin exact versions (lockfile committed, per agents.md).",
-    "  2. Add scripts: align, baselines, benchmark (one per .mjs file), bench-page (vite bench-page).",
+    "  2. Add scripts: align, baselines, benchmark, nested, errors (one per .mjs file), bench-page (vite bench-page).",
     "  3. Keep wink-nlp and @huggingface/transformers versions identical to the app's",
     "     root package.json so alignment and parity match runtime behavior.",
     "",
@@ -23,7 +23,7 @@
     "  js-yaml                           \u2014 read ../configs/*.yaml (MIT)",
     "  System: Node.js 20+.",
     "",
-    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), baselines (Phase 5), benchmark (Phases 7, 9, 10), test."
+    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), baselines (Phase 5), benchmark (Phases 7, 9, 10), nested and errors (Phase 7), test."
   ],
   "name": "enparse-training-js",
   "private": true,
@@ -33,7 +33,8 @@
     "test": "tsx --test tests/",
     "baselines": "tsx evaluate_baselines.mjs",
     "benchmark": "node benchmark.mjs",
-    "nested": "tsx nested_eval.mjs"
+    "nested": "tsx nested_eval.mjs",
+    "errors": "tsx error_analysis.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

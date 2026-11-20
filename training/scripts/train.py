@@ -28,13 +28,19 @@ Tasks:
        the best checkpoint per run (save_only_model) to bound disk use.
     6. Save a run summary (config, seed, data version, dev metrics, training
        time) for reports/training.md.
-    7. Optional experiments (Phase 7 task 3): augmentation; biaffine head for
-       group B if LAS misses its threshold.
+    7. --head biaffine (T51; plan-training.md → Biaffine design): group B is
+       the relation, and a biaffine arc scorer (scripts/biaffine.py) adds
+       `arc_scores`; loss = group A + λ × (relation + arc), the arc part a
+       cross-entropy over heads in the word's sentence plus root. Dev UAS/LAS
+       use the per-word argmax head (metrics.biaffine_words). Data:
+       data/processed/dataset_arc/ (--augment: dataset_arc_aug/, the Phase 4
+       augmentation experiment). Arc scorer size: configs/eval.yaml → biaffine.
 
 Usage (from training/):
     python scripts/train.py --model distilbert_base_cased --smoke
     python scripts/train.py --model distilbert_base_cased [--lr 3e-5] [--dep-weight 1.0] [--seed 13]
     python scripts/train.py --model distilbert_base_cased --sweep lr|dep_weight|seeds
+    python scripts/train.py --model distilbert_base_cased --head biaffine [--augment] [--smoke]
 
 Dependencies:
     Python: torch (MPS), transformers, accelerate, datasets, seqeval,
@@ -44,7 +50,7 @@ Dependencies:
     Writes: data/checkpoints/<model>/<run>/, data/runs/<model>/ (TensorBoard;
             git-ignored); run summaries for reports/training.md.
 
-Status: implemented (Phase 7 pre-work). Smoke test and full runs not started.
+Status: implemented (Phase 7: base and extended stages run; biaffine head for T51).
 """
 
 from __future__ import annotations
@@ -62,7 +68,7 @@ import torch
 import torch.nn.functional as F
 import yaml
 
-from metrics import LabelSpace, WindowPrediction, score, word_argmax
+from metrics import LabelSpace, WindowPrediction, biaffine_words, score, word_argmax
 from prepare_data import IGNORE
 
 if TYPE_CHECKING:
@@ -71,7 +77,7 @@ if TYPE_CHECKING:
 
 TRAINING_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = TRAINING_DIR / "configs"
-TENSOR_COLUMNS = ("input_ids", "attention_mask", "labels_chunk", "labels_dep")
+HEADS = ("rel_pos", "biaffine")
 BEST_METRIC = "select"  # mean of SELECTION_KEYS on dev: early stopping and best checkpoint
 SELECTION_KEYS = ("chunk_f1", "las")
 
@@ -90,6 +96,8 @@ class RunSettings:
     weight_decay: float
     early_stopping_patience: int
     lr_schedule: str = "linear"
+    head: str = "rel_pos"
+    augment: bool = False
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> RunSettings:
@@ -112,7 +120,8 @@ class RunSettings:
 
 
 class Collator:
-    """Pads input_ids / attention_mask with the pad id / 0 and both label groups with -100."""
+    """Pads input_ids / attention_mask with the pad id / 0, label columns with -100, and
+    token_sent with -1. Only columns present in the features are batched."""
 
     def __init__(self, pad_token_id: int) -> None:
         self.pad = pad_token_id
@@ -125,12 +134,20 @@ class Collator:
             "attention_mask": 0,
             "labels_chunk": IGNORE,
             "labels_dep": IGNORE,
+            "labels_rel": IGNORE,
+            "labels_head": IGNORE,
+            "token_sent": -1,
         }
         out: dict[str, torch.Tensor] = {}
         for key, value in fill.items():
+            if key not in features[0]:
+                continue
             rows = [list(f[key]) + [value] * (length - len(f[key])) for f in features]
             out[key] = torch.tensor(rows, dtype=torch.long)
         return out
+
+
+LABEL_COLUMNS = ("labels_chunk", "labels_dep", "labels_rel", "labels_head", "token_sent")
 
 
 def two_group_loss(
@@ -158,6 +175,23 @@ def two_group_loss(
     )
 
 
+def biaffine_group_loss(
+    logits: torch.Tensor,
+    arc_scores: torch.Tensor,
+    labels_chunk: torch.Tensor,
+    labels_rel: torch.Tensor,
+    labels_head: torch.Tensor,
+    token_sent: torch.Tensor,
+    n_chunk: int,
+    dep_weight: float,
+) -> torch.Tensor:
+    """Group A loss + dep_weight × (relation loss + arc loss); each a mean over labeled tokens."""
+    from biaffine import arc_loss
+
+    flat = two_group_loss(logits, labels_chunk, labels_rel, n_chunk, dep_weight)
+    return flat + dep_weight * arc_loss(arc_scores, labels_head, token_sent)
+
+
 def predict(
     model: PreTrainedModel,
     dataset: Dataset,
@@ -173,13 +207,29 @@ def predict(
         for start in range(0, len(dataset), batch_size):
             rows = [dataset[i] for i in range(start, min(start + batch_size, len(dataset)))]
             batch = collator(rows)
-            logits = model(
+            out = model(
                 input_ids=batch["input_ids"].to(device),
                 attention_mask=batch["attention_mask"].to(device),
-            ).logits
-            logits_np = logits.float().cpu().numpy()
+            )
+            logits_np = out.logits.float().cpu().numpy()
+            arc_np = (
+                out.arc_scores.float().cpu().numpy()
+                if getattr(out, "arc_scores", None) is not None
+                else None
+            )
             for k, row in enumerate(rows):
                 length = len(row["input_ids"])
+                if arc_np is not None:
+                    preds.append(
+                        biaffine_words(
+                            logits_np[k, :length],
+                            arc_np[k, :length, :length],
+                            row["token_word"],
+                            row["word_sent"],
+                            space,
+                        )
+                    )
+                    continue
                 pa, pb = word_argmax(logits_np[k, :length], row["token_word"], space)
                 preds.append(WindowPrediction(pa, pb))
     return preds
@@ -247,12 +297,27 @@ def train_run(
             return_outputs: bool = False,
             num_items_in_batch: int | None = None,
         ) -> torch.Tensor | tuple[torch.Tensor, Any]:
-            labels_chunk = inputs.pop("labels_chunk")
-            labels_dep = inputs.pop("labels_dep")
+            extra = {k: inputs.pop(k) for k in LABEL_COLUMNS if k in inputs}
             outputs = model(**inputs)
-            loss = two_group_loss(
-                outputs.logits, labels_chunk, labels_dep, n_chunk, settings.dep_loss_weight
-            )
+            if "labels_head" in extra:
+                loss = biaffine_group_loss(
+                    outputs.logits,
+                    outputs.arc_scores,
+                    extra["labels_chunk"],
+                    extra["labels_rel"],
+                    extra["labels_head"],
+                    extra["token_sent"],
+                    n_chunk,
+                    settings.dep_loss_weight,
+                )
+            else:
+                loss = two_group_loss(
+                    outputs.logits,
+                    extra["labels_chunk"],
+                    extra["labels_dep"],
+                    n_chunk,
+                    settings.dep_loss_weight,
+                )
             return (loss, outputs) if return_outputs else loss
 
         def evaluate(
@@ -297,7 +362,7 @@ def train_run(
         seed=settings.seed,
         data_seed=settings.seed,
         remove_unused_columns=False,
-        label_names=["labels_chunk", "labels_dep"],
+        label_names=[c for c in LABEL_COLUMNS if c in train_ds.column_names],
         dataloader_num_workers=0,
         use_cpu=device.type == "cpu",
         disable_tqdm=True,
@@ -340,23 +405,51 @@ def train_run(
     return summary
 
 
+def dataset_dir(key: str, data_cfg: dict[str, Any], head: str, augment: bool) -> Path:
+    """Dataset folder for a head type (augment: biaffine train split with augmentation)."""
+    if head == "biaffine":
+        name = "dataset_arc_aug" if augment else "dataset_arc"
+    elif augment:
+        raise ValueError("--augment is only built for the biaffine head (dataset_arc_aug)")
+    else:
+        name = "dataset"
+    return TRAINING_DIR / data_cfg["paths"][name] / key
+
+
 def load_model_and_data(
-    key: str, mcfg: dict[str, Any], data_cfg: dict[str, Any]
+    key: str,
+    mcfg: dict[str, Any],
+    data_cfg: dict[str, Any],
+    head: str = "rel_pos",
+    augment: bool = False,
+    arc_cfg: dict[str, Any] | None = None,
 ) -> tuple[Any, Any, dict[str, Any], Dataset, Dataset]:
-    """Fresh model (two-group classifier), tokenizer, labels.json, train and dev splits."""
+    """Fresh model (two-group classifier, optionally with the arc scorer), tokenizer,
+    labels.json, train and dev splits."""
     from datasets import load_from_disk
     from transformers import AutoModelForTokenClassification, AutoTokenizer
 
-    ds_dir = TRAINING_DIR / data_cfg["paths"]["dataset"] / key
+    ds_dir = dataset_dir(key, data_cfg, head, augment)
     labels_json = json.loads((ds_dir / "labels.json").read_text())
     dd = load_from_disk(str(ds_dir))
     labels = labels_json["labels"]
-    model = AutoModelForTokenClassification.from_pretrained(
-        mcfg["model_name"],
-        num_labels=len(labels),
-        id2label=dict(enumerate(labels)),
-        label2id={lab: i for i, lab in enumerate(labels)},
-    )
+    if head == "biaffine":
+        from biaffine import new_biaffine
+
+        arc_cfg = arc_cfg or {}
+        model = new_biaffine(
+            mcfg["model_name"],
+            labels,
+            int(arc_cfg.get("arc_mlp_dim", 512)),
+            float(arc_cfg.get("arc_dropout", 0.1)),
+        )
+    else:
+        model = AutoModelForTokenClassification.from_pretrained(
+            mcfg["model_name"],
+            num_labels=len(labels),
+            id2label=dict(enumerate(labels)),
+            label2id={lab: i for i, lab in enumerate(labels)},
+        )
     tokenizer = AutoTokenizer.from_pretrained(
         mcfg["model_name"], **mcfg.get("tokenizer_kwargs", {})
     )
@@ -401,6 +494,8 @@ def main() -> None:
     parser.add_argument("--patience", type=int, help="early-stopping patience (epochs)")
     parser.add_argument("--run-name", help="override the run folder name")
     parser.add_argument("--device", default="auto", help="auto | mps | cpu")
+    parser.add_argument("--head", choices=HEADS, default="rel_pos", help="group B head")
+    parser.add_argument("--augment", action="store_true", help="biaffine: augmented train split")
     args = parser.parse_args()
 
     from transformers import set_seed
@@ -418,12 +513,14 @@ def main() -> None:
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "early_stopping_patience": args.patience,
+        "head": args.head,
+        "augment": args.augment or None,
     }
     base = replace(base, **{k: v for k, v in overrides.items() if v is not None})
     if args.smoke:
         smoke = eval_cfg["smoke"]
         base = replace(base, epochs=int(smoke["epochs"]))
-        runs = [("smoke", base)]
+        runs = [("smoke_bf" if base.head == "biaffine" else "smoke", base)]
     else:
         runs = run_settings_list(args.sweep, base, mcfg)
     if args.run_name:
@@ -435,7 +532,7 @@ def main() -> None:
     for name, settings in runs:
         set_seed(settings.seed)
         model, tokenizer, labels_json, train_ds, dev_ds = load_model_and_data(
-            args.model, mcfg, data_cfg
+            args.model, mcfg, data_cfg, settings.head, settings.augment, eval_cfg.get("biaffine")
         )
         if args.smoke:
             train_ds = train_ds.select(
@@ -446,6 +543,7 @@ def main() -> None:
             "model_key": args.model,
             "base_model": mcfg["model_name"],
             "smoke": args.smoke,
+            "head": settings.head,
             "data": labels_json["versions"]["data"],
             "train_windows": len(train_ds),
             "dev_windows": len(dev_ds),
