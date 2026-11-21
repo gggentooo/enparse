@@ -1,0 +1,9 @@
+# Prettier ignore list (T13). Training code has its own tools (ruff; training/js is not formatted by the app's Prettier).
+dist/
+node_modules/
+training/
+public/models/
+package-lock.json
+dev_meta/
+docs/
+skills/

@@ -108,15 +108,15 @@ describe("decodeTree", () => {
     };
     for (let trial = 0; trial < 3000; trial++) {
       const n = 1 + rand(14);
-      const upos = Array.from({ length: n }, () => tags[rand(tags.length)] as string);
-      const cands = upos.map(() =>
+      const sentUpos = Array.from({ length: n }, () => tags[rand(tags.length)] as string);
+      const cands = sentUpos.map(() =>
         Array.from({ length: 1 + rand(5) }, (_, k) => {
           const off = rand(7) - 3;
           const label = off === 0 ? ROOT_LABEL : `${off > 0 ? "+" : ""}${off}@${tags[rand(tags.length)]}|dep`;
           return c(label, 1 / (k + 1));
         }),
       );
-      const t = decodeTree(cands, upos);
+      const t = decodeTree(cands, sentUpos);
       expect(t.heads.filter((h) => h === 0)).toHaveLength(1);
       for (let i = 0; i < n; i++) {
         // following heads from every word reaches the root without revisiting a word
@@ -126,7 +126,7 @@ describe("decodeTree", () => {
           seen.add(k);
         }
       }
-      expect(() => buildPhrases(t.heads, upos, t.relations)).not.toThrow();
+      expect(() => buildPhrases(t.heads, sentUpos, t.relations)).not.toThrow();
     }
   });
 
@@ -142,7 +142,9 @@ describe("buildPhrases", () => {
     const rel = ["det", "amod", "nsubj", "advmod", "root", "advmod", "punct"];
     const items = buildPhrases([3, 3, 5, 5, 0, 5, 5], upos, rel);
     expect(bracketString(items, words)).toBe("[[The [red [dog]]] [rarely [[barks] loudly]]] .");
-    expect(bracketString(items, words, true)).toBe("[VP [NP The [NP red [NP dog]]] [VP rarely [VP [VP barks] loudly]]] .");
+    expect(bracketString(items, words, true)).toBe(
+      "[VP [NP The [NP red [NP dog]]] [VP rarely [VP [VP barks] loudly]]] .",
+    );
   });
 
   it("labels a nominal with a case dependent as PP (right dependents nest first)", () => {
@@ -226,7 +228,8 @@ function lcg(seed: number): () => number {
   };
 }
 
-const rel = (...names: string[]): RelationCandidate[] => names.map((relation, k) => ({ relation, prob: 0.9 - k * 0.1 }));
+const rel = (...names: string[]): RelationCandidate[] =>
+  names.map((relation, k) => ({ relation, prob: 0.9 - k * 0.1 }));
 
 describe("maxSpanningTree", () => {
   it("finds the best single-root tree on random graphs (brute force, n ≤ 5)", () => {
@@ -234,7 +237,7 @@ describe("maxSpanningTree", () => {
     for (let trial = 0; trial < 120; trial++) {
       const n = 2 + (trial % 4);
       const score = Array.from({ length: n + 1 }, (_, d) =>
-        Array.from({ length: n + 1 }, (_, h) => (d === 0 || h === d ? -Infinity : Math.log(rand() + 1e-3) * 3)),
+        Array.from({ length: n + 1 }, (__, h) => (d === 0 || h === d ? -Infinity : Math.log(rand() + 1e-3) * 3)),
       );
       const best = Math.max(...allTrees(n).map((t) => scoreOf(score, t)));
       const got = maxSpanningTree(score);
@@ -286,7 +289,13 @@ describe("decodeArcTree", () => {
   });
 
   it("falls back to dep when only root is offered for a non-root word", () => {
-    const t = decodeArcTree([[3, 0, 0], [0, 3, 0]], [rel("nsubj"), rel(ROOT_RELATION)]);
+    const t = decodeArcTree(
+      [
+        [3, 0, 0],
+        [0, 3, 0],
+      ],
+      [rel("nsubj"), rel(ROOT_RELATION)],
+    );
     expect(t.relations).toEqual([ROOT_RELATION, REPAIR_RELATION]);
   });
 
@@ -311,7 +320,7 @@ describe("confidence gating", () => {
     const np = (items[0] as PhraseNode).children[0] as PhraseNode; // [The [red [dog]]]
     expect(bracketString([np], words)).toBe("[The [red [dog]]]");
     expect(bracketConfidence(np, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9); // outermost: no outer dependents
-    const inner = np.children.find((c) => "children" in c) as PhraseNode; // [red [dog]]; "The" attaches outside
+    const inner = np.children.find((child) => "children" in child) as PhraseNode; // [red [dog]]; "The" attaches outside
     expect(bracketString([inner], words)).toBe("[red [dog]]");
     expect(bracketConfidence(inner, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9);
     expect(bracketConfidence(inner, tree([1, 0.8, 1, 1, 1]))).toBeCloseTo(0.8, 9);

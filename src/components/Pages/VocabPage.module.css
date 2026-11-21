@@ -4,5 +4,11 @@
  * Description: list sidebar, item table, export/import controls.
  * Tasks: 1. List and item layout. 2. Action bar.
  * Dependencies: src/css/tokens.css. Used by: VocabPage.tsx.
- * Status: header only; not implemented.
+ * Status: page frame (T39); page styles with the page task.
  */
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+}

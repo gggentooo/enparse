@@ -37,18 +37,17 @@
  *     gate (nested.role_threshold; confidence = relation × head probability).
  *     The tree (heads, relations) is decoded for every model, so tokens always
  *     carry head and relation.
- *   - Alternatives come from ambiguity.ts (T60); until then the list is empty.
+ *   - Alternatives: ambiguity.ts → buildAlternatives (T60), margins from
+ *     labels.json → ambiguity.
  *
- * Open items (todo.md): alternatives (T60).
- *
- * Status: implemented (T35) except alternatives (T60). Tests: parser.test.ts.
+ * Status: implemented (T35; alternatives T60). Tests: parser.test.ts.
  */
 
-import { labelPhrases } from "./phraseLabeler";
-import { buildPhrases, decodeArcTree, gatePhrases } from "./treeDecoder";
+import { buildAlternatives } from "./ambiguity";
+import { groupChunks, repairBio } from "./bio";
+import { labeledView } from "./phraseLabeler";
+import { decodeArcTree } from "./treeDecoder";
 import {
-  type Chunk,
-  type ChunkType,
   type LabelConfig,
   type ModelRef,
   type ParseResult,
@@ -61,42 +60,6 @@ import {
   TokenizerError,
 } from "./types";
 import { tokenize as winkTokenize } from "./winkBackend";
-
-const CHUNK_TYPES: ReadonlySet<string> = new Set<ChunkType>(["NP", "VP", "PP", "ADJP", "ADVP"]);
-
-/**
- * BIO repair (owner, 2026-11-20): a stray I-X (at the start, after O, or after another type)
- * becomes B-X, as seqeval's default mode reads it for the reported chunk F1.
- */
-export function repairBio(tags: readonly string[]): string[] {
-  let prevType: string | null = null;
-  return tags.map((tag) => {
-    const [prefix, type] = tag.includes("-") ? [tag.slice(0, 1), tag.slice(2)] : ["O", null];
-    if (prefix === "O" || type === null) {
-      prevType = null;
-      return "O";
-    }
-    const fixed = prefix === "I" && prevType !== type ? `B-${type}` : tag;
-    prevType = type;
-    return fixed;
-  });
-}
-
-/** Group repaired BIO tags into chunks (token ranges, inclusive). Unknown chunk types are skipped. */
-export function groupChunks(tags: readonly string[]): Chunk[] {
-  const chunks: Chunk[] = [];
-  repairBio(tags).forEach((tag, i) => {
-    if (tag === "O") return;
-    const type = tag.slice(2);
-    if (!CHUNK_TYPES.has(type)) return;
-    const last = chunks[chunks.length - 1];
-    if (tag.startsWith("I-") && last && last.type === type && last.end === i - 1) last.end = i;
-    else chunks.push({ type: type as ChunkType, start: i, end: i });
-  });
-  return chunks;
-}
-
-const base = (relation: string): string => relation.split(":")[0] ?? relation;
 
 function requireSet<T>(value: T | null, name: string): T {
   if (value === null) throw new ParserRuntimeError(`labels.json ${name} is not set`);
@@ -114,7 +77,16 @@ export function buildSentenceParse(
   if (tagged.words.length !== n) {
     throw new ParserRuntimeError(`backend returned ${tagged.words.length} words for a sentence of ${n}`);
   }
-  if (n === 0) return { start: span.start, end: span.end, tokens: [], chunks: [], phrases: null, treeRepaired: false, alternatives: [] };
+  if (n === 0)
+    return {
+      start: span.start,
+      end: span.end,
+      tokens: [],
+      chunks: [],
+      phrases: null,
+      treeRepaired: false,
+      alternatives: [],
+    };
   const tree = decodeArcTree(
     tagged.arc,
     tagged.words.map((w) => w.relations),
@@ -128,7 +100,7 @@ export function buildSentenceParse(
       text: w.text,
       start: w.start,
       end: w.end,
-      lemma: null, // TODO(lemma): winkBackend lemmas
+      lemma: w.lemma ?? null,
       upos: t.upos,
       uposProb: t.uposProb,
       chunkTag: chunkTags[i] as string,
@@ -139,14 +111,24 @@ export function buildSentenceParse(
       relationProb: tree.relationProbs[i] as number,
     };
   });
-  let phrases: SentenceParse["phrases"] = null;
-  if (nestedView) {
-    const bracket = requireSet(labels.nested.bracket_threshold, "nested.bracket_threshold");
-    const role = requireSet(labels.nested.role_threshold, "nested.role_threshold");
-    const items = gatePhrases(buildPhrases(tree.heads, upos, tree.relations.map(base)), tree, bracket);
-    const confidence = tree.relationProbs.map((p, i) => p * (tree.headProbs[i] ?? 0));
-    phrases = labelPhrases(items, tree.heads, tree.relations, upos, { confidence, threshold: role });
-  }
+  const thresholds = nestedView
+    ? {
+        bracket: requireSet(labels.nested.bracket_threshold, "nested.bracket_threshold"),
+        role: requireSet(labels.nested.role_threshold, "nested.role_threshold"),
+      }
+    : null;
+  const phrases = thresholds ? labeledView(tree, upos, thresholds) : null;
+  const alternatives = buildAlternatives({
+    tagged,
+    tree,
+    upos,
+    chunkTags,
+    margins: {
+      label: requireSet(labels.ambiguity.margin, "ambiguity.margin"),
+      attachment: requireSet(labels.ambiguity.attachment_margin, "ambiguity.attachment_margin"),
+    },
+    thresholds,
+  });
   return {
     start: span.start,
     end: span.end,
@@ -154,7 +136,7 @@ export function buildSentenceParse(
     chunks: groupChunks(chunkTags),
     phrases,
     treeRepaired: tree.repaired,
-    alternatives: [], // TODO(T60): ambiguity.ts alternatives
+    alternatives,
   };
 }
 
@@ -189,3 +171,5 @@ export class Parser {
     };
   }
 }
+
+export { groupChunks, repairBio } from "./bio";

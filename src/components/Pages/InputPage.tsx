@@ -16,7 +16,7 @@
  *      progress, or failure reason with DiagnosticsPanel). Typed text is kept
  *      while the model loads.
  *   4. Show too-long errors (with count) and the removed-text notice.
- *   5. `strings` constant for user-facing text.
+ *   5. user-facing text via useI18n() catalog keys (T68).
  *
  * Dependencies:
  *   External: react, react-router-dom (navigation).
@@ -27,5 +27,19 @@
  *
  * Open items (todo.md): limit defaults; interface language.
  *
- * Status: header only; not implemented.
+ * Status: placeholder (T39 app shell); the page is built in T56.
  */
+
+import { useI18n } from "../../hooks/useI18n";
+import styles from "./InputPage.module.css";
+
+/** TODO(T56): placeholder page. */
+export function InputPage(): React.JSX.Element {
+  const { t } = useI18n();
+  return (
+    <section className={styles.page} aria-labelledby="page-title">
+      <h1 id="page-title">{t("page.input.title")}</h1>
+      <p>{t("page.input.placeholder")}</p>
+    </section>
+  );
+}

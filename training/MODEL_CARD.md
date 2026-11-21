@@ -60,9 +60,7 @@ Summary for engineering, not legal advice.
 
 ## Attribution
 
-## Attribution
-
-Text shown in the app (location: `plan.md` → *Attribution display*) and here. Keep both identical.
+Text shown in the app (*About & licenses*, `#/about`: `src/components/Pages/AboutPage.tsx`; T21/T50) and here. Keep both identical (`AboutPage.test.tsx` checks it).
 
 > This model was trained on the Universal Dependencies English Web Treebank (UD English EWT, release 2.19), annotations © 2013–2021 The Board of Trustees of The Leland Stanford Junior University, licensed under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). Source: https://github.com/UniversalDependencies/UD_English-EWT. Changes: chunk tags were derived from the dependency trees, words were re-segmented to match wink-nlp, and the data was used to train a token classifier. The model files are shared under CC BY-SA 4.0.
 

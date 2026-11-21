@@ -41,190 +41,6 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Stage 0 — Ready now
 
-#### [Modules/parser] How alternatives are displayed · T11 · Decision
-
-- **Files:** `src/modules/parser/ambiguity.ts`, `src/modules/output/annotator.ts`, `src/components/Pages/OutputPage.tsx`
-- **Task:** Decide how alternative parses are shown. The ambiguity margin itself (proposed 0.2) is set from Phase 8 (T58).
-- **Needs:** —
-
-#### [Project] Deployment target and asset hosting · T12 · Decision
-
-- **Files:** `vite.config.ts`, `src/core/environment.ts`, `public/models/README.md`, `.gitattributes`, `dev_meta/agents.md` (*Parser and worker code*), `dev_meta/architecture.md` (*Model library*)
-- **Task:** Choose the static host. Settle model hosting: all four models are ~0.4 GB int8 + ~0.8 GB fp16, beyond GitHub's free LFS quota and some per-file limits (options: fp16 only for some models, split ONNX external data, same-origin path to object storage). Decide whether assets may come from another origin (`agents.md` allows only the app's own host; changing that is an owner decision), whether the host can send COOP/COEP (multi-threaded WASM; GitHub Pages cannot), and where dictionary data is hosted. Needed before Phase 11. (Merges *Deployment target*, *Model library → Hosting*, `plan-training.md` → *Open questions* → *Hosting limits*, and Q&A 2026-11-19 conflict #1.)
-- **Needs:** —
-
-#### [Project] Tooling and frontend dependencies · T13 · Decision
-
-- **Files:** `package.json`, `vite.config.ts`, `tsconfig.json`, `README.md`, `dev_meta/agents.md` (*Tooling and commands*)
-- **Task:** Approve `react`, `react-dom`, `react-router-dom`, `@vitejs/plugin-react`; confirm the proposed ESLint + Prettier, React Testing Library, and Playwright; choose CI. First check that typescript-eslint and the React plugin support TypeScript 7.0.2 and Vite 8.3.8 without downgrades.
-- **Needs:** —
-
-#### [Project] MVP scope and milestone order · T14 · Decision
-
-- **Files:** `dev_meta/plan.md`
-- **Task:** Decide which features ship first (e.g., parser + model library before dictionary, subword, vocab) and the milestone order.
-- **Needs:** —
-
-#### [Project] Offline / PWA · T15 · Decision
-
-- **Files:** `vite.config.ts`, `src/core/environment.ts`
-- **Task:** Decide whether the app must work offline (would add a service worker / PWA plugin).
-- **Needs:** —
-
-#### [Project] Project license · T16 · Decision
-
-- **Files:** `package.json`, `README.md`
-- **Task:** Choose the app's license (models stay CC BY-SA 4.0 per Phase 1).
-- **Needs:** —
-
-#### [Project] Analytics and privacy · T17 · Decision
-
-- **Files:** `dev_meta/agents.md`
-- **Task:** Confirm that no usage tracking is collected (`agents.md` already forbids telemetry) or define what is allowed.
-- **Needs:** —
-
-#### [UI] Interface language and grammar labels · T18 · Decision
-
-- **Files:** `src/index.html`, `src/components/**` (`strings` constants), `src/utils/helpers.ts`, `training/configs/catalog.yaml`
-- **Task:** Korean, English, or bilingual (i18n needed?); whether chunk/phrase labels and roles are shown in Korean (e.g., 명사구, 주어).
-- **Needs:** —
-
-#### [UI] Target devices, browsers, and accessibility · T19 · Decision
-
-- **Files:** `src/components/Layout/Layout.tsx`, `src/css/global.css`, `src/modules/preflight/requirements.ts`
-- **Task:** Desktop only or responsive/mobile; minimum browser versions; accessibility standard (e.g., WCAG 2.1 AA).
-- **Needs:** —
-
-#### [UI] Visual design · T20 · Decision
-
-- **Files:** `src/css/tokens.css`, `src/css/global.css`, `src/components/Layout/Header.tsx`, `src/components/Pages/OutputPage.module.css`
-- **Task:** Branding, color palette, and parse-display style (tree, brackets, color-coded chunks).
-- **Needs:** —
-
-#### [UI] Attribution display · T21 · Decision
-
-- **Files:** `src/components/` (new view), `src/routes.tsx`, `training/MODEL_CARD.md`, `dev_meta/architecture.md` (skeleton)
-- **Task:** Decide where the app shows required attribution (UD EWT, CC BY-SA 4.0; model and data licenses). No page exists in the skeleton. Needed before Phase 11.
-- **Needs:** —
-
-#### [Modules/modelLibrary] Recommendation rule and model card presentation · T22 · Decision
-
-- **Files:** `src/modules/modelLibrary/selection.ts`, `src/components/Pages/ModelsPage.tsx`
-- **Task:** Confirm the **(proposed)** recommendation rule (among models not blocked and without memory warnings, highest chunk F1 that meets the 5 s budget; ties → smaller download). Decide which facts each model card shows and how accuracy is phrased for learners (numbers vs. labels like "most accurate").
-- **Needs:** —
-
-#### [Modules/modelLibrary] catalog.json schema changes · T23 · Decision
-
-- **Files:** `src/modules/modelLibrary/types.ts`, `src/modules/preflight/checks.ts`, `training/scripts/package_models.py`, `dev_meta/architecture.md` (*Model library* → `catalog.json`)
-- **Task:** Agent proposal (Q&A 2026-11-19 conflicts #6, #7): make `variants.int8` and `variants.fp16` each optional (ModernBERT may ship fp16 only; pre-flight blocks fp16-only models without WebGPU); allow multi-file ONNX (`.onnx` + `.onnx_data`); add nested-view metrics (UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage) to `metrics`.
-- **Needs:** —
-
-#### [Modules/preflight] Pre-flight policies · T24 · Decision
-
-- **Files:** `src/modules/preflight/checks.ts`, `src/modules/preflight/requirements.ts`, `src/modules/preflight/preflight.ts`, `src/components/Shared/DiagnosticsPanel.tsx`
-- **Task:** Confirm the proposed checks (workers, WASM SIMD/threads, WebGPU, Cache Storage, memory hint, `labels.json` schema, wink versions, storage quota, cached-file integrity). Decide: low memory warns (proposed) or blocks; low storage warns (proposed) or blocks, and whether to call `navigator.storage.persist()`; integrity failure → delete and re-download once, then fail (proposed); how much `DiagnosticsPanel` shows and whether it is reachable when nothing failed (proposed: Header status badge).
-- **Needs:** —
-
-#### [Modules/dictionary] Dictionary content · T25 · Decision
-
-- **Files:** `src/modules/dictionary/types.ts`, `src/modules/dictionary/dictionary.ts`, `src/components/Pages/DictionaryPage.tsx`, `src/components/Shared/Tooltip.tsx`
-- **Task:** Sources for English definitions, Korean translations, and examples, with redistribution licenses (permissive or compatible only); coverage (headword count); multiword expressions (phrasal verbs, idioms); sense selection (all senses or by context/POS); lookup trigger (selection, hover, click, tap; popup vs. `DictionaryPage`).
-- **Needs:** —
-
-#### [Modules/subword] Affix data and known-word list · T26 · Decision
-
-- **Files:** `src/modules/subword/affixes.ts`, `src/modules/subword/subwordParser.ts`, `src/services/subwordService.ts`, `src/hooks/useSubword.ts`
-- **Task:** Source, license, and size of the affix inventory (and what "frequently occurring" means); whether affixes have Korean glosses and examples. Source of the known-word list for base validation: a bundled list inside `subword/`, or dictionary headwords combined at the hook layer (services may import any module but not other services; Q&A 2026-11-19 conflict #4). If dictionary headwords are chosen, this waits on T25.
-- **Needs:** —
-
-#### [Modules/vocab] Vocabulary list design · T27 · Decision
-
-- **Files:** `src/modules/vocab/types.ts`, `src/modules/vocab/vocabManager.ts`, `src/services/vocabService.ts`, `src/core/storage.ts`, `package.json`
-- **Task:** Entry schema (word, definitions, Korean, example, source sentence, notes, tags, date added); canonical export format (JSON, CSV, zip) and schema versioning (`csv-stringify`, `csv-parse`, `jszip` need approval); Anki or other compatibility; import conflicts (merge, overwrite, duplicate); LocalStorage vs. IndexedDB threshold and backup/data-loss warnings.
-- **Needs:** —
-
-#### [Utils] helpers.ts · T28 · Build
-
-- **Files:** `src/utils/helpers.ts`, `src/utils/helpers.test.ts`
-- **Task:** String helpers (whitespace collapse, case folding), ISO date formatting, typed `debounce` / `throttle`, with tests. The on-screen date format waits on T18.
-- **Needs:** —
-
-#### [Core] storage.ts · T29 · Build
-
-- **Files:** `src/core/storage.ts`, `src/core/storage.test.ts`
-- **Task:** Async `get` / `set` / `remove` / `keys` over LocalStorage and IndexedDB, namespaced keys with a schema version, typed `StorageUnavailableError` / `StorageQuotaError`. `STORAGE_SIZE_THRESHOLD` is a **(proposed)** constant until T27.
-- **Needs:** —
-
-#### [Core] environment.ts probes · T30 · Build
-
-- **Files:** `src/core/environment.ts`, `src/core/environment.test.ts`
-- **Task:** `probeEnvironment()` (module workers, WASM SIMD/threads, WebGPU limits, device memory, Cache Storage, storage estimate, persisted), `requestPersistentStorage()`, and same-origin `fetchStaticJson()`, with stubbed-global tests. Cache functions are T38.
-- **Needs:** —
-
-#### [Core] Transformers.js cache and hashing spike · T31 · Build
-
-- **Files:** `training/js/bench-page/`, `src/core/environment.ts`, `src/modules/modelLibrary/downloads.ts`
-- **Task:** With a Vite worker and the Phase 7 smoke ONNX files, check that files written to Cache Storage by our own downloader are found by Transformers.js 4.3.2 (same cache name and URL keys; no duplicate download), and measure memory when hashing a ~300 MB file with `crypto.subtle.digest` (streaming hash or split files needed?). Q&A 2026-11-19 conflict #3.
-- **Needs:** —
-
-#### [Modules/parser] transformerBackend.ts · T63 · Build
-
-- **Files:** `src/modules/parser/transformerBackend.ts`, `src/modules/parser/parser.worker.ts`, tests
-- **Task:** Load the ONNX model with Transformers.js, per-word encoding (`tokenizer_word_encoding`), windows and merging (T04, T08), temperatures, label decoding, self-test parse.
-- **Needs:** T08, T33, T35, T61
-
-#### [Training] Phase 10 browser benchmarking · T64 · Build
-
-- **Files:** `training/js/bench-page/`, `training/reports/benchmark.md`
-- **Task:** Load and parse time, peak memory per model, browser, and backend; a lower-end device; per-model requirements for the catalog.
-- **Needs:** T61
-
----
-
-## Stage 1
-
-#### [Modules/preflight] Pre-flight module · T36 · Build
-
-- **Files:** `src/modules/preflight/checks.ts`, `src/modules/preflight/requirements.ts`, `src/modules/preflight/preflight.ts`, `src/modules/preflight/types.ts`, `src/modules/preflight/index.ts`, tests
-- **Task:** Pure checks, severities, stage runners, and verdicts. Thresholds stay placeholders (`TODO(preflight-thresholds)`, T65). Keep `ModelManifest` ready for schema v2 (T33).
-- **Needs:** T24, T30
-
-#### [Modules/modelLibrary] Catalog and selection · T37 · Build
-
-- **Files:** `src/modules/modelLibrary/types.ts`, `src/modules/modelLibrary/catalog.ts`, `src/modules/modelLibrary/selection.ts`, `src/modules/modelLibrary/index.ts`, fixture `catalog.json`, tests
-- **Task:** Load and validate `catalog.json` against a fixture; persisted choice and recommendation.
-- **Needs:** T22, T23, T29
-
-#### [Core] environment.ts cache functions · T38 · Build
-
-- **Files:** `src/core/environment.ts`, `src/core/environment.test.ts`
-- **Task:** `MODEL_CACHE_NAME`, `listCached`, `downloadToCache` (progress, size and SHA-256, abort), `digestCachedFiles`, `deleteCachedFiles`, using what T31 found. Allowed asset origins follow T12.
-- **Needs:** T12, T31
-
-#### [App shell] Frontend tooling and app shell · T39 · Build
-
-- **Files:** `package.json`, `vite.config.ts`, `README.md`, `src/main.tsx`, `src/routes.tsx`, `src/components/App.tsx`, `src/components/Layout/*`, `src/components/Shared/{Button,Modal,Tooltip,LoadingSpinner}.tsx`, `src/css/tokens.css`, `src/css/global.css`
-- **Task:** Install the approved dependencies, enable the React plugin, add `npm run lint`, fill README setup; build the entry, hash routes, layout, and shared components with placeholder design tokens (refined after T20) and per-file `strings` constants.
-- **Needs:** T13
-
-#### [Modules/vocab] Vocab module and service · T40 · Build
-
-- **Files:** `src/modules/vocab/types.ts`, `src/modules/vocab/vocabManager.ts`, `src/modules/vocab/index.ts`, `src/services/vocabService.ts`, tests
-- **Task:** List and item CRUD, persistence with schema version and migration, export/import with conflict handling; service with `subscribe()` / `getSnapshot()`.
-- **Needs:** T27, T29
-
-#### [Modules/subword] Subword module and service · T41 · Build
-
-- **Files:** `src/modules/subword/types.ts`, `src/modules/subword/affixes.ts`, `src/modules/subword/subwordParser.ts`, `src/modules/subword/index.ts`, `src/services/subwordService.ts`, tests
-- **Task:** Affix inventory with recorded source and license; longest-match stripping with spelling rules; inflection from the wink lemma; injected `isKnownWord` predicate (false splits like *under* rejected).
-- **Needs:** T26
-
-#### [Modules/dictionary] Storage format, build pipeline, and lemmatization · T42 · Decision
-
-- **Files:** `src/modules/dictionary/staticDb.ts`, `src/modules/dictionary/dictionary.ts`, `dev_meta/architecture.md` (skeleton; pipeline location not yet in it)
-- **Task:** JSON vs. SQLite-WASM (new dependency needs approval); sharding, lazy loading, and offline caching; where the offline build scripts live; confirm headwords match wink lemma forms, and add an inflection → headword index so direct lookups on `DictionaryPage` (no wink on the main thread) resolve *ran* → *run* (Q&A 2026-11-19 conflict #5).
-- **Needs:** T12, T25
-
 #### [Training] Model display names and descriptions · T43 · Decision
 
 - **Files:** `training/configs/catalog.yaml`, `src/components/Pages/ModelsPage.tsx`
@@ -236,22 +52,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Files:** `dev_meta/architecture.md`, `dev_meta/plan-training.md` (Phase 12), `dev_meta/dev_agent_questions.md` (2026-11-18 feedback entry)
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
-
-#### [Modules/parser] ambiguity.ts · T60 · Build
-
-- **Files:** `src/modules/parser/ambiguity.ts`, `src/modules/parser/ambiguity.test.ts`
-- **Task:** Label alternatives from low-margin probabilities and attachment alternatives from biaffine arc-score margins / alternative trees, labeled through `phraseLabeler.ts`; cap at `MAX_ALTERNATIVES`.
-- **Needs:** T11, T34, T45, T58
-
----
-
-## Stage 2
-
-#### [Modules/dictionary] Dictionary build pipeline, module, and service · T46 · Build
-
-- **Files:** dictionary build scripts (location from T42), `src/modules/dictionary/*`, `src/services/dictionaryService.ts`, tests
-- **Task:** Compile source data into the static database; implement `staticDb.ts` and `lookup()` (lemma then surface form, POS ordering, LRU cache, `DictionaryLoadError`) and the service.
-- **Needs:** T42
 
 #### [Modules/modelLibrary] Downloads · T47 · Build
 
@@ -271,15 +71,27 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Expose `subwordService` to components (combine with dictionary headwords here if T26 chose that).
 - **Needs:** T39, T41
 
-#### [Components/Shared] Attribution view · T50 · Build
+#### [Modules/preflight] Thresholds and multi-threaded WASM · T65 · Decision
 
-- **Files:** new component per T21, `src/routes.tsx`, `src/components/Layout/Sidebar.tsx`, `dev_meta/architecture.md`
-- **Task:** Show data and model attribution and licenses; add it to the architecture skeleton.
-- **Needs:** T21, T39
+- **Files:** `src/modules/preflight/requirements.ts`, `training/reports/benchmark.md`
+- **Task:** Set memory hint, storage margin, and WebGPU buffer thresholds from Phase 10; decide whether single-threaded WASM (warning only) meets the 5 s budget, given the host's COOP/COEP support. Phase 10 inputs (`reports/benchmark.md`): ModernBERT int8 exceeds 5 s on 2 cores (5.2 s) yet fits in 4 GB, so its limit is speed (cores / fp16 WebGPU), not memory; the proposed `min_device_memory_gb` (DeBERTa 4, ModernBERT 8) should be revisited with this.
+- **Needs:** T12, T36, T64, T67
+
+#### [Training] Dictionary build pipeline · T70 · Build
+
+- **Files:** `training/dictionary/` (Python: fetch, extract, merge, inflections, shard), `training/configs/dictionary.yaml`, `training/js/dict_lemmas.mjs` (tsx step), `training/tests/`, a dictionary data card (sources, versions, licenses, attribution), `functions/` (a `/dict/*` route), `dev_meta/plan-training.md`
+- **Task:** Per T25/T42: pin and checksum the sources (Open English WordNet, kaikki.org Wiktionary English extract, Tatoeba EN–KO pairs, NGSL) and re-check their licenses; select ~10–20k headwords (NGSL + frequent EWT words) and phrasal verbs; build entries (senses by part of speech, Korean translations, examples); build the inflection index (Wiktionary forms + WordNet exceptions), verifying forms and headwords with the app's wink lemmatizer and `lookupKey`; write the index, ~64–256 hash shards, and a manifest (version, sizes, SHA-256, sources, licenses); report coverage (share of EWT test words and wink lemmas that resolve, entry counts, sizes). Serve from R2 under a versioned same-origin path (proposed `/dict/v<N>/`) with a Pages Function route like `/models/*`. Attribution text goes to the About page.
+- **Needs:** T71
 
 ---
 
-## Stage 3
+## Stage 1
+
+#### [Modules/dictionary] Dictionary module and service · T46 · Build
+
+- **Files:** `src/modules/dictionary/*` (`staticDb.ts`, `dictionary.ts`, `types.ts`, `index.ts`), `src/services/dictionaryService.ts`, tests
+- **Task:** Per T42: load the manifest and index on first lookup; fetch entry shards on demand into the `enparse-dict-v<N>` cache with size and SHA-256 checks (`core/environment.ts` T38 functions), small in-memory LRU of shards; `lookup()`: `lookupKey` exact match, then the inflection index, and for parse clicks the token's wink lemma first; senses ordered with the predicted part of speech first; `DictionaryLoadError`; `downloadAll(onProgress, signal)` and `deleteAll()` for the offline option; service with `subscribe()` / `getSnapshot()` (offline state, progress).
+- **Needs:** T70
 
 #### [Services/parser] parserService and parser hooks · T52 · Build
 
@@ -287,15 +99,15 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Status state machine (`idle` → … → `ready` / `failed`), pre-flight stages, model library actions, and the `ParserNotReadyError` guard, with a mocked backend.
 - **Needs:** T35, T36, T37, T39, T47
 
+---
+
+## Stage 2
+
 #### [Components/Pages] DictionaryPage and useDictionary · T53 · Build
 
 - **Files:** `src/hooks/useDictionary.ts`, `src/components/Pages/DictionaryPage.tsx`, `src/components/Pages/DictionaryPage.module.css`, tests
-- **Task:** Direct lookup UI and the hook; lookup trigger per T25.
+- **Task:** Direct lookup UI and the hook; lookup trigger per T25. Typed inflected forms resolve through the inflection index (T42: *ran* → *run*; ambiguous forms list every headword).
 - **Needs:** T25, T39, T46
-
----
-
-## Stage 4
 
 #### [Components/Pages] ModelsPage · T54 · Build
 
@@ -321,22 +133,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Annotation model and both views (flat chunks, nested phrases with roles), word selection, alternative switching, against mock `ParseResult` fixtures. Inline dictionary and subword lookup once T49 and T53 are done.
 - **Needs:** T11, T34, T35, T39, T52
 
-#### [Modules/preflight] Thresholds and multi-threaded WASM · T65 · Decision
-
-- **Files:** `src/modules/preflight/requirements.ts`, `training/reports/benchmark.md`
-- **Task:** Set memory hint, storage margin, and WebGPU buffer thresholds from Phase 10; decide whether single-threaded WASM (warning only) meets the 5 s budget, given the host's COOP/COEP support.
-- **Needs:** T12, T36, T64
-
----
-
-## Stage 5
-
-#### [Project] End-to-end tests and CI · T62 · Build
-
-- **Files:** `package.json` (`test:e2e`), Playwright config, CI config
-- **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
-- **Needs:** T13, T48, T53, T56, T57
-
 #### [Training] Phase 11 packaging and release · T66 · Build
 
 - **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
@@ -345,7 +141,167 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ---
 
+## Stage 3
+
+#### [Project] End-to-end tests and CI · T62 · Build
+
+- **Files:** `package.json` (`test:e2e`), Playwright config, CI config
+- **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
+- **Needs:** T13, T48, T53, T56, T57
+
+#### [Components/Pages] Offline dictionary control · T72 · Build
+
+- **Files:** `src/components/Pages/ModelsPage.tsx` (or the settings location chosen in T54), `src/hooks/useDictionary.ts`, tests
+- **Task:** "Make dictionary available offline" with size, byte progress, cancel, delete, and a pre-flight storage check (T24: block if it cannot fit), next to the model downloads (T15 full PWA; T42 opt-in offline download).
+- **Needs:** T46, T54
+
+---
+
 ## Done
+
+#### [App shell] Offline / PWA · T69 · Build
+
+- **Done:** 2026-11-21. Hand-written service worker (owner): `src/pwa/sw.ts` + tested `swRules.ts`, built into `dist/sw.js` by a Vite plugin with the precache list and version hash; never handles `/models/*` or `/dict/*`; offline page loads keep COOP/COEP; manifest and placeholder icons; `core/pwa.ts`, `appUpdateService`, `UpdateBanner`. Checked in Chrome: offline reload works and stays isolated, models not intercepted, update banner switches versions and deletes the old shell cache.
+
+#### [Core/UI] i18n plumbing and Korean UI text · T68 · Build
+
+- **Done:** 2026-11-21. `src/i18n/` (typed `en` reference catalog, `ko` default; grammar labels "명사구 (NP)", "주어 (Subject)"), `translate`, display dates; `languageService` (persisted, sets `<html lang>`), `useI18n`, header language menu (owner); every component uses catalog keys. Checked in Chrome (Korean default, switch, persists across reload).
+
+#### [Modules/subword] Subword module and service · T41 · Build
+
+- **Done:** 2026-11-21. Own affix list (85: 42 prefixes, 43 suffixes; Bauer & Nation levels; Korean glosses and examples), segmenter (inflection from the lemma, spelling restoration, every step through a known word, reviewed `NO_SPLIT` list from all NGSL headwords), known-word list generated from pinned NGSL 1.2 (CC BY-SA 4.0; `training/js/build_known_words.mjs`; loaded lazily), `subwordService`, About-page credit. Tests: `subwordParser.test.ts`, `subwordService.test.ts`.
+
+#### [Modules/vocab] Vocab module and service · T40 · Build
+
+- **Done:** 2026-11-21. `VocabManager` (lists and items in IndexedDB, duplicate flagging, schema migration, JSON + CSV export, import merging by id with a name-conflict callback, backup reminder after 7 days **(proposed)**), hand-written CSV codec, `vocabService` with snapshots. Tests with fake-indexeddb.
+
+#### [Modules/modelLibrary] Catalog and selection · T37 · Build
+
+- **Done:** 2026-11-21. Catalog types per T23 (optional variants, nested-view metrics, `labels.json` with size and SHA-256), `parseCatalog`/`loadCatalog`, `variantFor`, `modelFiles`, `downloadBytes`, `requirementsOf` (pre-flight input), saved choice, `recommendModel` (owner rule T22), `cardBadges`. Fixture `catalog.fixture.json` generated from the Phase 9 exports. Downloads remain T47.
+
+#### [Modules/preflight] Pre-flight module · T36 · Build
+
+- **Done:** 2026-11-21. `checks.ts` (pure checks incl. WebGPU `shader-f16` and buffer limits, storage: download that cannot fit → fail, tight → warn; memory hints warn), `requirements.ts` (owner T24 severities; thresholds **(proposed)** until T65), `preflight.ts` (`runDeviceChecks`, `assessModels`, `runModelChecks` deleting corrupt cached files), `types.ts`, `index.ts`. Tests: `checks.test.ts`, `preflight.test.ts` (incl. schema version = parser).
+
+#### [Modules/parser] wink lemmas for runtime words · T71 · Build
+
+- **Done:** 2026-11-21. `winkBackend.tokenize` gives every word a lemma (wink in context; contraction pieces split here via `CONTRACTION_LEMMAS`; merged words keep their form); `lemmaOf()` exported for the dictionary pipeline; `Token.lemma` filled. Tests in `winkBackend.test.ts`.
+
+#### [Modules/dictionary] Storage format, build pipeline, and lemmatization · T42 · Decision
+
+- **Done:** 2026-11-21 (owner chose the recommended option for all five parts). Sharded static JSON + index + manifest (no new dependency); shards on demand in a versioned Cache Storage cache with an opt-in offline download; pipeline in `training/dictionary/` (Python) plus a `training/js` wink step; build-time inflection index checked against wink, with wink lemmas for parse clicks; `lookupKey` for all keys. Builds: T71, T70, T46, T72. Recorded in `architecture.md` → *Module decisions* and `plan-training.md` → *Training directory layout*.
+
+#### [Modules/vocab] Vocabulary list design · T27 · Decision
+
+- **Done:** 2026-11-21 (owner). Full entry schema; versioned JSON + CSV (hand-written codec); merge by id, flag duplicates, ask on list-name collisions; lists in IndexedDB, settings in LocalStorage; backup reminder. Recorded in `architecture.md`.
+
+#### [Modules/subword] Affix data and known-word list · T26 · Decision
+
+- **Done:** 2026-11-21 (owner). Own curated affix list (~80–120, Bauer & Nation levels) with own Korean glosses and examples; known-word list bundled in `subword/`. Recorded in `architecture.md`.
+
+#### [Modules/dictionary] Dictionary content · T25 · Decision
+
+- **Done:** 2026-11-21 (owner). Open English WordNet definitions, Wiktionary (kaikki.org) Korean translations, Tatoeba EN–KO examples; ~10–20k headwords (NGSL + frequent EWT words); phrasal verbs only; all senses, predicted POS first; click/tap → popup → DictionaryPage. Licenses to re-check before release. Recorded in `architecture.md` and `plan.md`.
+
+#### [Modules/preflight] Pre-flight policies · T24 · Decision
+
+- **Done:** 2026-11-21 (owner). All checks plus WebGPU `shader-f16`; low memory warns; storage blocks a download that cannot fit, warns when tight, `persist()` after the first download; no `shader-f16` → int8; integrity → delete, re-download once, then fail; diagnostics via a header badge. Recorded in `architecture.md`.
+
+#### [Modules/modelLibrary] catalog.json schema changes · T23 · Decision
+
+- **Done:** 2026-11-21 (owner). Nested-view metrics added; int8/fp16 variants each optional; no multi-file ONNX. Recorded in `architecture.md` (*Module decisions*, `catalog.json` table).
+
+#### [Modules/modelLibrary] Recommendation rule and model card presentation · T22 · Decision
+
+- **Done:** 2026-11-21 (owner). Proposed rule confirmed (highest chunk F1 within 5 s on this device; ties → smaller download; DeBERTa today); cards lead with a label, numbers behind "details". Recorded in `architecture.md` → *Module decisions*.
+
+#### [UI] Visual design · T20 · Decision
+
+- **Done:** 2026-11-21 (owner). Color-coded chunk highlights with text labels (flat), nested boxes with role badges (nested), colorblind-safe palette. Recorded in `plan.md`.
+
+#### [UI] Target devices, browsers, and accessibility · T19 · Decision
+
+- **Done:** 2026-11-21 (owner). Desktop-first, responsive; last two versions of Chrome, Edge, Firefox; Safari 26+; WCAG 2.1 AA. Recorded in `plan.md`.
+
+#### [UI] Interface language and grammar labels · T18 · Decision
+
+- **Done:** 2026-11-21 (owner). Korean UI; grammar labels in Korean with the English term ("명사구 (NP)", "주어 (Subject)"); i18n plumbing so more languages (e.g. Japanese, Chinese) can be added (build: T68). Recorded in `plan.md` and `agents.md`.
+
+#### [Project] Analytics and privacy · T17 · Decision
+
+- **Done:** 2026-11-21 (owner). No tracking at all (confirms `agents.md`). Recorded in `plan.md` and `agents.md`.
+
+#### [Project] Project license · T16 · Decision
+
+- **Done:** 2026-11-21 (owner). PolyForm Noncommercial 1.0.0 for the app code, with `Required Notice: Copyright Hankyung Lee (https://github.com/gggentooo/enparse)` (owner asked for credit to the source and creator and no commercial use; Apache-2.0 could not forbid commercial use). Added `LICENSE.md` (official 1.0.0 text), `package.json` `license`, README and About page notices (tested identical). Recorded in `plan.md` and `agents.md`.
+
+#### [Project] Offline / PWA · T15 · Decision
+
+- **Done:** 2026-11-21 (owner). Full PWA in v1 (installable; app shell offline; models already in Cache Storage). Build: T69. Recorded in `plan.md`.
+
+#### [Project] MVP scope and milestone order · T14 · Decision
+
+- **Done:** 2026-11-21 (owner). M1: model library + parse + flat/nested views + alternatives + dictionary → M2: vocabulary + subword. Recorded in `plan.md` → *Product decisions*.
+
+#### [Components/Shared] Attribution view · T50 · Build
+
+- **Done:** 2026-11-21. `Pages/AboutPage.tsx` (`#/about`, sidebar link): app (license pending T16), offered models with base-model and trained-weights licenses, UD EWT attribution (identical to `training/MODEL_CARD.md`, enforced by `AboutPage.test.tsx`), runtime libraries with licenses, dictionary sources (none yet; T25). External links open in a new tab with `noopener noreferrer`. Models come from a static list until the catalog hook exists (`TODO(T54)`). Checked in Chrome.
+
+#### [Core] environment.ts cache functions · T38 · Build
+
+- **Done:** 2026-11-21. `MODEL_CACHE_NAME = "transformers-cache"`, `sameOriginUrl`, `listCached`, `downloadToCache` (streamed, byte progress, size and SHA-256 checked before anything is stored, abortable), `digestCachedFiles`, `deleteCachedFiles`, typed `AssetError` (origin, http, size, sha256, cache). Follows the T31 contract (absolute same-origin URL keys). Tests: `environment.test.ts`.
+
+#### [Core] environment.ts probes · T30 · Build
+
+- **Done:** 2026-11-21. `probeEnvironment()` (module workers, WASM SIMD and threads, cross-origin isolation, WebGPU limits and `shader-f16`, device memory, cores, Cache Storage, storage estimate, persisted; each probe reports "unknown" on failure, slow ones time out after `PROBE_TIMEOUT_MS`), `requestPersistentStorage()`, same-origin `fetchStaticJson()`. Checked in Chrome. Dev and preview servers now send COOP/COEP. Tests: `environment.test.ts`.
+
+#### [Core] storage.ts · T29 · Build
+
+- **Done:** 2026-11-21. `createStorage()` / `appStorage()`: async `get` / `set` / `remove` / `keys` over LocalStorage and IndexedDB, keys `enparse:v1:<key>`, values above `STORAGE_SIZE_THRESHOLD` (100,000 JSON characters, **(proposed)** until T27) go to IndexedDB, one copy per key, fallback when a backend is missing, typed `StorageUnavailableError` / `StorageQuotaError`. Tests with jsdom and fake-indexeddb (owner-approved dev dependency).
+
+#### [Utils] helpers.ts · T28 · Build
+
+- **Done:** 2026-11-21. `collapseWhitespace`, `foldCase` (NFKC + lower case), `lookupKey`, `formatIsoDate`, `formatIsoTimestamp` (UTC), typed `debounce` / `throttle` with `cancel`. On-screen date format waits for T18. Tests: `helpers.test.ts`.
+
+#### [Training] Phase 10 on a lower-end device · T67 · Build
+
+- **Done:** 2026-11-21 (owner's Windows 11 ARM VM in UTM: 4 GB RAM, 2 vCPUs, Chrome 158; no physical low-end device available). `bench_browsers.mjs --serve` + suite page + `bench-page/vm-sampler.ps1` over an SSH tunnel. DeBERTa int8: 1.34 s median parse, cold load 5.1 s; ModernBERT int8: 5.17 s (over budget); both ran in 4 GB without a crash (≤ 0.9 GB growth). fp16 failed: the VM's WebGPU adapter has no `shader-f16`. Caveat: VM cores are M5 Pro cores, so physical low-end devices will be slower. Recorded in `reports/benchmark.md` and `plan-training.md` → Phase 10.
+
+#### [Training] Phase 10 browser benchmarking · T64 · Build
+
+- **Done:** 2026-11-21 (development machine; lower-end device split out as T67). `js/bench_browsers.mjs` + `bench-page/` run the app's parser worker in Chrome 158 (Playwright, system Chrome) and Safari 27 (`open -a Safari`; WebDriver sessions timed out here), with COOP/COEP and `/models/*` emulating R2; `js/bench_report.mjs` writes `reports/benchmark.md`. All model × browser × variant parses of the 4,945-character sample are within 5 s (fastest: ModernBERT fp16 148 ms Chrome; slowest: ModernBERT int8 1.48 s; one WASM thread 4.9 s). Proposed `min_device_memory_gb`: DeBERTa 4, ModernBERT 8. Recorded in `plan-training.md` → Phase 10.
+
+#### [Modules/parser] ambiguity.ts · T60 · Build
+
+- **Done:** 2026-11-21. `buildAlternatives`: label alternatives (second-best group A label where the top-two gap < `ambiguity.margin`; subsets of up to 10 words, BIO-valid only) and PP-attachment alternatives (obl/nmod with a `case` dependent whose top-two head gap < `attachment_margin`; MST with the head fixed), ranked by probability relative to the primary parse, capped at 5; each carries `changes` (words to mark; T11), chunks, and the labeled nested view. Rules match Phase 8's counting. `parser/bio.ts` (BIO helpers) and `phraseLabeler.ts` → `labeledView` shared with `parser.ts`. Benchmark sample: 11 of 51 sentences get alternatives; textbook ambiguities ("saw the man with the telescope") get none because the calibrated model is confident (0.85 vs 0.09). Tests: `ambiguity.test.ts`.
+
+#### [App shell] Frontend tooling and app shell · T39 · Build
+
+- **Done:** 2026-11-21. Entry (`main.tsx`), hash routes (`routes.tsx`, `paths.ts`; index and unknown paths → `#/input`; `#/about` added), `App` with route error fallback, `Layout` (skip link, header, sidebar, content; narrow-screen layout), `Sidebar` (NavLink, `aria-current`), shared `Button`, `LoadingSpinner`, `Modal` (native `<dialog>`), `Tooltip`; placeholder design tokens (Okabe–Ito chunk colors, dark mode) and global CSS; placeholder pages until their tasks; README setup. Checked in Chrome (wide, narrow, dark; keyboard skip link). Tests: `routes.test.tsx`, `Shared.test.tsx` (jsdom). Bundle: 101 KB gzipped. English placeholder strings until T18.
+
+#### [Core] Transformers.js cache and hashing spike · T31 · Build
+
+- **Done:** 2026-11-21 (Chrome 158, Safari 27). Files stored by our own downloader in Cache Storage `transformers-cache` under `<origin>/models/<model>/<file>` are reused by Transformers.js 4.3.2: no model file is fetched again. Whole-file `crypto.subtle.digest` on 302 MB: ≤ 0.26 s, no streaming hash needed. Private windows may lack quota (`cache.put` failed for 302 MB). Found and fixed: Transformers.js loads ONNX Runtime's WASM from cdn.jsdelivr.net by default; the app now serves it from `/models/_ort/` (R2). Recorded in `architecture.md` → *Cache contract*, *Deployment*, and `reports/benchmark.md`.
+
+#### [UI] Attribution display · T21 · Decision
+
+- **Done:** 2026-11-21 (owner). An *About & licenses* page (`#/about`, sidebar link) lists app, models, training data (UD English EWT, CC BY-SA 4.0), runtime libraries, and dictionary sources with licenses; each model card shows its license and source. Built in T50. Recorded in `architecture.md` → *Routing*, component hierarchy, and skeleton.
+
+#### [Project] Tooling and frontend dependencies · T13 · Decision
+
+- **Done:** 2026-11-21 (owner). Installed (exact pins): react / react-dom 19.3.1, react-router 8.5.2, `@vitejs/plugin-react` 6.3.0 (enabled in `vite.config.ts`), `@types/react(-dom)` 19.3.0, oxlint 1.94.0 + Prettier 3.10.1 (`printWidth` 120; `npm run lint`, `npm run format`), React Testing Library 16.3.3 + `@testing-library/dom` 10.4.2 + jsdom 31.0.1, Playwright 1.65.1 (browsers installed with T62). CI: GitHub Actions without LFS checkout (`.github/workflows/ci.yml`). ESLint not used (typescript-eslint supports TypeScript < 6.1 only). License scan: only the accepted `sharp-libvips` and `lightningcss` exceptions. Recorded in `agents.md` → *Tooling and commands* and `architecture.md` → *Technology stack*.
+
+#### [Project] Deployment target and asset hosting · T12 · Decision
+
+- **Done:** 2026-11-21 (owner). Cloudflare Pages for the app; model files in R2, served on the same origin at `/models/*` by a Pages Function (`functions/models/[[path]].ts`, byte ranges, tests); COOP/COEP via `public/_headers`; `public/models/` (Git LFS, source of truth) is left out of `dist/` and uploaded to R2 in Phase 11. Dictionary data follows the same pattern (proposed; T42). Recorded in `architecture.md` → *Deployment* and `agents.md` → *Parser and worker code*. Open checks in T31: Range streaming into Cache Storage, Function quotas.
+
+#### [Modules/parser] How alternatives are displayed · T11 · Decision
+
+- **Done:** 2026-11-21 (owner). Primary parse shown with ambiguous words and phrases marked; each sentence with alternatives gets an "Other readings (n)" control that switches the whole sentence view (flat and nested); label and attachment alternatives share it. Recorded in `architecture.md` → *Ambiguity handling* item 6.
+
+#### [Modules/parser] transformerBackend.ts · T63 · Build
+
+- **Done:** 2026-11-21. Transformers.js backend: per-word encoding (`tokenizer_word_encoding`), windows packed like training (long sentences split with overlap; each word scored in the window where it is farthest from the edge), calibrated decoding (group A with summed UPOS/chunk probabilities, relations, arc rows), `labels.json` validation, typed load-failure reasons, structural self-test; fp16 → WebGPU, int8 → WASM. Integration test: the Phase 9 DeBERTa export (fp16, Node) reproduces PyTorch's labels and heads on the reference sentences, and the full `Parser` labels a clause end to end; ModernBERT int8 checked ad hoc. Open: expected-label self-test needs a `labels.json` field from Phase 11 (`TODO(self-test-expected)`), Cache Storage wiring waits for T31.
 
 #### [Training] Phase 9 export and quantization · T61 · Build
 
@@ -460,3 +416,46 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T61 (Phase 9) moved to *Done* with outcome.
 - Modified: T63 and T64 moved to Stage 0 (all *Needs* done).
+
+### 2026-11-20T22:51:36Z — Claude Opus 5.5, T63 done
+
+- Modified: T63 moved to *Done* with outcome.
+
+### 2026-11-20T23:00:54Z — Claude Opus 5.5, T11, T12, T13, T21 decided; restaged
+
+- Modified: T11, T12, T13, T21 moved to *Done* with the owner's choices.
+- Modified: stages recomputed from *Needs*: T39 1→0, T60 1→0, T50 2→1, T65 4→2, T66 5→4.
+
+### 2026-11-21T04:07:12Z — Claude Opus 5.5, T31, T39, T60, T64 done; T67 added; restaged
+
+- Modified: T31, T39, T60, T64 moved to *Done* with outcomes.
+- Added: T67 (Phase 10 on a lower-end device); T65 now also needs T67.
+- Modified: stages recomputed from *Needs*: T38 1→0, T50 1→0, T67 None→0.
+
+### 2026-11-21T04:30:46Z — Claude Opus 5.5, T67 done
+
+- Modified: T67 moved to *Done* with the VM results.
+- Modified: T36 (pre-flight checks `shader-f16`, storage quota) and T65 (ModernBERT limit is speed, not memory) task notes.
+
+### 2026-11-21T04:48:09Z — Claude Opus 5.5, Stage 0 builds done (T28, T29, T30, T38, T50); restaged
+
+- Modified: T28, T29, T30, T38, T50 moved to *Done* with outcomes.
+- Modified: stages recomputed from *Needs*: none.
+
+### 2026-11-21T04:57:32Z — Claude Opus 5.5, Stage 0 decisions T14–T20, T22–T27 done; T68, T69 added; restaged
+
+- Modified: T14, T15, T16, T17, T18, T19, T20, T22, T23, T24, T25, T26, T27 moved to *Done* with the owner's decisions.
+- Added: T68 (i18n plumbing and Korean UI text; from T18), T69 (offline / PWA; from T15).
+- Modified: stages recomputed from *Needs*: T36 1→0, T37 1→0, T40 1→0, T41 1→0, T42 1→0, T43 1→0, T44 1→0, T46 2→1, T47 2→1, T48 2→1, T49 2→1, T65 2→1, T52 3→2, T53 3→2, T54 4→3, T55 4→3, T56 4→3, T57 4→3, T66 4→3, T62 5→4, T68 None→0, T69 None→0.
+
+### 2026-11-21T05:19:02Z — Claude Opus 5.5, T42 decided; dictionary build tasks added; restaged
+
+- Modified: T42 moved to *Done* (owner: option A for all five parts).
+- Added: T71 (wink lemmas), T70 (dictionary build pipeline), T72 (offline dictionary control).
+- Modified: T46 narrowed to the dictionary module and service (pipeline moved to T70; needs T70); T53 notes inflected-form lookup.
+- Modified: stages recomputed from *Needs*: T46 1→2, T53 2→3, T71 None→0, T70 None→1, T72 None→4.
+
+### 2026-11-21T05:44:11Z — Claude Opus 5.5, Stage 0 builds done (T71, T36, T37, T40, T41, T68, T69); restaged
+
+- Modified: T71, T36, T37, T40, T41, T68, T69 moved to *Done* with outcomes (owner choices: hand-written service worker, header language menu, fake-indexeddb).
+- Modified: stages recomputed from *Needs*: T47 1→0, T48 1→0, T49 1→0, T65 1→0, T70 1→0, T46 2→1, T52 2→1, T53 3→2, T54 3→2, T55 3→2, T56 3→2, T57 3→2, T66 3→2, T62 4→3, T72 4→3.

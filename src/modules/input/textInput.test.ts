@@ -18,12 +18,16 @@ describe("preprocess", () => {
   it("accepts exactly MAX_INPUT_CHARS and rejects one more without truncating", () => {
     expect(preprocess("a".repeat(MAX_INPUT_CHARS)).cleanLength).toBe(MAX_INPUT_CHARS);
     expect(() => preprocess("a".repeat(MAX_INPUT_CHARS + 1))).toThrow(InputTooLongError);
-    try {
-      preprocess("a".repeat(MAX_INPUT_CHARS + 1));
-    } catch (e) {
-      expect(e).toBeInstanceOf(InputTooLongError);
-      expect((e as InputTooLongError).length).toBe(MAX_INPUT_CHARS + 1);
-    }
+    const err = ((): unknown => {
+      try {
+        preprocess("a".repeat(MAX_INPUT_CHARS + 1));
+      } catch (e) {
+        return e;
+      }
+      return null;
+    })();
+    expect(err).toBeInstanceOf(InputTooLongError);
+    expect((err as InputTooLongError).length).toBe(MAX_INPUT_CHARS + 1);
   });
 
   it("counts length in code points, not UTF-16 units", () => {
@@ -55,7 +59,7 @@ describe("preprocess", () => {
   });
 
   it("maps curly quotes and dashes to ASCII", () => {
-    expect(preprocess("“It’s 1990–2000—maybe”").text).toBe("\"It's 1990-2000--maybe\"");
+    expect(preprocess("“It’s 1990–2000—maybe”").text).toBe('"It\'s 1990-2000--maybe"');
   });
 
   it("applies NFKC (full-width forms, ligatures)", () => {

@@ -38,7 +38,7 @@ Rules and reference for AI agents (and humans) developing Enparse. Read this doc
 - **What:** Browser-based English grammar and vocabulary study tool for Korean speakers (beginner to intermediate).
 - **Core features:** sentence structure breakdown (NP/VP chunks, ambiguity alternatives), dictionary lookup (English + Korean), subword parsing (prefixes, bases, suffixes), vocabulary lists with export/import.
 - **Hard constraint:** fully client-side. No server-side computation, no backend, no live API calls at runtime.
-- **Stack:** React 18+, TypeScript, Vite, React Router (hash routing), CSS Modules, Transformers.js + in-house ONNX tagger, wink-nlp.
+- **Stack:** React 19, TypeScript, Vite, react-router (hash routing), CSS Modules, Transformers.js + in-house ONNX tagger, wink-nlp. Hosted on Cloudflare Pages with model files in R2, served on the app's origin.
 
 ---
 
@@ -73,7 +73,7 @@ Rules and reference for AI agents (and humans) developing Enparse. Read this doc
 - Do not add runtime dependencies without owner approval (see *Dependency policy*).
 - Do not change the architecture (layers, module list, stack) without updating `architecture.md` in the same change and telling the owner.
 - Do not delete or rewrite document content outside the task's scope.
-- Never add network calls, telemetry, or analytics.
+- Never add network calls, telemetry, or analytics (owner confirmed no tracking at all, T17).
 
 ---
 
@@ -92,6 +92,8 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 | `services/` | Composing modules; holding shared state; `subscribe()` / `getSnapshot()` | Importing other services; React imports |
 | `modules/` | Pure TypeScript logic; listed external libraries | React, DOM access, rendering; importing other modules |
 | `core/`, `utils/` | Infrastructure helpers | Importing any other layer |
+| `i18n/` | UI message catalogs and lookup (T68); importable by components, hooks, services | Importing any other layer |
+| `pwa/` | Service worker source and rules (T69); built separately | Importing any other layer |
 
 - Files inside one module may import each other.
 - **Module public API:** each module exposes its public functions and types through `modules/<name>/index.ts`. Other layers import only from that file, never from internal files.
@@ -141,12 +143,12 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 ### Parser and worker code
 
 - Parsing runs only inside `parser.worker.ts`. Never parse on the main thread.
-- The only allowed network requests are loading static assets (model files, dictionary data) from the app's own static host.
+- The only allowed network requests are loading static assets (model files, dictionary data) from the app's own static host. Model files are served at `/models/*` on that origin by the Pages Function in `functions/models/` (from R2; owner, 2026-11-21, T12); this is the same origin, not an exception.
 - Preprocessor limits and ambiguity thresholds come from constants or `labels.json`, never hard-coded in multiple places.
 
 ### User-facing text
 
-- The UI language is undecided. Keep user-facing strings in one place per component (a `strings` constant at the top of the file) so they can be moved to an i18n system later.
+- The UI is in Korean, with English terms beside grammar labels (owner, 2026-11-21; T18). All user-facing text goes through the app's i18n plumbing (T68) so more languages can be added; until T68 lands, keep it in one `strings` constant per file.
 
 ### Comments
 
@@ -178,7 +180,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ## Testing guide
 
-**Tooling:** Vitest 5.1.0 for unit tests (approved). React Testing Library for components and Playwright for end-to-end browser tests (proposed).
+**Tooling:** Vitest 5.1.0 for unit tests; React Testing Library 16 + jsdom for components (opt in per file with `// @vitest-environment jsdom`); Playwright for end-to-end browser tests (all approved; T13).
 
 - **Modules:** unit tests for every public function, including edge cases (empty input, max length, non-Latin text).
 - **Services:** test composition and subscription behavior with mocked modules.
@@ -191,7 +193,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ## Tooling and commands
 
-Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
+Tooling decisions: T13 (owner, 2026-11-21).
 
 | Item | Choice | Status |
 |------|--------|--------|
@@ -200,8 +202,10 @@ Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
 | Language | TypeScript 7.0.2 (`strict`) | Approved |
 | Build | Vite 8.3.8 (same version as `training/js`) | Approved |
 | Unit tests | Vitest 5.1.0 | Approved |
-| Component / end-to-end tests | React Testing Library, Playwright | Proposed |
-| Lint / format | ESLint (typescript-eslint, react-hooks plugin) + Prettier | Proposed |
+| Frontend | React 19.3.1, react-dom 19.3.1, react-router 8.5.2, `@vitejs/plugin-react` 6.3.0 | Approved (2026-11-21, T13) |
+| Component / end-to-end tests | React Testing Library 16.3.3 + jsdom 31.0.1; Playwright 1.65.1; fake-indexeddb 6.2.8 (IndexedDB in unit tests) | Approved (2026-11-21, T13; fake-indexeddb with T29) |
+| Lint / format | oxlint 1.94.0 (`.oxlintrc.json`: correctness errors, react hooks, no `any`, no default exports) + Prettier 3.10.1 (`printWidth` 120) | Approved (2026-11-21, T13; ESLint not used: typescript-eslint supports TypeScript < 6.1 only) |
+| CI | GitHub Actions (`.github/workflows/ci.yml`: typecheck, lint, test, build; checkout without LFS) | Approved (2026-11-21, T13) |
 
 | Command | Purpose | Status |
 |---------|---------|--------|
@@ -209,8 +213,9 @@ Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
 | `npm run build` | Production build into `dist/` | Available |
 | `npm run typecheck` | `tsc --noEmit` | Available |
 | `npm test` | Unit tests (`vitest run`) | Available |
-| `npm run lint` | ESLint + Prettier check | Not set up |
-| `npm run test:e2e` | Playwright tests | Not set up |
+| `npm run lint` | oxlint + Prettier check (`src/`, `functions/`, `vite.config.ts`) | Available |
+| `npm run format` | Prettier write | Available |
+| `npm run test:e2e` | Playwright tests | Added with the first tests (T62) |
 
 ### Training code (`training/`)
 
@@ -225,7 +230,8 @@ Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
 
 ## Dependency policy
 
-- **Licenses:** only permissive licenses that allow commercial use (MIT, Apache 2.0, BSD, ISC). No GPL/AGPL, no non-commercial (CC BY-NC) code, models, or data.
+- **Licenses (dependencies and data):** only permissive licenses that allow commercial use (MIT, Apache 2.0, BSD, ISC). No GPL/AGPL, no non-commercial (CC BY-NC) code, models, or data. Share-alike data (CC BY-SA) is accepted for the models and dictionary (owner).
+- **The app's own code** is licensed under PolyForm Noncommercial 1.0.0 (`LICENSE.md`; owner, 2026-11-21, T16). Keep the `Required Notice:` line in `LICENSE.md`, `README.md`, and the About page identical.
 - **Unshipped exceptions:** weak-copyleft (LGPL, MPL) transitive dependencies are allowed only if they never reach the app bundle (install-time or Node-only code). Accepted: `sharp-libvips` (LGPL-3.0, via the Node build of Transformers.js) and `lightningcss` (MPL-2.0, via Vite). Re-check with a license scan of `package-lock.json` when dependencies change.
 - **Approval:** new runtime dependencies require owner approval and an entry in `architecture.md` → *Technology stack*.
 - **Versions:** pin exact versions in the lockfile; note major-version upgrades in the changelog.
@@ -313,3 +319,22 @@ Remaining open items are tracked in `todo.md` (`[Project]` tooling task).
 
 - Added: `dev_meta/todo.md` to *Source-of-truth documents*.
 - Modified: agent workflow, *Adding a new module or feature*, *Tooling and commands*, and *Documentation guide* point to `todo.md` instead of `plan.md` → *Undecided* (owner decision: the Undecided list moved to `todo.md`).
+
+### 2026-11-20T23:00:24Z — Claude Opus 5.5, Tooling and hosting decided (T12, T13)
+
+- Modified: *Project at a glance* → stack: React 19, react-router; hosting on Cloudflare Pages + R2 (T12).
+- Modified: *Parser and worker code*: `/models/*` is served on the app's origin by the Pages Function (same-origin rule unchanged).
+- Modified: *Testing guide* and *Tooling and commands*: React, RTL + jsdom, Playwright, oxlint + Prettier, GitHub Actions approved (T13); `npm run lint` and `npm run format` available.
+
+### 2026-11-21T04:48:09Z — Claude Opus 5.5, fake-indexeddb approved
+
+- Modified: *Tooling and commands*: fake-indexeddb 6.2.8 (Apache-2.0, dev only) approved by the owner for `storage.ts` tests (T29).
+
+### 2026-11-21T04:57:03Z — Claude Opus 5.5, License, privacy, and UI language decided
+
+- Modified: *Dependency policy*: dependency licenses vs. the app's own PolyForm Noncommercial license (T16); share-alike data accepted.
+- Modified: *Agent boundaries*: no tracking confirmed (T17). *User-facing text*: Korean UI with English grammar terms, i18n plumbing (T18, T68).
+
+### 2026-11-21T05:43:45Z — Claude Opus 5.5, i18n and PWA layers
+
+- Added: *Architecture rules* → `i18n/` (message catalogs; T68) and `pwa/` (service worker; T69).

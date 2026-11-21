@@ -25,13 +25,16 @@ Browser-based English grammar and vocabulary study tool for Korean speakers (beg
 
 ## Setup
 
-Requires Node.js 20+ and npm. From the repository root:
+Requires Node.js 20+, npm, and Git LFS (model files in `public/models/`). From the repository root:
 
 ```bash
+git lfs install            # once per machine
 npm ci
-npm run typecheck
-npm test
+npm run typecheck && npm run lint && npm test
+npm run dev                # http://localhost:5173/#/input
 ```
+
+Deployment: Cloudflare Pages builds `dist/` (`npm run build`); model files are uploaded to the R2 bucket bound as `MODELS` and served at `/models/*` by `functions/models/[[path]].ts` (`dev_meta/architecture.md` → *Deployment*).
 
 ## Commands
 
@@ -41,5 +44,12 @@ npm test
 | `npm run build` | Production build into `dist/` | Available |
 | `npm run typecheck` | `tsc --noEmit` | Available |
 | `npm test` | Unit tests (`vitest run`) | Available |
-| `npm run lint` | ESLint + Prettier check | Not set up |
-| `npm run test:e2e` | Playwright tests | Not set up |
+| `npm run lint` | oxlint + Prettier check | Available |
+| `npm run format` | Prettier write | Available |
+| `npm run test:e2e` | Playwright tests | Added with the first tests (T62) |
+
+## License
+
+Required Notice: Copyright Hankyung Lee (https://github.com/gggentooo/enparse)
+
+The app's source code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): use, changes, and sharing for non-commercial purposes only, keeping the Required Notice above. Parser model files are CC BY-SA 4.0 ([`training/MODEL_CARD.md`](training/MODEL_CARD.md)); third-party libraries and dictionary data keep their own licenses (in-app: *About & licenses*).

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { protectedSpans, tokenize } from "./winkBackend";
+import { lemmaOf, protectedSpans, tokenize } from "./winkBackend";
 
 const words = (text: string): string[] => tokenize(text).flatMap((s) => s.words.map((w) => w.text));
 
@@ -34,11 +34,40 @@ describe("tokenize", () => {
 
   it("always splits contractions, including ones wink keeps whole", () => {
     expect(words("I'm sure it's fine, isn't it? Here's one.")).toEqual([
-      "I", "'m", "sure", "it", "'s", "fine", ",", "is", "n't", "it", "?", "Here", "'s", "one", ".",
+      "I",
+      "'m",
+      "sure",
+      "it",
+      "'s",
+      "fine",
+      ",",
+      "is",
+      "n't",
+      "it",
+      "?",
+      "Here",
+      "'s",
+      "one",
+      ".",
     ]);
     expect(words("You'll see they'd gone; we've said I can't and won't.")).toEqual([
-      "You", "'ll", "see", "they", "'d", "gone", ";", "we", "'ve", "said", "I", "ca", "n't", "and",
-      "wo", "n't", ".",
+      "You",
+      "'ll",
+      "see",
+      "they",
+      "'d",
+      "gone",
+      ";",
+      "we",
+      "'ve",
+      "said",
+      "I",
+      "ca",
+      "n't",
+      "and",
+      "wo",
+      "n't",
+      ".",
     ]);
   });
 
@@ -48,7 +77,13 @@ describe("tokenize", () => {
 
   it("keeps hyphenated words as one word, even when wink splits them", () => {
     expect(words("These mis-matches are well-known F-16-launched cases.")).toEqual([
-      "These", "mis-matches", "are", "well-known", "F-16-launched", "cases", ".",
+      "These",
+      "mis-matches",
+      "are",
+      "well-known",
+      "F-16-launched",
+      "cases",
+      ".",
     ]);
   });
 
@@ -71,7 +106,12 @@ describe("URLs, e-mail addresses, and symbol runs", () => {
     const sents = tokenize(text);
     expect(sents).toHaveLength(1);
     expect(sents[0]?.words.map((w) => w.text)).toEqual([
-      "Visit", "www.juancole.com", "or", "http://digon_va.tripod.com/Chernobyl.htm", "today", ".",
+      "Visit",
+      "www.juancole.com",
+      "or",
+      "http://digon_va.tripod.com/Chernobyl.htm",
+      "today",
+      ".",
     ]);
   });
 
@@ -81,7 +121,14 @@ describe("URLs, e-mail addresses, and symbol runs", () => {
 
   it("keeps bare domains and e-mail addresses, including hosts without a dot", () => {
     expect(words("Write to Warner@ENRON or bob@paulhastings.com via paulhastings.com now")).toEqual([
-      "Write", "to", "Warner@ENRON", "or", "bob@paulhastings.com", "via", "paulhastings.com", "now",
+      "Write",
+      "to",
+      "Warner@ENRON",
+      "or",
+      "bob@paulhastings.com",
+      "via",
+      "paulhastings.com",
+      "now",
     ]);
   });
 
@@ -90,10 +137,64 @@ describe("URLs, e-mail addresses, and symbol runs", () => {
   });
 
   it("keeps runs of one repeated symbol as one word", () => {
-    expect(words("Wait ......... then *** and ---------")).toEqual(["Wait", ".........", "then", "***", "and", "---------"]);
+    expect(words("Wait ......... then *** and ---------")).toEqual([
+      "Wait",
+      ".........",
+      "then",
+      "***",
+      "and",
+      "---------",
+    ]);
   });
 
   it("does not join different symbols", () => {
     expect(words("Really?! Yes.")).toEqual(["Really", "?", "!", "Yes", "."]);
+  });
+});
+
+describe("lemmas (T71)", () => {
+  const lemmas = (text: string): string[] => tokenize(text).flatMap((s) => s.words.map((w) => w.lemma ?? "?"));
+
+  it("gives wink's lemma in context for ordinary words", () => {
+    expect(lemmas("The children ran home.")).toEqual(["the", "child", "run", "home", "."]);
+  });
+
+  it("lemmatizes contraction pieces, whether wink or this module split them", () => {
+    // "I'm" is one wink token, split here; "isn't" and "it's" are split by wink.
+    expect(lemmas("I'm sure it's fine, isn't it?")).toEqual([
+      "i",
+      "be",
+      "sure",
+      "it",
+      "be",
+      "fine",
+      ",",
+      "be",
+      "not",
+      "it",
+      "?",
+    ]);
+  });
+
+  it("keeps the form of merged words", () => {
+    expect(lemmas("Visit www.example.com for well-known tips ***")).toEqual([
+      "visit",
+      "www.example.com",
+      "for",
+      "well-known",
+      "tip",
+      "***",
+    ]);
+  });
+
+  it("lemmatizes single words out of context for the dictionary pipeline", () => {
+    expect(["ran", "mice", "better", "'m", "n't", "well-known"].map(lemmaOf)).toEqual([
+      "run",
+      "mouse",
+      "good",
+      "be",
+      "not",
+      "well-known",
+    ]);
   });
 });

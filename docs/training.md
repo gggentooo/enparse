@@ -1,6 +1,6 @@
 # Enparse Model Training: Technical Guide
 
-> **Current Status (as of 2026-11-21):** Phases pre-0 through 9 are complete. Phase 7 finished with a **biaffine dependency parser head** retrained on all four models: `deberta_v3_xsmall` and `modernbert_base` meet every acceptance threshold and are offered; `bert_base_cased` (test UPOS 96.995%) and `distilbert_base_cased` miss the 97% UPOS bar. Phase 8 calibrated both offered models (temperatures, ambiguity margins, bracket-confidence thresholds with ≥ 95% shown-bracket precision; `training/reports/calibration.md`). Phase 9 exported both offered models; int8 and fp16 pass parity for both (`training/reports/parity.md`). Next: Phase 10 (browser benchmarking). Sections below that describe the extended stage as running are historical.
+> **Current Status (as of 2026-11-21):** Phases pre-0 through 9 are complete. Phase 7 finished with a **biaffine dependency parser head** retrained on all four models: `deberta_v3_xsmall` and `modernbert_base` meet every acceptance threshold and are offered; `bert_base_cased` (test UPOS 96.995%) and `distilbert_base_cased` miss the 97% UPOS bar. Phase 8 calibrated both offered models (temperatures, ambiguity margins, bracket-confidence thresholds with ≥ 95% shown-bracket precision; `training/reports/calibration.md`). Phase 9 exported both offered models; int8 and fp16 pass parity for both (`training/reports/parity.md`). Phase 10 measured both models in Chrome and Safari on the development machine: every variant parses 5,000 characters well within 5 s (`training/reports/benchmark.md`); on a 4 GB / 2-core Windows VM, DeBERTa int8 parses in 1.3 s and ModernBERT int8 in 5.2 s (over budget), and fp16 is unavailable without WebGPU `shader-f16`. Remaining before Phase 11: the pre-flight thresholds (T65). Sections below that describe the extended stage as running are historical.
 
 ---
 
@@ -47,7 +47,7 @@ All training runs locally without cloud GPUs:
 | **7** | Smoke test, hyperparameter sweeps, 3-seed training, test evaluation | Complete (base, extended, and biaffine stages; DeBERTa-v3-xsmall and ModernBERT offered) |
 | **8** | Probability calibration (temperature scaling) and ambiguity margins | Complete (2026-11-21) |
 | **9** | Final ONNX export (`fp32`, `int8`, `fp16`) and parity verification | Complete (2026-11-21) |
-| **10** | Browser benchmarking (Chrome, Safari, Firefox; WebGPU & WASM) | **Next** |
+| **10** | Browser benchmarking (Chrome, Safari, Firefox; WebGPU & WASM) | **Measured** (Chrome, Safari, 4 GB Windows VM; pre-flight thresholds pending, T65) |
 | **11** | Packaging into `public/models/` (Git LFS), `catalog.json`, integration tests | Planned |
 | **12** | Ongoing maintenance and optional user-feedback retraining | Planned |
 

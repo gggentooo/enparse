@@ -14,7 +14,11 @@ type Sent = { words: string[]; heads: number[]; rels: string[]; upos: string[] }
 
 const label = (s: Sent): LabeledSentencePhrases =>
   labelPhrases(
-    buildPhrases(s.heads, s.upos, s.rels.map((r) => r.split(":")[0] as string)),
+    buildPhrases(
+      s.heads,
+      s.upos,
+      s.rels.map((r) => r.split(":")[0] as string),
+    ),
     s.heads,
     s.rels,
     s.upos,

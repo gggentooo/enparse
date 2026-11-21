@@ -16,5 +16,28 @@
  *   Internal: src/routes.tsx, src/css/tokens.css, src/css/global.css.
  *   Loaded by: src/index.html.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T39; language restore T68; service worker T69).
  */
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { RouterProvider } from "react-router/dom";
+import "./css/tokens.css";
+import "./css/global.css";
+import { router } from "./routes";
+import { appUpdateService } from "./services/appUpdateService";
+import { languageService } from "./services/languageService";
+
+// Restore the saved UI language (T68); the default (Korean) shows until then.
+void languageService().restore();
+// Offline app shell and update prompt (T69; production builds only).
+void appUpdateService().start();
+
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("index.html is missing the #root element");
+
+createRoot(rootElement).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);

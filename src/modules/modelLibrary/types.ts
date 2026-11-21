@@ -33,11 +33,97 @@
  *      integrity, cancelled).
  *
  * Dependencies:
- *   Internal: core/environment.ts (cache result types only).
+ *   Internal: none.
  *   Used by: all files in modules/modelLibrary/.
  *
  * Open items (todo.md): model library (catalog contents and
  *   description language).
  *
- * Status: header only; not implemented.
+ * Status: implemented (T37; schema changes T23: optional variants, nested-view
+ *   metrics, labels.json with size and SHA-256). ModelState and download errors
+ *   are used by downloads.ts (T47).
  */
+
+export type ModelId = string;
+
+/** A file of a model with its size and SHA-256 (hex); `file` is relative to the model folder. */
+export type FileRef = { file: string; bytes: number; sha256: string };
+
+export type VariantName = "int8" | "fp16";
+
+/** One offered model (catalog.json → models[]). */
+export type CatalogEntry = {
+  id: ModelId;
+  display_name: string;
+  description: string;
+  base_model: string;
+  license: string;
+  model_version: string;
+  /** Folder under /models/ (e.g. "deberta_v3_xsmall"). */
+  folder: string;
+  labels: FileRef;
+  /** Each optional (T23): int8 for WASM, fp16 for WebGPU. */
+  variants: { int8?: FileRef; fp16?: FileRef };
+  /** Config and tokenizer files. */
+  shared_files: FileRef[];
+  metrics: {
+    upos: number;
+    chunk_f1: number;
+    uas: number;
+    las: number;
+    /** Nested-view metrics (T23). */
+    nested?: {
+      uas_no_punct?: number;
+      bracket_f1?: number;
+      shown_precision?: number;
+      shown_coverage?: number;
+      role_precision?: number;
+    };
+  };
+  nested_view: boolean;
+  performance?: {
+    first_load_s?: number;
+    parse_5000_chars_s?: { wasm?: number; webgpu?: number };
+    peak_memory_mb?: { wasm?: number; webgpu?: number };
+  };
+  requirements?: { min_device_memory_gb?: number };
+};
+
+export type Catalog = { schema_version: number; generated_at: string; models: CatalogEntry[] };
+
+/** Download state of one model on this device (downloads.ts, T47). */
+export type ModelState =
+  | { state: "not-downloaded" }
+  | { state: "downloading"; bytesDone: number; bytesTotal: number; variant: VariantName }
+  | { state: "downloaded"; bytesOnDisk: number; variant: VariantName }
+  | { state: "corrupted" };
+
+/** Per-model fitness from pre-flight, as plain data (structurally ModelFitness; no import). */
+export type FitnessLike = {
+  id: ModelId;
+  verdict: "ok" | "warn" | "blocked";
+  variant: VariantName | null;
+  expectedParseSeconds: number | null;
+  reasons: ReadonlyArray<{ id: string; status: string }>;
+};
+
+/** Labels for model cards (T22); the UI phrases them. */
+export type CardBadge = "most-accurate" | "fastest-here";
+
+export class CatalogLoadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CatalogLoadError";
+  }
+}
+
+export type DownloadFailure = "network" | "quota" | "integrity" | "cancelled";
+
+export class ModelDownloadError extends Error {
+  readonly reason: DownloadFailure;
+  constructor(reason: DownloadFailure, message: string) {
+    super(message);
+    this.name = "ModelDownloadError";
+    this.reason = reason;
+  }
+}

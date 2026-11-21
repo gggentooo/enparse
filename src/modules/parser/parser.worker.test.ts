@@ -61,7 +61,9 @@ describe("createWorkerHandler", () => {
       return b;
     });
     await handle({ type: "load", id: 1, model: MODEL });
-    expect(reply(1)).toMatchObject({ error: { name: "ParserLoadError", reason: "invalid-model", message: "bad file" } });
+    expect(reply(1)).toMatchObject({
+      error: { name: "ParserLoadError", reason: "invalid-model", message: "bad file" },
+    });
   });
 
   it("unloads the current model before loading another, and unload returns to idle", async () => {

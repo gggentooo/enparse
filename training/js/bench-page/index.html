@@ -1,23 +1,30 @@
 <!--
-training/js/bench-page/index.html — minimal browser benchmark page
+training/js/bench-page/index.html — browser benchmark and cache-spike page (not part of the app)
 
 Description:
-  Standalone Vite page (not part of the app) that loads the exported tagger
-  with Transformers.js in a Web Worker and times parsing of a fixed
-  5,000-character sample.
+  Runs the app's own parser worker (src/modules/parser → createParserWorker,
+  transformerBackend, wink words, MST, phrases, alternatives) in a real
+  browser and reports timings. Modes (URL parameters):
+    ?mode=bench&phase=cold|warm&model=<id>&variant=int8|fp16&runs=10   Phase 10 (T64)
+    ?mode=spike&model=<id>&variant=int8|fp16           T31 cache spike
+  Results go to window.__benchResult and POST /__bench/result. Driven by
+  ../bench_browsers.mjs; can also be opened by hand.
 
-Phases: 6 (quick timing per candidate), 10 — Browser benchmarking.
+Phases: 10 — Browser benchmarking; T31.
+Dependencies: ./bench.mjs; served by ./vite.config.mjs. No external requests.
 
-Tasks:
-  1. Controls: model folder, variant (int8 / fp16), device (WebGPU / WASM), Run.
-  2. Start bench.worker.mjs; show first load, cached load, median parse time
-     of 10 runs, and peak memory (where the browser exposes it).
-  3. Output a copyable result row for reports/benchmark.md.
-  4. Loads only local files served by Vite; no external network requests.
-
-Dependencies:
-  Loads: ./bench.worker.mjs. Served by: vite (training/js/package.json script).
-  Reads: ../../configs/eval.yaml values (sample size, runs) via the worker.
-
-Status: header only; not implemented.
+Status: implemented (T31, T64).
 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Enparse bench</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <h1>Enparse bench</h1>
+    <pre id="log"></pre>
+    <script type="module" src="./bench.mjs"></script>
+  </body>
+</html>

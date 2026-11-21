@@ -147,12 +147,15 @@ function findCycle(heads: number[]): number[] | null {
 export function decodeTree(candidates: readonly (readonly DepCandidate[])[], upos: readonly string[]): DecodedTree {
   const n = upos.length;
   if (candidates.length !== n) throw new Error("candidates and upos lengths differ");
-  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
+  if (n === 0)
+    return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
 
   const options: Choice[][] = candidates.map((cands, i) =>
     cands.flatMap((c, rank) => {
       const head = resolveHead(c.label, upos, i);
-      return head === null || head === i + 1 ? [] : [{ head, relation: parseDepLabel(c.label).relation, prob: c.prob, rank }];
+      return head === null || head === i + 1
+        ? []
+        : [{ head, relation: parseDepLabel(c.label).relation, prob: c.prob, rank }];
     }),
   );
   const chosen: (Choice | null)[] = options.map((o) => o[0] ?? null);
@@ -337,7 +340,7 @@ export function maxSpanningTree(score: number[][]): number[] {
 }
 
 /** Row-wise log-softmax over all columns except the word itself (column i + 1). */
-function headLogProbs(arc: ArcScores): number[][] {
+export function headLogProbs(arc: ArcScores): number[][] {
   return arc.map((row, i) => {
     let max = -Infinity;
     row.forEach((v, j) => {
@@ -360,7 +363,8 @@ function headLogProbs(arc: ArcScores): number[][] {
 export function decodeArcTree(arc: ArcScores, relations: readonly (readonly RelationCandidate[])[]): DecodedTree {
   const n = arc.length;
   if (relations.length !== n) throw new Error("arc scores and relations lengths differ");
-  if (n === 0) return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
+  if (n === 0)
+    return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
   arc.forEach((row, i) => {
     if (row.length !== n + 1) throw new Error(`arc row ${i} has ${row.length} columns, expected ${n + 1}`);
   });
@@ -459,7 +463,11 @@ function makeNode(type: PhraseType, head: number, children: Item[]): PhraseNode 
  * @param upos UPOS per word
  * @param relations base relation per word
  */
-export function buildPhrases(heads: readonly number[], upos: readonly string[], relations: readonly string[]): SentencePhrases {
+export function buildPhrases(
+  heads: readonly number[],
+  upos: readonly string[],
+  relations: readonly string[],
+): SentencePhrases {
   const n = heads.length;
   if (n === 0) return [];
   const deps: number[][] = Array.from({ length: n }, () => []);

@@ -40,5 +40,154 @@
  *
  * Open items (todo.md): pre-flight checks (scope, policies).
  *
- * Status: header only; not implemented.
+ * Status: implemented (T36). Tests: preflight.test.ts. Persistent storage is
+ *   requested by parserService after the first download (T24).
  */
+
+import {
+  deleteCachedFiles,
+  digestCachedFiles,
+  type EnvironmentProbe,
+  fetchStaticJson,
+  listCached,
+  probeEnvironment,
+} from "../../core/environment";
+import {
+  asManifest,
+  backendHint,
+  checkCacheStorage,
+  checkFilesCached,
+  checkFilesIntegrity,
+  checkManifestSchema,
+  checkMemoryHint,
+  checkModelMemory,
+  checkModelSize,
+  checkModelStorage,
+  checkModelVariant,
+  checkModuleWorkers,
+  checkParseTime,
+  checkStorageQuota,
+  checkWasm,
+  checkWasmSimd,
+  checkWasmThreads,
+  checkWebGpu,
+  checkWinkVersions,
+  chooseVariant,
+  corruptFiles,
+  expectedParseSeconds,
+} from "./checks";
+import type {
+  CheckResult,
+  DeviceAssessment,
+  ModelFitness,
+  ModelManifest,
+  ModelRequirements,
+  PreflightReport,
+  Verdict,
+} from "./types";
+
+/** The core/environment functions the runners use (tests pass stubs). */
+export type EnvironmentApi = {
+  probeEnvironment: typeof probeEnvironment;
+  fetchStaticJson: typeof fetchStaticJson;
+  listCached: typeof listCached;
+  digestCachedFiles: typeof digestCachedFiles;
+  deleteCachedFiles: typeof deleteCachedFiles;
+};
+
+const defaultEnv: EnvironmentApi = {
+  probeEnvironment,
+  fetchStaticJson,
+  listCached,
+  digestCachedFiles,
+  deleteCachedFiles,
+};
+
+/** Memory hint below which the device stage warns when no model is known yet (smallest tier). */
+const DEVICE_MEMORY_FLOOR_GB = 4;
+
+/** Blocked if any check fails, warn if any warns, else ok. */
+export function combine(checks: readonly CheckResult[]): Verdict {
+  if (checks.some((c) => c.status === "fail")) return "blocked";
+  if (checks.some((c) => c.status === "warn")) return "warn";
+  return "ok";
+}
+
+function report(checks: CheckResult[], startedAt: number, probe: EnvironmentProbe): PreflightReport {
+  return { verdict: combine(checks), checks, startedAt, finishedAt: Date.now(), backendHint: backendHint(probe) };
+}
+
+/** Device stage, once at app start, before any download. */
+export async function runDeviceChecks(env: EnvironmentApi = defaultEnv): Promise<DeviceAssessment> {
+  const startedAt = Date.now();
+  const probe = await env.probeEnvironment();
+  const checks = [
+    checkModuleWorkers(probe),
+    checkWasm(probe),
+    checkWasmSimd(probe),
+    checkWasmThreads(probe),
+    checkWebGpu(probe),
+    checkCacheStorage(probe),
+    checkStorageQuota(probe),
+    checkMemoryHint(probe, DEVICE_MEMORY_FLOOR_GB),
+  ];
+  return { report: report(checks, startedAt, probe), probe };
+}
+
+/** Fitness of every catalog model on this device (model library and recommendation). */
+export function assessModels(models: readonly ModelRequirements[], device: DeviceAssessment): ModelFitness[] {
+  return models.map((m) => {
+    const reasons = [
+      checkModelVariant(m, device.probe),
+      checkModelMemory(m, device.probe),
+      checkModelStorage(m, device.probe),
+      checkParseTime(m, device.probe),
+    ];
+    const verdict = device.report.verdict === "blocked" ? "blocked" : combine(reasons);
+    return {
+      id: m.id,
+      verdict,
+      variant: chooseVariant(m, device.probe),
+      reasons,
+      expectedParseSeconds: expectedParseSeconds(m, device.probe),
+    };
+  });
+}
+
+/**
+ * Model stage for the chosen model, before loading: labels.json schema and versions, room for
+ * the files still missing, and integrity of the cached files. Corrupt cached files are deleted
+ * (parserService re-downloads them once; MAX_INTEGRITY_RETRIES).
+ * @param modelBaseUrl the model folder, e.g. "/models/deberta_v3_xsmall/"
+ */
+export async function runModelChecks(
+  modelBaseUrl: string,
+  device: DeviceAssessment,
+  env: EnvironmentApi = defaultEnv,
+): Promise<{ report: PreflightReport; manifest: ModelManifest | null; corrupt: string[] }> {
+  const startedAt = Date.now();
+  const base = modelBaseUrl.endsWith("/") ? modelBaseUrl : `${modelBaseUrl}/`;
+  let manifest: ModelManifest | null = null;
+  try {
+    manifest = asManifest(await env.fetchStaticJson(`${base}labels.json`));
+  } catch {
+    manifest = null;
+  }
+  const checks: CheckResult[] = [checkManifestSchema(manifest)];
+  let corrupt: string[] = [];
+  if (manifest && checks[0]?.status !== "fail") {
+    checks.push(checkWinkVersions(manifest));
+    const paths = Object.keys(manifest.files ?? {});
+    const urls = paths.map((p) => base + p);
+    const sizes = await env.listCached(urls);
+    const cached = Object.fromEntries(paths.map((p, i) => [p, sizes[urls[i] as string] ?? null]));
+    checks.push(checkModelSize(manifest, device.probe, cached), checkFilesCached(manifest, cached));
+    const present = urls.filter((u) => sizes[u] !== null && sizes[u] !== undefined);
+    const digests = await env.digestCachedFiles(present);
+    const byPath = Object.fromEntries(paths.map((p, i) => [p, digests[urls[i] as string] ?? null]));
+    checks.push(checkFilesIntegrity(manifest, byPath));
+    corrupt = corruptFiles(manifest, byPath);
+    if (corrupt.length) await env.deleteCachedFiles(corrupt.map((p) => base + p));
+  }
+  return { report: report(checks, startedAt, device.probe), manifest, corrupt };
+}

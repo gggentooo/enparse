@@ -4,5 +4,11 @@
  * Description: model card grid, metric rows, recommended/active/blocked states, progress bars.
  * Tasks: 1. Card layout (responsive). 2. State styles with icons plus text. 3. Progress and action placement.
  * Dependencies: src/css/tokens.css. Used by: ModelsPage.tsx.
- * Status: header only; not implemented.
+ * Status: page frame (T39); page styles with the page task.
  */
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+}

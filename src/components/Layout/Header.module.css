@@ -4,5 +4,40 @@
  * Description: header bar, branding, status badge.
  * Tasks: 1. Header bar. 2. Model status badge (checking, loading, ready, warning, failed). 3. Progress indicator placement.
  * Dependencies: src/css/tokens.css. Used by: Header.tsx.
- * Status: header only; not implemented.
+ * Status: shell implemented (T39); status badge styles with T52.
  */
+
+.header {
+  grid-area: header;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.name {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.tagline {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.language {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.language select {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}

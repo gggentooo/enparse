@@ -6,5 +6,11 @@
  *        3. Alternatives list. 4. Basic-mode notice.
  * Dependencies: src/css/tokens.css. Used by: OutputPage.tsx.
  * Open items (todo.md): parse-display style (tree, brackets, color-coded).
- * Status: header only; not implemented.
+ * Status: page frame (T39); page styles with the page task.
  */
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+}

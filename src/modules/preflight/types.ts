@@ -41,5 +41,88 @@
  *
  * Open items (todo.md): pre-flight checks (scope).
  *
- * Status: header only; not implemented.
+ * Status: implemented (T36). Fitness checks added: model-memory, model-storage,
+ *   model-variant, parse-time.
  */
+
+import type { EnvironmentProbe } from "../../core/environment";
+
+export type CheckId =
+  | "module-workers"
+  | "wasm"
+  | "wasm-simd"
+  | "wasm-threads"
+  | "webgpu"
+  | "cache-storage"
+  | "storage-quota"
+  | "memory-hint"
+  | "manifest-schema"
+  | "wink-versions"
+  | "model-size"
+  | "files-cached"
+  | "files-integrity"
+  | "model-memory"
+  | "model-storage"
+  | "model-variant"
+  | "parse-time";
+
+export type CheckStatus = "pass" | "warn" | "fail" | "skip";
+export type CheckStage = "device" | "model";
+export type Verdict = "ok" | "warn" | "blocked";
+export type Backend = "webgpu" | "wasm";
+
+/** One check's outcome; `detail` is a stable code the UI phrases (no user-facing text here). */
+export type CheckResult = {
+  id: CheckId;
+  stage: CheckStage;
+  status: CheckStatus;
+  detail: string;
+  measured?: number | string | boolean | null;
+  required?: number | string | boolean | null;
+};
+
+export type PreflightReport = {
+  verdict: Verdict;
+  checks: CheckResult[];
+  startedAt: number;
+  finishedAt: number;
+  /** Backend this device should use: WebGPU only with `shader-f16` and large enough buffers. */
+  backendHint: Backend;
+};
+
+/** The device stage's result plus the probe it was computed from (input to later stages). */
+export type DeviceAssessment = { report: PreflightReport; probe: EnvironmentProbe };
+
+/** Structural subset of labels.json schema v2 that the checks read (no import of modules/parser). */
+export type ModelManifest = {
+  schema_version: number;
+  model_version: string | null;
+  tokenizer_word_encoding: string | null;
+  calibration: { temperature: number | null; rel_temperature: number | null; arc_temperature: number | null };
+  ambiguity: { margin: number | null; attachment_margin: number | null };
+  nested: { bracket_threshold: number | null; role_threshold: number | null };
+  versions: { wink: { "wink-nlp": string; "wink-eng-lite-web-model": string } };
+  files: Record<string, { bytes: number; sha256: string }> | null;
+};
+
+/** Per-model needs from catalog.json (structural; passed in by parserService). */
+export type ModelRequirements = {
+  id: string;
+  /** Download size per shipped variant (each optional; T23). */
+  variants: { int8?: { bytes: number }; fp16?: { bytes: number } };
+  /** Measured parse time of 5,000 characters per backend (Phase 10), seconds. */
+  parseSeconds?: { wasm?: number; webgpu?: number };
+  minDeviceMemoryGb?: number;
+};
+
+export type ModelFitness = {
+  id: string;
+  verdict: Verdict;
+  /** Variant this device would use (fp16 on WebGPU, int8 on WASM), or null if none fits. */
+  variant: "int8" | "fp16" | null;
+  reasons: CheckResult[];
+  expectedParseSeconds: number | null;
+};
+
+/** parserService's failed reason for a blocked stage. */
+export type PreflightFailureReason = "unsupported" | "invalid-model";

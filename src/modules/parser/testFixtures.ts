@@ -25,6 +25,7 @@ export const MODEL: ModelRef = { id: "test-model", folder: "test", variant: "int
 export const LABELS = {
   schema_version: 2,
   model_version: "1.0.0",
+  ambiguity: { margin: 0.3, attachment_margin: 0.3 },
   nested: { bracket_threshold: 0.5, role_threshold: 0.4 },
 } as unknown as LabelConfig;
 
@@ -48,13 +49,20 @@ const word = (upos: string, chunkTag: string, relation: string): TaggedWord => (
 /** "The dog barks ." tagged as a confident tree. */
 export function taggedDog(): TaggedSentence {
   return {
-    words: [word("DET", "B-NP", "det"), word("NOUN", "I-NP", "nsubj"), word("VERB", "B-VP", "root"), word("PUNCT", "O", "punct")],
+    words: [
+      word("DET", "B-NP", "det"),
+      word("NOUN", "I-NP", "nsubj"),
+      word("VERB", "B-VP", "root"),
+      word("PUNCT", "O", "punct"),
+    ],
     arc: arcFor([2, 3, 0, 3]),
   };
 }
 
 /** Backend returning taggedDog() per sentence (or `tag`); `ready` defaults to true. */
-export function mockBackend(opts: { ready?: boolean; tag?: (s: readonly SentenceSpan[]) => Promise<TaggedSentence[]> } = {}): ParserBackend {
+export function mockBackend(
+  opts: { ready?: boolean; tag?: (s: readonly SentenceSpan[]) => Promise<TaggedSentence[]> } = {},
+): ParserBackend {
   let ready = opts.ready ?? true;
   return {
     name: "mock",
@@ -72,4 +80,3 @@ export function mockBackend(opts: { ready?: boolean; tag?: (s: readonly Sentence
     tag: opts.tag ?? (async (spans) => spans.map(() => taggedDog())),
   };
 }
-

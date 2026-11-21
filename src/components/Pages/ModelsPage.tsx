@@ -21,7 +21,7 @@
  *      downloaded once (size shown) before parsing.
  *   5. Accessible: list of cards with headings, buttons with names, progress
  *      with aria attributes; status not by color alone.
- *   6. `strings` constant for user-facing text (descriptions come from the
+ *   6. user-facing text via useI18n() catalog keys (T68) (descriptions come from the
  *      catalog).
  *   7. Component test in ModelsPage.test.tsx with a mocked hook.
  *
@@ -36,5 +36,19 @@
  * Open items (todo.md): model library (presentation, description
  *   language); interface language.
  *
- * Status: header only; not implemented.
+ * Status: placeholder (T39 app shell); the page is built in T54.
  */
+
+import { useI18n } from "../../hooks/useI18n";
+import styles from "./ModelsPage.module.css";
+
+/** TODO(T54): placeholder page. */
+export function ModelsPage(): React.JSX.Element {
+  const { t } = useI18n();
+  return (
+    <section className={styles.page} aria-labelledby="page-title">
+      <h1 id="page-title">{t("page.models.title")}</h1>
+      <p>{t("page.models.placeholder")}</p>
+    </section>
+  );
+}

@@ -11,7 +11,8 @@
  *   2. Target modern browsers (ES2022), module "ESNext", moduleResolution "Bundler".
  *   3. "jsx": "react-jsx"; "isolatedModules": true (Vite requirement).
  *   4. Include "vite/client" types (CSS Modules, worker imports).
- *   5. "include": ["src", "vite.config.ts"].
+ *   5. "include": ["src", "functions", "vite.config.ts"] (functions/: Cloudflare
+ *      Pages Function for /models/*; T12).
  *
  * Dependencies:
  *   Dev: typescript, vite (client types).
@@ -48,6 +49,7 @@
   },
   "include": [
     "src",
+    "functions",
     "vite.config.ts"
   ]
 }

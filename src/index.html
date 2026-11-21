@@ -15,5 +15,22 @@ Dependencies:
 
 Open items (todo.md): interface language (lang attribute, title).
 
-Status: header only; not implemented.
+Status: implemented (T39). lang="ko" is the default UI language (T18); services/languageService.ts updates it when the user switches (T68).
 -->
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Enparse</title>
+    <!-- Placeholder icons until the visual design (T20); PWA manifest (T69). -->
+    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#0a58ca" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

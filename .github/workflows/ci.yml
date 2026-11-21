@@ -1,0 +1,35 @@
+# =============================================================================
+# .github/workflows/ci.yml — app checks on every push and pull request (T13)
+# =============================================================================
+#
+# Description:
+#   Typecheck, lint (oxlint + Prettier), unit tests, and production build for
+#   the client-side app. Checks out without Git LFS (owner, T13) so CI does not
+#   use LFS bandwidth; tests that need model files skip when they are absent.
+#   Training code (Python, training/js) is not run here.
+#
+# Dependencies: GitHub Actions; Node.js (LTS); package-lock.json.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

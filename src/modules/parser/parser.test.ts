@@ -13,7 +13,14 @@ import { type LabelConfig, ParserNotReadyError, ParserRuntimeError, type Sentenc
 
 describe("repairBio and groupChunks", () => {
   it("turns a stray I-X into B-X and keeps valid sequences", () => {
-    expect(repairBio(["I-NP", "I-NP", "O", "I-VP", "B-NP", "I-PP"])).toEqual(["B-NP", "I-NP", "O", "B-VP", "B-NP", "B-PP"]);
+    expect(repairBio(["I-NP", "I-NP", "O", "I-VP", "B-NP", "I-PP"])).toEqual([
+      "B-NP",
+      "I-NP",
+      "O",
+      "B-VP",
+      "B-NP",
+      "B-PP",
+    ]);
     expect(repairBio(["B-NP", "I-NP", "B-VP"])).toEqual(["B-NP", "I-NP", "B-VP"]);
   });
 
@@ -65,7 +72,11 @@ describe("Parser", () => {
   it("collapses uncertain brackets and badges their roles", () => {
     const t = taggedDog();
     t.arc = arcFor([2, 3, 0, 3], 0.4); // every head uncertain: brackets collapse, roles below the role gate
-    const span: SentenceSpan = { start: 0, end: 14, words: ["The", "dog", "barks", "."].map((w, i) => ({ text: w, start: i, end: i + 1 })) };
+    const span: SentenceSpan = {
+      start: 0,
+      end: 14,
+      words: ["The", "dog", "barks", "."].map((w, i) => ({ text: w, start: i, end: i + 1 })),
+    };
     const s = buildSentenceParse(span, t, LABELS, true);
     expect(s.phrases?.some((x) => "children" in x && x.end > x.start)).toBe(false);
   });
@@ -79,7 +90,11 @@ describe("Parser", () => {
 
   it("rejects labels.json without the Phase 8 thresholds", () => {
     const labels = { ...LABELS, nested: { bracket_threshold: null, role_threshold: null } } as LabelConfig;
-    const span: SentenceSpan = { start: 0, end: 4, words: ["a", "b", "c", "d"].map((w, i) => ({ text: w, start: i, end: i + 1 })) };
+    const span: SentenceSpan = {
+      start: 0,
+      end: 4,
+      words: ["a", "b", "c", "d"].map((w, i) => ({ text: w, start: i, end: i + 1 })),
+    };
     expect(() => buildSentenceParse(span, taggedDog(), labels, true)).toThrow(ParserRuntimeError);
   });
 

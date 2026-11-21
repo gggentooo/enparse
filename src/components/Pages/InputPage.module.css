@@ -4,5 +4,11 @@
  * Description: textarea, character counter, drop zone, notices.
  * Tasks: 1. Textarea. 2. Counter (over-limit state). 3. Drop-zone highlight. 4. Notice/error styles.
  * Dependencies: src/css/tokens.css. Used by: InputPage.tsx.
- * Status: header only; not implemented.
+ * Status: page frame (T39); page styles with the page task.
  */
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+}

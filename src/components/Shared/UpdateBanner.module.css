@@ -1,0 +1,16 @@
+/*
+ * src/components/Shared/UpdateBanner.module.css — styles for UpdateBanner.tsx
+ *
+ * Dependencies: src/css/tokens.css. Status: implemented (T69).
+ */
+
+.banner {
+  grid-area: banner;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border-bottom: 1px solid var(--color-border);
+}

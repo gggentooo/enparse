@@ -62,8 +62,10 @@ const CHAR_MAP_RE = new RegExp(`[${[...CHAR_MAP.keys()].join("")}]`, "gu");
 // Emoji sequences: pictographs with optional variation selector, skin tone,
 // and zero-width-joiner continuations; regional-indicator flags; keycaps.
 const EMOJI_RE =
+  // oxlint-disable-next-line no-misleading-character-class -- skin-tone modifiers are matched on their own by design
   /(?:\p{Extended_Pictographic}[\u{FE0F}\u{1F3FB}-\u{1F3FF}]*(?:‍\p{Extended_Pictographic}[\u{FE0F}\u{1F3FB}-\u{1F3FF}]*)*)|\p{Regional_Indicator}+|[#*0-9]\u{FE0F}?⃣/gu;
 // Leftover emoji parts (stray modifiers, selectors, tags, keycap marks).
+// oxlint-disable-next-line no-misleading-character-class -- stray modifiers and keycap marks are matched on their own by design
 const EMOJI_PART_RE = /[\u{FE0E}\u{FE0F}\u{1F3FB}-\u{1F3FF}⃣\u{E0020}-\u{E007F}]/gu;
 // Control characters except \t and \n; \r is handled as a line break first.
 const CONTROL_RE = /[\p{Cc}\p{Cf}]/gu;

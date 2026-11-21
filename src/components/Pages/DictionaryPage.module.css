@@ -4,5 +4,11 @@
  * Description: search bar and entry layout.
  * Tasks: 1. Search bar. 2. Sense list and examples. 3. Subword segments.
  * Dependencies: src/css/tokens.css. Used by: DictionaryPage.tsx.
- * Status: header only; not implemented.
+ * Status: page frame (T39); page styles with the page task.
  */
+
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: var(--content-max-width);
+}

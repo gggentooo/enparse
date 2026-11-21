@@ -4,5 +4,32 @@
  * Description: dialog panel and backdrop.
  * Tasks: 1. Panel. 2. ::backdrop. 3. Action row.
  * Dependencies: src/css/tokens.css. Used by: Modal.tsx.
- * Status: header only; not implemented.
+ * Status: implemented (T39).
  */
+
+.dialog {
+  max-width: min(36rem, calc(100vw - 2 * var(--space-3)));
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.title {
+  margin-bottom: var(--space-3);
+}
+
+.body {
+  margin-bottom: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

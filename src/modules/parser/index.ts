@@ -55,12 +55,20 @@ export type {
   Token,
   WorkerStatus,
 } from "./types";
-export { LABEL_SCHEMA_VERSION, ParserLoadError, ParserNotReadyError, ParserRuntimeError, TokenizerError } from "./types";
+export {
+  LABEL_SCHEMA_VERSION,
+  ParserLoadError,
+  ParserNotReadyError,
+  ParserRuntimeError,
+  TokenizerError,
+} from "./types";
 
 /** The part of a Worker the client uses. */
 export type WorkerPort = {
   postMessage(msg: WorkerRequest): void;
   addEventListener(type: "message", fn: (e: { data: WorkerResponse }) => void): void;
+  /** Worker script errors (failed import, uncaught exception): the worker cannot answer. */
+  addEventListener(type: "error", fn: (e: { message?: string }) => void): void;
   terminate(): void;
 };
 
@@ -105,6 +113,17 @@ export function createParserClient(port: WorkerPort): ParserClient {
     pending.delete(msg.id);
     if (msg.type === "error") p.reject(deserializeError(msg.error));
     else p.resolve(msg.type === "result" ? msg.result : undefined);
+  });
+
+  // A worker that fails to start or throws outside a request never answers: fail everything pending.
+  port.addEventListener("error", (e) => {
+    const message = `parser worker error: ${e.message ?? "the worker script failed"}`;
+    const failure = new ParserRuntimeError(message);
+    for (const p of pending.values()) p.reject(failure);
+    pending.clear();
+    const modelId = current.state === "idle" ? "" : current.modelId;
+    current = { state: "failed", modelId, reason: "unsupported", message };
+    for (const fn of listeners) fn(current);
   });
 
   const request = <T>(msg: RequestBody): Promise<T> => {

@@ -183,6 +183,7 @@ training/
 │   ├── data.yaml (UD release tag, paths, window size)
 │   ├── eval.yaml (calibration, export, parity, benchmark settings) (proposed)
 │   ├── catalog.yaml (model library display names and descriptions; owner-editable)
+│   ├── dictionary.yaml (pinned word-list and dictionary sources with SHA-256, licenses, attribution; NGSL for T41, dictionary sources with T70)
 │   └── train_<model>.yaml (hyperparameters per candidate; one file per model)
 ├── data/ (git-ignored: raw UD files, processed datasets, checkpoints, ONNX exports)
 ├── scripts/
@@ -197,6 +198,7 @@ training/
 │   ├── metrics.py (word-level predictions; UPOS, chunk F1, UAS/LAS; shared by train.py and evaluate.py)
 │   ├── run_smoke.sh, smoke_report.py (Phase 7 task 0)
 │   └── package_models.py (Phase 11: public/models/<model-id>/ and catalog.json)
+├── dictionary/ (dictionary build pipeline, not a model phase: pinned sources, extraction, inflection index, shards; owner T42, build T70)
 ├── js/
 │   ├── package.json (scripts: align, test)
 │   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
@@ -206,11 +208,16 @@ training/
 │   ├── benchmark.mjs (Transformers.js speed and parity)
 │   ├── nested_eval.mjs (nested-phrase F1 via treeDecoder.ts; Phase 7)
 │   ├── error_analysis.mjs (reports/errors.md; Phase 7 task 5)
-│   └── bench-page/ (minimal Vite page for Phase 10: index.html, bench.worker.mjs)
+│   ├── bench_browsers.mjs, bench_report.mjs (Phase 10 driver and report; T67 serve mode)
+│   ├── build_known_words.mjs (NGSL → src/modules/subword/knownWords.generated.ts; npm run known-words; T41)
+│   └── bench-page/ (Vite page for Phase 10 and the T31 spike: index.html, bench.mjs, vite.config.mjs, vm-sampler.ps1)
 ├── tests/ (pytest for derive_chunks and prepare_data; conftest.py)
 ├── reports/ (metrics, error samples, benchmark results; README.md index)
 └── MODEL_CARD.md
 ```
+
+
+**Dictionary pipeline (owner, 2026-11-21; T42).** The app's dictionary data is built here too, separate from the model phases: Python in `training/dictionary/` reads pinned sources (Open English WordNet, Wiktionary extracts from kaikki.org, Tatoeba EN–KO, NGSL; T25), and a `training/js` step runs the app's `winkBackend` lemmatizer and `lookupKey` (via `tsx`, like `align_tokens.mjs`) so headwords and the inflection index match runtime words. Output: index + hash-sharded entry JSON + manifest (sizes, SHA-256, sources, licenses), uploaded to R2. Raw sources stay in git-ignored `data/`. Build task: T70 (`todo.md`).
 
 ---
 
@@ -731,6 +738,15 @@ Runs for every offered candidate.
 **Deliverables:** `reports/benchmark.md` (one section per model); per-model performance and requirements for `catalog.json`; pre-flight threshold values.
 **Exit criterion:** at least one offered model parses 5,000 characters in ≤ 5 s on a typical laptop with WASM; per-model requirements recorded; minimum device requirements defined and set in `requirements.ts`. Slower models stay available with their measured speed shown.
 
+**Outcome so far (2026-11-21; `reports/benchmark.md`):** measured on the development machine (Apple M5 Pro, 48 GB) in Chrome 158 and Safari 27 (owner: those two only for now), with the app's own parser worker (`js/bench_browsers.mjs`, `bench-page/`; `npm run bench`, `npm run bench-report`). Median parse of the 4,945-character sample, warm (ms):
+
+| Model | Chrome int8 (WASM) | Chrome fp16 (WebGPU) | Safari int8 (WASM) | Safari fp16 (WebGPU) | int8, one WASM thread (Chrome / Safari) |
+|---|---|---|---|---|---|
+| DeBERTa-v3-xsmall | 423 | 233 | 400 | 515 | 1,223 / 1,182 |
+| ModernBERT | 1,483 | 148 | 1,455 | 275 | 4,913 / 4,854 |
+
+Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm load from Cache Storage 0.8–1.3 s. Warm peak memory (browser-process RSS growth): DeBERTa 1.2–1.8 GB int8, 1.9–2.8 GB fp16; ModernBERT 1.3–2.2 GB int8, 2.4–2.9 GB fp16. Proposed `min_device_memory_gb`: DeBERTa 4, ModernBERT 8 (rule in `js/bench_report.mjs`). Every combination is within 5 s here; ModernBERT int8 on one WASM thread is at the budget edge (4.9 s) on this fast machine. Safari throttles unfocused pages (ModernBERT int8 1.4 s → 4–6 s), so runs record focus. Lower-end device (T67, 2026-11-21): Windows 11 ARM VM (UTM on the development machine), 4 GB RAM, 2 vCPUs, Chrome 158: DeBERTa int8 1.34 s median parse, ModernBERT int8 5.17 s (over the 5 s budget); both ran in 4 GB without a crash (Chrome's working set grew ≤ 0.9 GB); fp16 failed to load because the VM's WebGPU adapter lacks `shader-f16`. The VM's cores are M5 Pro cores, so real low-end laptops will be slower. **Exit criterion:** an offered model (DeBERTa-v3-xsmall) parses 5,000 characters well within 5 s on WASM with 2 cores and 4 GB, and per-model measurements are recorded; the minimum device requirements in `requirements.ts` remain (T65).
+
 ### Phase 11 — Packaging and release
 
 **Tasks**
@@ -964,3 +980,20 @@ Runs for every offered candidate.
 
 - Added: Phase 9 outcome (both offered models ship int8 and fp16; parity table; word encoding `plain`).
 - Modified: `export_onnx.py` uses `dataset_arc` dev windows for biaffine models and stores window words; `benchmark.mjs` checks the word encoding on every dev window; `evaluate.py --parity` implemented (`reports/parity.md`).
+
+### 2026-11-21T04:07:12Z — Claude Opus 5.5, Phase 10 measured (Chrome, Safari)
+
+- Added: Phase 10 outcome so far: parse, load, and memory per model, browser, and variant; single-threaded WASM check; proposed `min_device_memory_gb`; lower-end device and thresholds still open (T67, T65).
+
+### 2026-11-21T04:30:46Z — Claude Opus 5.5, Phase 10 lower-end run (T67)
+
+- Added: Phase 10 outcome → 4 GB / 2-vCPU Windows VM results (DeBERTa int8 1.34 s, ModernBERT int8 5.17 s, fp16 unavailable without `shader-f16`); exit criterion met except the `requirements.ts` thresholds (T65).
+
+### 2026-11-21T05:19:02Z — Claude Opus 5.5, Dictionary pipeline location (T42)
+
+- Added: *Training directory layout* → `dictionary/` and the dictionary pipeline note (owner, T42; build T70).
+- Modified: layout → `js/bench_browsers.mjs`, `bench_report.mjs`, and the current `bench-page/` files (Phase 10).
+
+### 2026-11-21T05:44:11Z — Claude Opus 5.5, Known-word list build (T41)
+
+- Added: layout → `configs/dictionary.yaml` (pinned NGSL 1.2, CC BY-SA 4.0) and `js/build_known_words.mjs` (generates the app's subword known-word list).

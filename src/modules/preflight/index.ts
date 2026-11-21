@@ -22,5 +22,30 @@
  *   Internal: ./preflight.ts, ./requirements.ts, ./types.ts.
  *   Used by: services/parserService.ts.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T36).
  */
+
+export { assessModels, combine, runDeviceChecks, runModelChecks } from "./preflight";
+export type { EnvironmentApi } from "./preflight";
+export {
+  APP_WINK_VERSIONS,
+  MAX_INTEGRITY_RETRIES,
+  MIN_WEBGPU_BUFFER_BYTES,
+  PARSE_BUDGET_SECONDS,
+  REQUIRED_MANIFEST_FIELDS,
+  STORAGE_MARGIN_BYTES,
+  SUPPORTED_SCHEMA_VERSION,
+} from "./requirements";
+export type {
+  Backend,
+  CheckId,
+  CheckResult,
+  CheckStatus,
+  DeviceAssessment,
+  ModelFitness,
+  ModelManifest,
+  ModelRequirements,
+  PreflightFailureReason,
+  PreflightReport,
+  Verdict,
+} from "./types";

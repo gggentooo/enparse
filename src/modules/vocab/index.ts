@@ -15,5 +15,18 @@
  *   Internal: ./vocabManager.ts, ./types.ts.
  *   Used by: services/vocabService.ts.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T40).
  */
+
+export { BACKUP_REMINDER_DAYS, CSV_COLUMNS, VocabManager, migrateItem } from "./vocabManager";
+export type { VocabManagerOptions } from "./vocabManager";
+export { VOCAB_EXPORT_FORMAT, VOCAB_SCHEMA_VERSION, VocabImportError, VocabNotFoundError } from "./types";
+export type {
+  ImportSummary,
+  NameConflictChoice,
+  NameConflictResolver,
+  NewVocabItem,
+  VocabExport,
+  VocabItem,
+  VocabList,
+} from "./types";

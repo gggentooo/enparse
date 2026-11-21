@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-21T00:00:00Z",
+  "models": [
+    {
+      "id": "deberta_v3_xsmall",
+      "display_name": "Compact",
+      "description": "Small download with strong accuracy for its size.",
+      "base_model": "microsoft/deberta-v3-xsmall",
+      "license": "CC BY-SA 4.0",
+      "model_version": "fixture-1",
+      "folder": "deberta_v3_xsmall",
+      "labels": {
+        "file": "labels.json",
+        "bytes": 5249,
+        "sha256": "22f254958c9ba31495beaf7d82805da89516f3292473c68dc44403c8f79ee230"
+      },
+      "variants": {
+        "int8": {
+          "file": "onnx/model_quantized.onnx",
+          "bytes": 89854726,
+          "sha256": "986df865cb436bd77c02f0f3d5dbe5383bac13c8d4892866e8b6467671a7a027"
+        },
+        "fp16": {
+          "file": "onnx/model_fp16.onnx",
+          "bytes": 144029758,
+          "sha256": "e0b9b7461991eb2ca439d460e3fe42a3cba7877d543cd61583efa55f0bbb5ac0"
+        }
+      },
+      "shared_files": [
+        {
+          "file": "added_tokens.json",
+          "bytes": 23,
+          "sha256": "dc046d04c9b0ada7ae6f1dc89c465801799acdf0c9a6aab8c15a1b2d5ca4e91f"
+        },
+        {
+          "file": "config.json",
+          "bytes": 6078,
+          "sha256": "4858fde99198df5f22d58501c2c0654ce9d2914ee28a3abb5225f05b8a3a0eeb"
+        },
+        {
+          "file": "special_tokens_map.json",
+          "bytes": 970,
+          "sha256": "b2f1b2f15f29a6b6d9d6ea4eca1675d2c231a71477f151d48f79cc83a625ba21"
+        },
+        {
+          "file": "spm.model",
+          "bytes": 2464616,
+          "sha256": "c679fbf93643d19aab7ee10c0b99e460bdbc02fedf34b92b05af343b4af586fd"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 8648864,
+          "sha256": "4b4f60231058db4b5794e7b124bb7945bc8ade6719282de4d2e0372ee527b929"
+        },
+        {
+          "file": "tokenizer_config.json",
+          "bytes": 1315,
+          "sha256": "e6c4c771911c211618a2d46488dc7e9e499f051773cd4ff4faeca6fe55fdf569"
+        }
+      ],
+      "metrics": {
+        "upos": 0.9765,
+        "chunk_f1": 0.9701,
+        "uas": 0.9427,
+        "las": 0.9245,
+        "nested": {
+          "uas_no_punct": 0.9451,
+          "bracket_f1": 0.8975,
+          "shown_precision": 0.9571,
+          "shown_coverage": 0.4858,
+          "role_precision": 0.9606
+        }
+      },
+      "nested_view": true,
+      "performance": {
+        "parse_5000_chars_s": {
+          "wasm": 0.423,
+          "webgpu": 0.515
+        }
+      },
+      "requirements": {
+        "min_device_memory_gb": 4
+      }
+    },
+    {
+      "id": "modernbert_base",
+      "display_name": "Accurate",
+      "description": "Largest download; aims for the best accuracy. Best with a recent laptop and WebGPU.",
+      "base_model": "answerdotai/ModernBERT-base",
+      "license": "CC BY-SA 4.0",
+      "model_version": "fixture-1",
+      "folder": "modernbert_base",
+      "labels": {
+        "file": "labels.json",
+        "bytes": 4981,
+        "sha256": "fbe151e1d16efc041ae3590633e48f8459fd76ebd2c954430722615bf76b5960"
+      },
+      "variants": {
+        "int8": {
+          "file": "onnx/model_quantized.onnx",
+          "bytes": 155570891,
+          "sha256": "cf12b3a4216aaee8516c34d0e453d8afaf246972f9992c45840ffb9dbb88edd9"
+        },
+        "fp16": {
+          "file": "onnx/model_fp16.onnx",
+          "bytes": 302208615,
+          "sha256": "0db4a0adf1db134ad3c36187bde3cb5f362553d82857228f9f87fc3da32d2c77"
+        }
+      },
+      "shared_files": [
+        {
+          "file": "config.json",
+          "bytes": 6463,
+          "sha256": "5178840009fece44cc6d3b8d0aadcd9ed3b2a7a3b8b6808718611a5e209f0b16"
+        },
+        {
+          "file": "special_tokens_map.json",
+          "bytes": 694,
+          "sha256": "ea97ecdbcc73713039d8d64dbb05e3689495c96657fbd9a18f5bed381be81049"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 3583227,
+          "sha256": "bc2788d5ddc9e2ced5d7a6aa695b30bb0c56751e60fd65ac595b16b9f0784812"
+        },
+        {
+          "file": "tokenizer_config.json",
+          "bytes": 20868,
+          "sha256": "9461a659e1103fb18ddc5fd0696137b0ff9891b15c8e9c79ef069d294846c278"
+        }
+      ],
+      "metrics": {
+        "upos": 0.974,
+        "chunk_f1": 0.9647,
+        "uas": 0.9415,
+        "las": 0.9231,
+        "nested": {
+          "uas_no_punct": 0.943,
+          "bracket_f1": 0.8971,
+          "shown_precision": 0.9571,
+          "shown_coverage": 0.5372,
+          "role_precision": 0.9599
+        }
+      },
+      "nested_view": true,
+      "performance": {
+        "parse_5000_chars_s": {
+          "wasm": 1.483,
+          "webgpu": 0.275
+        }
+      },
+      "requirements": {
+        "min_device_memory_gb": 8
+      }
+    }
+  ]
+}

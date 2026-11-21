@@ -16,7 +16,7 @@
  *   5. Basic-mode notice with a re-parse action once the model is ready.
  *   6. Split into child components next to this file if > ~200 lines
  *      (agents.md → React).
- *   7. `strings` constant for user-facing text.
+ *   7. user-facing text via useI18n() catalog keys (T68).
  *
  * Dependencies:
  *   External: react.
@@ -27,5 +27,19 @@
  * Open items (todo.md): parse-display style; how alternatives
  *   are displayed; grammar label language; lookup trigger.
  *
- * Status: header only; not implemented.
+ * Status: placeholder (T39 app shell); the page is built in T57.
  */
+
+import { useI18n } from "../../hooks/useI18n";
+import styles from "./OutputPage.module.css";
+
+/** TODO(T57): placeholder page. */
+export function OutputPage(): React.JSX.Element {
+  const { t } = useI18n();
+  return (
+    <section className={styles.page} aria-labelledby="page-title">
+      <h1 id="page-title">{t("page.output.title")}</h1>
+      <p>{t("page.output.placeholder")}</p>
+    </section>
+  );
+}

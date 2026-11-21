@@ -36,14 +36,18 @@ function connect(fail = false) {
       sent.push(m);
       void handle(m);
     },
-    addEventListener: (_t, fn) => {
-      onMessage = fn;
-    },
+    addEventListener: ((type: "message" | "error", fn: (e: never) => void) => {
+      if (type === "message") onMessage = fn as typeof onMessage;
+    }) as WorkerPort["addEventListener"],
     terminate: () => {
       terminated = true;
     },
   };
-  return { client: createParserClient(port), sent, isTerminated: () => terminated };
+  return {
+    client: createParserClient(port),
+    sent,
+    isTerminated: () => terminated,
+  };
 }
 
 describe("createParserClient", () => {
@@ -73,6 +77,26 @@ describe("createParserClient", () => {
     expect(err).toBeInstanceOf(ParserLoadError);
     expect((err as ParserLoadError).reason).toBe("network");
     expect(client.status()).toMatchObject({ state: "failed", reason: "network" });
+  });
+
+  it("fails pending requests and reports a failed status when the worker script errors", async () => {
+    // A worker whose script failed: it never answers, then reports an error event.
+    let onError: (e: { message?: string }) => void = () => undefined;
+    const silent: WorkerPort = {
+      postMessage: () => undefined,
+      addEventListener: ((type: "message" | "error", fn: (e: never) => void) => {
+        if (type === "error") onError = fn as typeof onError;
+      }) as WorkerPort["addEventListener"],
+      terminate: () => undefined,
+    };
+    const client = createParserClient(silent);
+    const statuses: string[] = [];
+    client.onStatus((s) => statuses.push(s.state));
+    const load = client.load(MODEL);
+    onError({ message: "SyntaxError: import failed" });
+    await expect(load).rejects.toThrow(/parser worker error: SyntaxError: import failed/);
+    expect(client.status()).toMatchObject({ state: "failed", reason: "unsupported" });
+    expect(statuses).toEqual(["failed"]);
   });
 
   it("dispose terminates the worker and rejects later requests", async () => {

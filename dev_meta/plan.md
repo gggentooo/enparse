@@ -42,7 +42,7 @@ Open decisions and tasks are tracked in [todo.md](todo.md), ordered by dependenc
 
 - **Model choice:** a model library offers up to four parser models (different size, speed, and accuracy); the user chooses and downloads one before parsing, and can switch or delete models later.
 - **Sentence structure breakdown:** Syntactic parsing that splits complex sentences into noun phrases (NPs) and verb phrases (VPs). Two views: flat phrases and nested phrases grouped by level (e.g., `[[The [red [dog]]] [rarely [[barks] loudly]]]`). **(proposed)** Nested phrases also carry grammatical roles and head-of-parent markers (e.g., `[The red dog]` as `NP(Subject)`, `[rarely barks loudly]` as `VP(Predicate)`, and `[red dog]` as `NP` head of `[The red dog]`). Ambiguous sentences display multiple valid parses.
-- **Automatic dictionary lookup:** Highlighting a word shows its English and Korean definitions and example usages. Dictionary data is compiled into a static local database (hosted via raw content URLs), avoiding live API calls.
+- **Automatic dictionary lookup:** Clicking or tapping a word shows its English and Korean definitions and example usages (owner, T25). Dictionary data is compiled into a static local database served from the app's own origin (R2, like the models; T12), avoiding live API calls.
 - **Subword parsing:** Frequently occurring prefixes, bases, and suffixes (e.g., *un-*, *-ism*) are parsed and treated as vocabulary items.
 - **Vocabulary list export:** Users create custom vocab lists within the app and can export/import them in a portable file format.
 
@@ -50,6 +50,18 @@ Open decisions and tasks are tracked in [todo.md](todo.md), ordered by dependenc
 
 - **Modularity:** Every submodule must be independent. New features must be addable without impacting existing modules.
 - **Extensibility:** Architecture must support future feature additions with minimal refactoring.
+
+### Product decisions (owner, 2026-11-21)
+
+| Topic | Decision |
+|-------|----------|
+| Milestones (T14) | **M1:** model library + parse + flat/nested views + alternatives + **dictionary** → **M2:** vocabulary lists + subword parsing. |
+| Offline (T15) | **Full PWA in v1:** installable, app shell works offline; models already cached in Cache Storage (build: T69). |
+| License (T16) | App code: **PolyForm Noncommercial 1.0.0** with `Required Notice: Copyright Hankyung Lee (https://github.com/gggentooo/enparse)` (`LICENSE.md`): credit required, commercial use not allowed. Models stay CC BY-SA 4.0; libraries and dictionary data keep their own licenses. |
+| Privacy (T17) | **No tracking at all:** no analytics, telemetry, or usage statistics. |
+| Interface language (T18) | **Korean UI**; grammar labels show Korean with the English term, e.g. "명사구 (NP)", "주어 (Subject)". UI text goes through i18n plumbing so more languages (e.g. Japanese, Chinese) can be added later (build: T68). |
+| Devices and accessibility (T19) | **Desktop-first, responsive:** laptops and desktops are the primary target; phones and tablets get a responsive layout and the smallest model if pre-flight allows. Last two versions of Chrome, Edge, Firefox; Safari 26+. **WCAG 2.1 AA.** |
+| Visual design (T20) | Flat view: **color-coded chunk highlights** with the type always shown as text; nested view: **nested boxes** (or indented brackets) with role badges; colorblind-safe palette (Okabe–Ito placeholder), keyboard-friendly, mobile-ready. |
 
 ---
 
@@ -190,3 +202,8 @@ See [architecture.md](architecture.md) for the technology stack, layers, module 
 - Removed: *Undecided* section. Every open item is now a task in `todo.md` (owner decision). Decided notes it held are already recorded elsewhere: parser engine and no fallback (`architecture.md` → *Parsing engine*), accuracy before speed (`plan-training.md` → *Overview*), model library decisions (`architecture.md` → *Model library*), subword method (`architecture.md` → *Subword segmentation*).
 - Added: *Open items and tasks* pointer to `todo.md`.
 - Modified: *Core features* → *Sentence structure breakdown*: restored the confirmed nested example; grammatical roles and head-of-parent markers (added 2026-11-19 by Antigravity) marked **(proposed)**.
+
+### 2026-11-21T04:57:03Z — Claude Opus 5.5, Product decisions T14–T20
+
+- Added: *Product decisions* table (owner): milestones with the dictionary in M1, full PWA, PolyForm Noncommercial license, no tracking, Korean UI with i18n, desktop-first responsive + WCAG 2.1 AA, chunk highlights + nested boxes.
+- Modified: *Core features* → dictionary lookup trigger (click/tap) and hosting (own origin, R2), replacing "raw content URLs".

@@ -35,7 +35,7 @@
  *   inside a dedicated worker. Requests are handled one at a time in arrival
  *   order, so a parse sent after load waits for the load to finish.
  *
- * Status: implemented (T35). The transformer backend is a placeholder until T63.
+ * Status: implemented (T35); registers the ONNX backend (T63).
  */
 
 import { Parser } from "./parser";
@@ -85,7 +85,9 @@ export function createWorkerHandler(deps: WorkerDeps): (msg: WorkerRequest) => P
     setStatus({ state: "loading", modelId: model.id, phase: "initialize", progress: null });
     const b = deps.createBackend();
     try {
-      await b.load(model, (p) => setStatus({ state: "loading", modelId: model.id, phase: p.phase, progress: p.progress }));
+      await b.load(model, (p) =>
+        setStatus({ state: "loading", modelId: model.id, phase: p.phase, progress: p.progress }),
+      );
       if (!b.isReady()) throw new ParserLoadError("invalid-model", "backend not ready after load");
       const { labels, backend: compute } = b.info();
       backend = b;

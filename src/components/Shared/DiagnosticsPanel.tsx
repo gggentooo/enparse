@@ -16,7 +16,7 @@
  *      browser, free storage, retry); retry button → useParser().retryLoad.
  *   4. Accessible: list semantics, status not conveyed by color alone,
  *      focusable retry button.
- *   5. `strings` constant for user-facing text (check names, reasons).
+ *   5. user-facing text via useI18n() catalog keys (T68) (check names, reasons).
  *   6. Component test in DiagnosticsPanel.test.tsx with a mocked hook.
  *
  * Dependencies:

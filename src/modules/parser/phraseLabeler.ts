@@ -83,7 +83,9 @@
  * Status: implemented (T34). Tests: phraseLabeler.test.ts.
  */
 
+import { buildPhrases, gatePhrases } from "./treeDecoder";
 import type {
+  DecodedTree,
   LabeledPhrase,
   LabeledSentencePhrases,
   LabeledWord,
@@ -185,7 +187,10 @@ export function labelPhrases(
 
   const info: HeadInfo[] = Array.from({ length: n }, (_, h) => {
     const real = (deps[h] ?? []).filter((d) => !isPunct(d));
-    const order = [...real.filter((d) => d > h).sort((a, b) => a - b), ...real.filter((d) => d < h).sort((a, b) => b - a)];
+    const order = [
+      ...real.filter((d) => d > h).sort((a, b) => a - b),
+      ...real.filter((d) => d < h).sort((a, b) => b - a),
+    ];
     const levels = new Map<string, number>();
     const words = new Set<number>([h]);
     levels.set(keyOf(words), 0);
@@ -313,4 +318,20 @@ export function labelPhrases(
   };
 
   return items.map((it) => ("word" in it ? labelWord(it, null) : labelNode(it, null)));
+}
+
+/**
+ * The nested view of one decoded tree: buildPhrases → gatePhrases (bracket threshold) →
+ * labelPhrases with the role gate (relation × head probability ≥ role threshold).
+ * Used by parser.ts (primary parse) and ambiguity.ts (alternatives).
+ */
+export function labeledView(
+  tree: DecodedTree,
+  upos: readonly string[],
+  thresholds: { bracket: number; role: number },
+): LabeledSentencePhrases {
+  const baseRelations = tree.relations.map(base);
+  const items = gatePhrases(buildPhrases(tree.heads, upos, baseRelations), tree, thresholds.bracket);
+  const confidence = tree.relationProbs.map((p, i) => p * (tree.headProbs[i] ?? 0));
+  return labelPhrases(items, tree.heads, tree.relations, upos, { confidence, threshold: thresholds.role });
 }

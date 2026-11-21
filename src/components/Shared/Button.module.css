@@ -4,5 +4,36 @@
  * Description: button variants and states.
  * Tasks: 1. Variants. 2. Hover, focus-visible, disabled, loading.
  * Dependencies: src/css/tokens.css. Used by: Button.tsx.
- * Status: header only; not implemented.
+ * Status: implemented (T39).
  */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.primary {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.danger {
+  background: var(--color-error);
+  color: var(--color-error-contrast);
+}

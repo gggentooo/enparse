@@ -54,6 +54,8 @@ export type WordSpan = {
   start: number;
   /** End offset (UTF-16 index, exclusive). */
   end: number;
+  /** wink-nlp lemma (lower case), or the word itself for merged words (URLs, hyphenated words); T71. */
+  lemma?: string;
 };
 
 /** One runtime sentence (wink split) with its words. */
@@ -261,7 +263,7 @@ export type Token = {
   /** wink character offsets into the preprocessed text (traceability). */
   start: number;
   end: number;
-  /** Lemma from wink-nlp; null until winkBackend provides lemmas (TODO(lemma)). */
+  /** Lemma from wink-nlp (lower case; merged words keep their form); null if unknown. */
   lemma: string | null;
   upos: string;
   uposProb: number;
@@ -279,12 +281,27 @@ export type Token = {
 /** A flat chunk: type and token range (0-based, inclusive). */
 export type Chunk = { type: ChunkType; start: number; end: number };
 
+/** What an alternative changes for one token (fields absent = same as the primary parse). */
+export type TokenChange = {
+  index: number;
+  upos?: string;
+  chunkTag?: string;
+  head?: number;
+  relation?: string;
+};
+
 /** One ranked alternative parse of a sentence (built by ambiguity.ts; T60). */
 export type Alternative = {
   /** 1 = most probable alternative. */
   rank: number;
+  /**
+   * Share of this reading among the primary parse and the shown alternatives (they sum to 1
+   * with the primary's share): P(reading) / Σ P, where P is relative to the primary parse.
+   */
   probability: number;
   reason: "probability" | "attachment";
+  /** Tokens whose labels or head differ from the primary parse (the UI marks these words). */
+  changes: TokenChange[];
   chunks: Chunk[];
   phrases: LabeledSentencePhrases | null;
 };

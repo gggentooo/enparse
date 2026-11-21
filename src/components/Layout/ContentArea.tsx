@@ -14,5 +14,17 @@
  *   Internal: ./ContentArea.module.css.
  *   Used by: ./Layout.tsx.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T39).
  */
+
+import { Outlet } from "react-router";
+import styles from "./ContentArea.module.css";
+
+/** Main content region (skip-link target). */
+export function ContentArea(): React.JSX.Element {
+  return (
+    <main id="content" className={styles.content} tabIndex={-1}>
+      <Outlet />
+    </main>
+  );
+}

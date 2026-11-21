@@ -16,8 +16,40 @@
  *
  * Dependencies:
  *   External: react-router-dom.
- *   Internal: components/App.tsx, components/Pages/*.tsx.
+ *   Internal: components/App.tsx, components/Pages/*.tsx, ./paths.ts.
  *   Used by: src/main.tsx. Kept in sync with components/Layout/Sidebar.tsx links.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T39). #/about added for T21 (page built in T50).
  */
+
+import { Navigate, type RouteObject, createHashRouter } from "react-router";
+import { App, RouteError } from "./components/App";
+import { AboutPage } from "./components/Pages/AboutPage";
+import { DictionaryPage } from "./components/Pages/DictionaryPage";
+import { InputPage } from "./components/Pages/InputPage";
+import { ModelsPage } from "./components/Pages/ModelsPage";
+import { OutputPage } from "./components/Pages/OutputPage";
+import { VocabPage } from "./components/Pages/VocabPage";
+import { PATHS } from "./paths";
+
+/** Route tree (exported for tests with a memory router). */
+export const routes: RouteObject[] = [
+  {
+    path: "/",
+    element: <App />,
+    errorElement: <RouteError />,
+    children: [
+      { index: true, element: <Navigate to={PATHS.input} replace /> },
+      { path: PATHS.input, element: <InputPage /> },
+      { path: PATHS.output, element: <OutputPage /> },
+      { path: PATHS.vocab, element: <VocabPage /> },
+      { path: PATHS.dictionary, element: <DictionaryPage /> },
+      { path: PATHS.models, element: <ModelsPage /> },
+      { path: PATHS.about, element: <AboutPage /> },
+      { path: "*", element: <Navigate to={PATHS.input} replace /> },
+    ],
+  },
+];
+
+/** The app's hash router (works on any static host). */
+export const router = createHashRouter(routes);

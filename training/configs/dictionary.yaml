@@ -1,0 +1,27 @@
+# =============================================================================
+# training/configs/dictionary.yaml — dictionary and word-list sources (T41, T70)
+# =============================================================================
+#
+# Description:
+#   Pinned sources for app data built outside the model phases: the subword
+#   known-word list (T41, js/build_known_words.mjs) now; the dictionary sources
+#   of T25/T42 are added with the dictionary pipeline (T70). Each source has a
+#   URL, the SHA-256 of the downloaded file, its license, and the attribution
+#   to show in the app (About & licenses).
+#
+# Dependencies: read by js/build_known_words.mjs (and T70 scripts).
+# Status: NGSL pinned (2026-11-21); dictionary sources pending (T70).
+# =============================================================================
+
+sources:
+  ngsl:
+    name: New General Service List 1.2 (lemmatized, research version)
+    url: https://www.newgeneralservicelist.com/s/NGSL_12_lemmatized_for_research.csv
+    file: data/raw/ngsl/NGSL_12_lemmatized_for_research.csv
+    sha256: d814f2a0a3c61479a2c5ad037661719a0cc6e7dbcde31f181b54f12d0f1e11a4
+    license: CC BY-SA 4.0
+    license_url: https://creativecommons.org/licenses/by-sa/4.0/
+    attribution: "New General Service List by Browne, C., Culligan, B., and Phillips, J. is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (https://www.newgeneralservicelist.com/new-general-service-list)."
+
+known_words:
+  output: ../src/modules/subword/knownWords.generated.ts   # relative to training/

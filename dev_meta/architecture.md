@@ -50,8 +50,8 @@ This guide applies to all contributors (human and AI) editing this file.
 
 | Technology   | Role                                           |
 |--------------|-------------------------------------------------|
-| React 18+    | UI library with hooks and functional components  |
-| React Router | Hash-based routing (`createHashRouter`); no server dependency |
+| React 19.3.1 + react-dom 19.3.1 | UI library with hooks and functional components (MIT; owner, 2026-11-21, T13) |
+| react-router 8.5.2 | Hash-based routing (`createHashRouter`); no server dependency (MIT; T13) |
 | TypeScript 7.0.2 | Type safety across all layers (`strict`)     |
 | Vite 8.3.8   | Build tool (static server, bundler); same version as `training/js` |
 | CSS Modules  | Scoped, maintainable styling per component       |
@@ -60,7 +60,7 @@ This guide applies to all contributors (human and AI) editing this file.
 | jszip        | Archive export format (optional)                 |
 | csv-stringify + csv-parse | CSV import/export (optional)        |
 
-**Tool stack (approved 2026-11-18):** npm (lockfile committed), Node.js 20+, TypeScript 7.0.2, Vite 8.3.8, Vitest 5.1.0 (unit tests). ESLint + Prettier, React Testing Library, and Playwright are still proposed (`agents.md` → *Tooling and commands*).
+**Tool stack (approved 2026-11-18):** npm (lockfile committed), Node.js 20+, TypeScript 7.0.2, Vite 8.3.8, Vitest 5.1.0 (unit tests). **Added 2026-11-21 (owner, T13):** `@vitejs/plugin-react` 6.3.0; oxlint 1.94.0 (lint) + Prettier 3.10.1 (format, `printWidth` 120); React Testing Library 16.3.3 + jsdom 31.0.1 (component tests); fake-indexeddb 6.2.8 (storage tests; T29); Playwright 1.65.1 (end-to-end); GitHub Actions CI (`.github/workflows/ci.yml`, checkout without LFS). ESLint + typescript-eslint was not chosen: typescript-eslint supports TypeScript < 6.1 only. See `agents.md` → *Tooling and commands*.
 
 **Bundle size (measured 2026-11-18):** wink-nlp + model ≈ 1.0 MB gzipped (3.5 MB minified), in the parser worker chunk. Transformers.js ≈ 125 KB gzipped JS, plus the ONNX Runtime WASM binary (≈ 3.6 MB gzipped), fetched when the model loads. React and the model file are not included.
 
@@ -92,6 +92,8 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `services/`    | Async APIs for the UI. Compose logic modules into workflows; hold shared app state. | `modules/`, `core/`        |
 | `modules/`     | Pure TypeScript logic. No React, no DOM, no rendering.                            | `core/`, `utils/`          |
 | `core/`, `utils/` | Infrastructure shared by all modules.                                          | Nothing internal           |
+| `i18n/`        | UI message catalogs (`en.ts` reference key set, `ko.ts` default) and lookup (`i18n.ts`); T68. Pure data and functions. | Nothing internal (components, hooks, and services may import it) |
+| `pwa/`         | Service worker source (`sw.ts`) and its pure rules (`swRules.ts`); built separately into `dist/sw.js`; T69. Runs in the worker scope, not in the page. | Nothing internal |
 
 - **Modules never import other modules.** Any combination of modules (e.g., normalize input → parse → build annotations) happens in a service.
 - **Services never import other services.** When a feature needs several services, a hook or component combines them.
@@ -100,6 +102,18 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 
 ## Logic modules
 
+**Module decisions (owner, 2026-11-21):**
+
+| Module | Decision |
+|--------|----------|
+| modelLibrary (T22) | Recommend, among models not blocked and without memory warnings, the highest chunk F1 that parses 5,000 characters within 5 s on this device; ties → smaller download (DeBERTa-v3-xsmall today). Model cards lead with a label ("가장 정확함 / Most accurate", "가장 빠름 / Fastest on this device") and keep numbers (accuracy, size, expected speed here) behind a "details" toggle. |
+| modelLibrary (T23) | `catalog.json` gains the nested-view metrics (UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage, role precision) and makes `variants.int8` / `variants.fp16` each optional. No multi-file ONNX. |
+| preflight (T24) | All proposed checks plus WebGPU `shader-f16`. Low memory → warn. Storage: block a download that cannot fit the quota, warn when tight, call `storage.persist()` after the first download. No `shader-f16` → int8 on WASM. Integrity failure → delete, re-download once, then fail. Diagnostics always reachable from a header status badge. |
+| dictionary (T25) | Definitions: Open English WordNet (CC BY 4.0); Korean translations: Wiktionary translation sections via kaikki.org extracts (CC BY-SA); examples: Tatoeba English–Korean pairs (CC BY 2.0 FR); ~10–20k headwords from a learner list (NGSL) plus frequent EWT words; phrasal verbs only; all senses, the predicted part of speech first; click/tap a word → popup → "more" opens `DictionaryPage`. Licenses to be re-checked before release. Served same-origin from R2. |
+| dictionary (T42) | **Format:** static JSON: a small index (headwords and the inflection map) loaded on first lookup, plus ~64–256 entry shards grouped by a hash of the lookup key, and a manifest with each file's size and SHA-256. **Loading:** shards fetched on demand and kept in a versioned Cache Storage cache (`enparse-dict-v<N>`); an opt-in "Make dictionary available offline" download fetches all shards with progress and integrity checks (T38 functions); nothing large downloads without the user. **Pipeline:** Python in `training/dictionary/` (sources, extraction, sharding) plus a `training/js` step that runs the app's `winkBackend` lemmatizer and `lookupKey` through `tsx`, so headwords match runtime words. **Lemmas:** a build-time inflection index (Wiktionary forms + WordNet exceptions, checked against wink) maps every form to its headword(s), so DictionaryPage resolves *ran* → *run* without wink; parse clicks use the token's wink lemma first (T71). **Keys:** `utils/helpers.ts` → `lookupKey` everywhere; phrasal verbs keyed as "verb particle". No new dependency. |
+| subword (T26) | Own curated affix list (~80–120, ordered by Bauer & Nation 1993 levels) with our own Korean glosses and 1–2 examples each; a compressed known-word list (NGSL + lemma forms) bundled in `subword/`. |
+| vocab (T27) | Entry: `id`, `word`, `lemma`, `upos`, `definitionEn`, `definitionKo`, `example`, `sourceSentence`, `notes`, `tags[]`, `addedAt`, `schemaVersion`. Export: versioned JSON (canonical) + CSV via a small hand-written codec (no new dependency). Import: merge by `id`; same word with another `id` kept and flagged; ask only on list-name collisions. Lists in IndexedDB, settings in LocalStorage (`core/storage.ts`); periodic "export a backup" reminder. |
+
 | Module                       | Description                                                                                       |
 |------------------------------|---------------------------------------------------------------------------------------------------|
 | `core/storage.ts`            | Persistent state wrapper (LocalStorage for small data, IndexedDB for larger datasets).             |
@@ -107,7 +121,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `utils/helpers.ts`           | Shared utilities: string normalization, date formatting, debounce/throttle helpers.                |
 | `input/textInput.ts`         | Preprocessor: cleanup, normalization, length limits (see *Parsing engine*). UI is in `InputPage`. |
 | `parser/parser.ts`           | Parser adapter interface (`ParserBackend`). Accepts clean text, returns sentences, tokens, chunk parses, and (model mode) dependency trees with nested phrases. Pluggable backend. |
-| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX model via Transformers.js (`model.forward()`, both outputs); splits `logits` into label groups (`labels.json` → `groups`: UPOS\|CHUNK, relation) and reads `arc_scores` per sentence; applies the calibration temperatures. |
+| `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX model via Transformers.js (`model.forward()`, both outputs); splits `logits` into label groups (`labels.json` → `groups`: UPOS\|CHUNK, relation) and reads `arc_scores` per sentence; applies the calibration temperatures. Packs sentences into windows like training (`build_windows`), validates `labels.json`, and self-tests after loading; fp16 runs on WebGPU, int8 on WASM (the variant is chosen by pre-flight and `parserService`). |
 | `parser/treeDecoder.ts`      | Decodes arc scores into a dependency tree (maximum spanning tree, one root), builds nested phrases by a fixed bracketing order, and collapses low-confidence brackets (Phase 8 threshold). No grammar rules. |
 | `parser/phraseLabeler.ts` | Deterministic post-processor on `treeDecoder.ts` output: labels nested phrases with grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause vs. predicate categories (`S` vs. `VP`), and head-of-parent markers (`isHead`) using the model's dependency tree. Never overrides attachments. Conventions approved by the owner (2026-11-20): see *Parsing engine* → *Role labeling*. |
 | `preflight/preflight.ts`     | Runs pre-flight stages (device, model, post-load file verification) through `core/environment` and combines results into a `PreflightReport` with a verdict (`ok`, `warn`, `blocked`). |
@@ -197,8 +211,8 @@ The app ships up to four models (one per base model) and the user chooses which 
 
 | File | Layer | Role |
 |------|-------|------|
-| `public/models/catalog.json` | static asset | Offered models (schema v1), written by `training/scripts/package_models.py` (Phase 11). |
-| `public/models/<model-id>/` | static asset | One model: `config.json`, tokenizer files, `labels.json`, `onnx/model_quantized.onnx` (int8), `onnx/model_fp16.onnx`. |
+| `public/models/catalog.json` | static asset | Offered models (schema v1), written by `training/scripts/package_models.py` (Phase 11). Served from R2 at `/models/catalog.json` (see *Deployment*). |
+| `public/models/<model-id>/` | static asset | One model: `config.json`, tokenizer files, `labels.json`, `onnx/model_quantized.onnx` (int8), `onnx/model_fp16.onnx`. Source of truth in Git LFS; uploaded to R2 and served at `/models/<model-id>/…` (see *Deployment*). |
 | `modules/modelLibrary/catalog.ts` | modules | Load and validate the catalog; files per model and variant. |
 | `modules/modelLibrary/downloads.ts` | modules | Per-model state on this device; download with progress and verify (bytes, SHA-256) into Cache Storage; cancel; delete. |
 | `modules/modelLibrary/selection.ts` | modules | Persisted user choice (`core/storage`); recommendation. |
@@ -215,9 +229,9 @@ The app ships up to four models (one per base model) and the user chooses which 
 | `id`, `display_name`, `description` | Model id (`train_<id>.yaml` key) and texts from `training/configs/catalog.yaml` |
 | `base_model`, `license`, `model_version` | Base model id and license; release version |
 | `folder`, `labels` | Path of the model folder and its `labels.json` |
-| `variants` | `int8` and `fp16`: ONNX file and size in bytes |
+| `variants` | `int8` and `fp16`, each optional (T23): ONNX file and size in bytes |
 | `shared_files` | Config and tokenizer files with sizes and SHA-256 |
-| `metrics` | EWT test UPOS, chunk F1, UAS, LAS |
+| `metrics` | EWT test UPOS, chunk F1, UAS, LAS; nested view (T23): UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage, role precision |
 | `nested_view` | `true` if the model meets the nested-view targets (*Parsing engine* → *Nested phrases*: UAS without punctuation ≥ 93, multi-word labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets) |
 | `performance` | Phase 10: first-load time, parse time per backend, peak memory per backend |
 | `requirements` | Phase 10: `min_device_memory_gb` |
@@ -231,8 +245,25 @@ Top level: `schema_version` (1), `generated_at`, `models`.
 - **Memory:** one model is loaded at a time; switching unloads the previous model first.
 - **Storage:** any number of downloaded models stay cached; the library shows each model's size on disk with a delete button, and pre-flight warns when storage is low. Deleting the active model unloads it first.
 - **Downloads:** started only by the user; byte progress; each file verified (size and SHA-256 from `labels.json` → `files`) as it arrives; a failed file is deleted and retried once.
+- **Cache contract (T31 spike, 2026-11-21):** verified files are stored in the Cache Storage cache `transformers-cache` under their absolute URL `<origin>/models/<model-id>/<file>`. Transformers.js 4.3.2 looks that key up before fetching, so loading a downloaded model makes no model-file requests (checked in Chrome 158 and Safari 27). Whole-file SHA-256 with `crypto.subtle.digest` is fast enough (302 MB in ≤ 0.26 s); no streaming hash or split files are needed. Private windows may not have the quota to store a model (Chrome's `cache.put` failed for 302 MB), so pre-flight must check `storage.estimate()` before a download (`training/reports/benchmark.md`).
 - **Per-model features:** the nested view is available only for models with `nested_view: true`.
 - `modules/modelLibrary` does not import `modules/parser` or `modules/preflight`; `parserService` passes plain data between them.
+
+### Deployment (owner, 2026-11-21; T12)
+
+The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2** and are served on the app's own origin, so the same-origin asset rule (`agents.md` → *Parser and worker code*) is unchanged.
+
+| Part | Where | Notes |
+|------|-------|-------|
+| App (`dist/`) | Cloudflare Pages | `npm run build`; `public/models/` is left out of `dist/` (`vite.config.ts` → `skipModelFiles`), since single ONNX files (90–302 MB) exceed Pages' 25 MiB per-file limit. |
+| Model files (`/models/*`) | R2 bucket bound as `MODELS` | `functions/models/[[path]].ts` (Pages Function) serves GET/HEAD with single byte ranges, ETag, and cache headers (`catalog.json` always revalidates). Integrity is checked by the app (SHA-256 in `labels.json` → `files`). |
+| ONNX Runtime Web (`/models/_ort/*`) | Same R2 bucket | `ort-wasm-simd-threaded.asyncify.{mjs,wasm}` from the `onnxruntime-web` version Transformers.js pins (the `.wasm` is 26.9 MB, over Pages' limit). `transformerBackend.ts` sets `wasmPaths` here; by default Transformers.js would load them from cdn.jsdelivr.net (not allowed). |
+| Response headers | `public/_headers` | COOP `same-origin` + COEP `require-corp` (cross-origin isolation for multi-threaded WASM), `nosniff`, `no-referrer`; `sw.js` is `no-cache` so updates are found. |
+| Offline app shell (T69) | `dist/sw.js` (from `src/pwa/sw.ts`) | Precaches the built shell (list and version hash injected at build); page loads network-first with the cached shell offline (COOP/COEP re-applied); never handles `/models/*` or `/dict/*`; a new version waits for the user's "reload" in the update banner. |
+| Source of truth | Git LFS (`public/models/`) | Uploaded to R2 by the Phase 11 packaging step (upload tool chosen there). |
+| Dictionary data | R2, same origin | Sharded JSON (T42), under a versioned path (proposed: `/dict/v<N>/`, a Pages Function route like `/models/*`; T70). |
+
+Open checks (T31): Range requests and streaming through the Function into Cache Storage; Function request quotas for the expected traffic.
 
 ### Model readiness (no fallback)
 
@@ -290,7 +321,7 @@ ready
 | Device | `module-workers` | Module Web Workers | Fail |
 | Device | `wasm`, `wasm-simd` | `WebAssembly`, `WebAssembly.validate` (ONNX Runtime Web ships SIMD builds only) | Fail |
 | Device | `wasm-threads` | `crossOriginIsolated` + `SharedArrayBuffer` (needs COOP/COEP headers from the host) | Warn (slower) |
-| Device | `webgpu` | `navigator.gpu.requestAdapter()`, buffer limits | Info (missing → WASM) |
+| Device | `webgpu` | `navigator.gpu.requestAdapter()`, buffer limits, and the `shader-f16` feature (the fp16 variant needs it; T67 found a WebGPU adapter without it) | Info (missing or no `shader-f16` → int8 on WASM) |
 | Device | `cache-storage` | Cache API | Warn (re-download every visit) |
 | Device | `memory-hint` | `navigator.deviceMemory` (Chromium only; skipped elsewhere) | Warn |
 | Model | `manifest-schema` | `labels.json`: supported `schema_version`; needed fields not `null` | Fail |
@@ -324,6 +355,8 @@ ready
    |---|---|---|---|---|
    | deberta_v3_xsmall | 0.4 | 0.3 | 0.85 | 1.78 / 1.99 / 5.57 |
    | modernbert_base | 0.3 | 0.3 | 0.80 | 2.05 / 2.28 / 9.39 |
+
+6. **Display (owner, 2026-11-21; T11):** the primary parse is shown; ambiguous words and phrases are marked in it; each sentence with alternatives has an "Other readings (n)" control that switches that sentence's whole view (flat and nested) to the chosen alternative, and back. Label and attachment alternatives use the same control. Built in `ambiguity.ts` (T60), `output/annotator.ts`, and `OutputPage` (T57).
 
 ### Subword segmentation
 
@@ -382,7 +415,8 @@ Component ─► Hook ─► Service ─► Module(s)
 
 ### Routing
 
-- Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`, `#/models`).
+- Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`, `#/models`, `#/about`).
+- **Attribution (owner, 2026-11-21; T21):** `#/about` (*About & licenses*, linked from the sidebar) lists the app, models, training data (UD English EWT, CC BY-SA 4.0), runtime libraries, and dictionary sources with their licenses; each model card on `ModelsPage` also shows the model's license and source. Built in T50.
 - `ContentArea` renders the active route via `<Outlet />`.
 
 ### Component hierarchy
@@ -398,7 +432,8 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── OutputPage.tsx (annotated results, word selection, inline lookup)
       │       ├── VocabPage.tsx (custom vocab lists)
       │       ├── DictionaryPage.tsx (lookup results)
-      │       └── ModelsPage.tsx (model library: choose, download, delete models)
+      │       ├── ModelsPage.tsx (model library: choose, download, delete models; license and source per model)
+      │       └── AboutPage.tsx (About & licenses: attribution for app, models, data, libraries, dictionary; T21)
       └── Shared/
           ├── Button.tsx
           ├── Modal.tsx
@@ -415,6 +450,8 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 | `dictionaryService.ts` | `dictionary`, `staticDb`                           | `useDictionary` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
+| `languageService.ts`   | `core/storage`, `i18n` (UI language; T68)          | `useI18n`       |
+| `appUpdateService.ts`  | `core/pwa` (service worker, update prompt; T69)    | `useAppUpdate`  |
 
 ---
 
@@ -442,6 +479,14 @@ enparse/
 │   ├── index.html
 │   ├── main.tsx (entry point)
 │   ├── routes.tsx (route definitions)
+│   ├── paths.ts (page paths shared by routes.tsx and Sidebar.tsx)
+│   ├── i18n/ (T68)
+│   │   ├── en.ts (reference catalog: every message key)
+│   │   ├── ko.ts (Korean, default)
+│   │   └── i18n.ts (LANGUAGES, translate, display dates)
+│   ├── pwa/ (T69)
+│   │   ├── sw.ts (service worker; built into dist/sw.js)
+│   │   └── swRules.ts (what the worker may handle; tested)
 │   ├── css/
 │   │   ├── global.css (reset, typography)
 │   │   └── tokens.css (design tokens)
@@ -458,38 +503,47 @@ enparse/
 │   │   │   ├── OutputPage.tsx + OutputPage.module.css
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
 │   │   │   ├── DictionaryPage.tsx + DictionaryPage.module.css
-│   │   │   └── ModelsPage.tsx + ModelsPage.module.css
+│   │   │   ├── ModelsPage.tsx + ModelsPage.module.css
+│   │   │   └── AboutPage.tsx + AboutPage.module.css (About & licenses; T21)
 │   │   └── Shared/
 │   │       ├── Button.tsx + Button.module.css
 │   │       ├── Modal.tsx + Modal.module.css
 │   │       ├── Tooltip.tsx + Tooltip.module.css
 │   │       ├── LoadingSpinner.tsx + LoadingSpinner.module.css
+│   │       ├── UpdateBanner.tsx + UpdateBanner.module.css (new version prompt; T69)
 │   │       └── DiagnosticsPanel.tsx + DiagnosticsPanel.module.css
 │   ├── hooks/
 │   │   ├── useParser.ts
 │   │   ├── useModelLibrary.ts
 │   │   ├── useDictionary.ts
 │   │   ├── useSubword.ts
-│   │   └── useVocab.ts
+│   │   ├── useVocab.ts
+│   │   ├── useI18n.ts (T68)
+│   │   └── useAppUpdate.ts (T69)
 │   ├── services/
 │   │   ├── parserService.ts
 │   │   ├── dictionaryService.ts
 │   │   ├── subwordService.ts
-│   │   └── vocabService.ts
+│   │   ├── vocabService.ts
+│   │   ├── languageService.ts (T68)
+│   │   └── appUpdateService.ts (T69)
 │   ├── core/
 │   │   ├── storage.ts
-│   │   └── environment.ts
+│   │   ├── environment.ts
+│   │   └── pwa.ts (service worker registration; T69)
 │   ├── modules/ (each module also has index.ts (public API) and types.ts)
 │   │   ├── input/
 │   │   │   └── textInput.ts
 │   │   ├── modelLibrary/
 │   │   │   ├── catalog.ts
 │   │   │   ├── downloads.ts
-│   │   │   └── selection.ts
+│   │   │   ├── selection.ts
+│   │   │   └── catalog.fixture.json (test fixture from the Phase 9 exports)
 │   │   ├── preflight/
 │   │   │   ├── preflight.ts
 │   │   │   ├── checks.ts
-│   │   │   └── requirements.ts
+│   │   │   ├── requirements.ts
+│   │   │   └── testProbe.ts (test-only fixtures)
 │   │   ├── parser/
 │   │   │   ├── parser.ts
 │   │   │   ├── transformerBackend.ts
@@ -498,6 +552,7 @@ enparse/
 │   │   │   ├── treeDecoder.ts
 │   │   │   ├── phraseLabeler.ts
 │   │   │   ├── parser.worker.ts
+│   │   │   ├── bio.ts (BIO repair and chunk grouping)
 │   │   │   └── testFixtures.ts (test-only: mocked backend for *.test.ts)
 │   │   ├── output/
 │   │   │   └── annotator.ts
@@ -506,22 +561,32 @@ enparse/
 │   │   │   └── staticDb.ts
 │   │   ├── subword/
 │   │   │   ├── subwordParser.ts
-│   │   │   └── affixes.ts
+│   │   │   ├── affixes.ts
+│   │   │   └── knownWords.generated.ts (NGSL 1.2 known words, CC BY-SA 4.0; generated by training/js/build_known_words.mjs; loaded lazily)
 │   │   └── vocab/
-│   │       └── vocabManager.ts
+│   │       ├── vocabManager.ts
+│   │       └── csv.ts (CSV codec; no dependency)
 │   └── utils/
 │       └── helpers.ts
+├── functions/
+│   └── models/[[path]].ts (Cloudflare Pages Function: /models/* from R2; T12)
 ├── public/
-│   └── models/ (built by training/ in Phase 11; README.md placeholder)
+│   ├── _headers (Cloudflare Pages: COOP/COEP; sw.js no-cache; T12, T69)
+│   ├── manifest.webmanifest (PWA; T69)
+│   ├── icons/ (placeholder app icons until T20; T69)
+│   └── models/ (built by training/ in Phase 11; Git LFS; uploaded to R2, not in dist/)
 │       ├── catalog.json (offered models)
 │       └── <model-id>/ (one per offered model: ONNX files, tokenizer, labels.json)
 ├── training/ (offline only; not shipped; layout in plan-training.md)
 │   ├── configs/
 │   ├── scripts/ (env check, fetch, derive chunks, prepare, train, calibrate, export, evaluate)
-│   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark, bench-page/ browser benchmark)
+│   ├── dictionary/ (dictionary build pipeline: sources, extraction, inflection index, shards; T42/T70)
+│   ├── js/ (tokenization alignment, JS baselines, Transformers.js benchmark, bench-page/ browser benchmark, dictionary lemma step)
 │   ├── tests/
 │   ├── reports/
 │   └── MODEL_CARD.md
+├── .github/workflows/ci.yml (typecheck, lint, test, build; T13)
+├── .oxlintrc.json, .prettierrc.json, .prettierignore (lint and format; T13)
 ├── package.json
 ├── tsconfig.json (strict mode)
 ├── vite.config.ts (root: 'src'; publicDir: '../public')
@@ -529,7 +594,7 @@ enparse/
 ```
 
 - `src/` contains all app source files. `dist/` is generated by Vite and is git-ignored.
-- `training/` holds the offline model pipeline. Its output in `public/models/` is served as static files.
+- `training/` holds the offline model pipeline. Its output in `public/models/` (Git LFS) is uploaded to R2 and served on the app's origin at `/models/*` (*Deployment*).
 - Each logic module is a self-contained directory under `modules/`. Coding conventions and the step-by-step module guide are in `agents.md`.
 
 ### Adding a new feature
@@ -710,3 +775,47 @@ enparse/
 
 - Modified: *Model* → *Tokenizer input*: word encoding set in Phase 9 (`plain` for both offered models).
 - Modified: *Model* → *Quantization*: int8 and fp16 shipped per model after parity; Phase 9 sizes and results.
+
+### 2026-11-20T22:51:36Z — Claude Opus 5.5, transformerBackend implemented
+
+- Modified: *Logic modules* → `parser/transformerBackend.ts`: windows like training, `labels.json` validation, self-test, variant → device (T63).
+
+### 2026-11-20T23:00:00Z — Claude Opus 5.5, Owner decisions T11, T12, T13, T21
+
+- Added: *Model library* → *Deployment* (T12): Cloudflare Pages + R2 served same-origin at `/models/*` by a Pages Function; COOP/COEP via `_headers`; model files left out of `dist/`.
+- Added: *Ambiguity handling* item 6 (T11): per-sentence "Other readings (n)" switch with ambiguous words marked.
+- Added: *Routing* → `#/about` and attribution (T21); `AboutPage.tsx` in the component hierarchy and skeleton.
+- Modified: *Technology stack*: React 19.3.1, react-router 8.5.2; tool stack adds plugin-react, oxlint + Prettier, RTL + jsdom, Playwright, GitHub Actions (T13).
+- Added: skeleton → `functions/models/[[path]].ts`, `public/_headers`, `.github/workflows/ci.yml`, lint/format configs.
+
+### 2026-11-21T03:50:52Z — Claude Opus 5.5, Cache contract, self-hosted ONNX Runtime, app shell
+
+- Added: *Model library* → *Cache contract* (T31): `transformers-cache`, absolute `/models/<model-id>/<file>` keys, whole-file SHA-256, private-window quota.
+- Added: *Deployment* → ONNX Runtime Web served from `/models/_ort/` (R2), never from a CDN.
+- Modified: app shell implemented (T39): `src/paths.ts` (page paths shared by routes and sidebar), placeholder pages; `parser/bio.ts` (BIO repair and grouping, shared by `parser.ts` and `ambiguity.ts`; T60).
+
+### 2026-11-21T04:30:46Z — Claude Opus 5.5, WebGPU fp16 check
+
+- Modified: *Pre-flight checks* → `webgpu` also requires the `shader-f16` feature for the fp16 variant (T67: a WebGPU adapter without it fails to load fp16).
+
+### 2026-11-21T04:48:09Z — Claude Opus 5.5, Core and utils implemented; About page
+
+- Modified: `core/storage.ts` (T29), `core/environment.ts` probes and model-cache functions (T30, T38; `shader-f16` in the WebGPU probe), `utils/helpers.ts` (T28), `Pages/AboutPage.tsx` (T50) implemented.
+- Modified: *Technology stack* → fake-indexeddb (dev only).
+- Modified: dev and preview servers send the production COOP/COEP headers (`vite.config.ts`).
+
+### 2026-11-21T04:57:03Z — Claude Opus 5.5, Module decisions T22–T27
+
+- Added: *Logic modules* → *Module decisions* (owner): recommendation rule and model cards (T22), `catalog.json` changes (T23), pre-flight policies with `shader-f16` and quota blocking (T24), dictionary sources and lookup (T25), affix and known-word data (T26), vocabulary schema, formats, and storage (T27).
+
+### 2026-11-21T05:19:02Z — Claude Opus 5.5, Dictionary storage and pipeline decided (T42)
+
+- Added: *Module decisions* → dictionary (T42): sharded JSON + index + manifest, on-demand shards with an opt-in offline download, pipeline in `training/dictionary/` with a wink step, build-time inflection index, `lookupKey`.
+- Modified: *Deployment* → dictionary data row; skeleton → `training/dictionary/`.
+
+### 2026-11-21T05:43:45Z — Claude Opus 5.5, i18n, PWA, and Stage 0 modules
+
+- Added: *Layers* → `i18n/` (message catalogs and lookup; T68) and `pwa/` (service worker; T69).
+- Added: *Services and hooks* → `languageService` / `useI18n`, `appUpdateService` / `useAppUpdate`.
+- Added: *Deployment* → offline app shell (`sw.js`); `_headers` → `sw.js` no-cache.
+- Modified: skeleton → i18n, pwa, `core/pwa.ts`, `UpdateBanner`, manifest and icons, `vocab/csv.ts`, `subword/knownWords.generated.ts`, test fixtures.

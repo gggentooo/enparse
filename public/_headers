@@ -1,0 +1,14 @@
+# Cloudflare Pages response headers (owner, 2026-11-21; T12).
+# Cross-origin isolation enables multi-threaded WebAssembly (SharedArrayBuffer) for the
+# WASM backend; every asset is same-origin (models come from /models/* on this origin),
+# so require-corp blocks nothing the app needs. Function responses (/models/*) set their
+# own headers in functions/models/[[path]].ts.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+# The service worker must be re-checked on every visit so updates are found (T69).
+/sw.js
+  Cache-Control: no-cache

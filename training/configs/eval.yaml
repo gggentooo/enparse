@@ -47,7 +47,7 @@
 #     nested_view         — UAS excl. punct 0.93, multi-word bracket F1 0.88, shown precision 0.95
 #
 # Status: env_check (Phase 0), smoke, export, parity, acceptance (Phase 7/9), calibration and
-#   ambiguity (Phase 8) set; benchmark pending.
+#   ambiguity (Phase 8), benchmark (Phase 10) set.
 # =============================================================================
 
 # Phase 0 dummy training run (scripts/check_env.py). (proposed)
@@ -178,3 +178,15 @@ ambiguity:
   attachment_margin_candidates: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]      # PP-attachment alternatives
   max_alternatives: 5                                              # owner, T09
   max_mean_alternatives: 0.3                                       # owner, 2026-11-21 (1.0 never bound: the largest margins won)
+
+# Phase 10 browser benchmarks (js/bench_browsers.mjs + bench-page/; T64) and the T31 cache spike.
+benchmark:
+  sample_chars: 5000              # sample text: whole EWT test sentences, in order, up to this length
+  sample_source: data/raw/ud_ewt/en_ewt-ud-test.conllu
+  runs: 10                        # parses after one warm-up; median reported
+  budget_seconds: 5               # parse budget for the 5,000-character sample (architecture.md → Speed)
+  memory_sample_ms: 250           # browser process RSS sampling interval (peak minus idle baseline)
+  run_timeout_seconds: 600
+  port: 5180
+  browsers: [chrome, safari]      # owner, 2026-11-21: Safari and Chrome only for now
+  variants: [int8, fp16]          # int8 → WASM, fp16 → WebGPU (transformerBackend.ts)

@@ -1,0 +1,60 @@
+/*
+ * src/components/Pages/AboutPage.module.css — styles for AboutPage.tsx
+ *
+ * Description: page frame; credit lists; attribution quote.
+ * Dependencies: src/css/tokens.css. Used by: AboutPage.tsx.
+ * Status: implemented (T50).
+ */
+
+.page {
+  display: grid;
+  gap: var(--space-4);
+  max-width: var(--content-max-width);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.license {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.notice {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.attribution {
+  margin: 0;
+  padding: var(--space-3);
+  border-left: 4px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.links {
+  font-size: var(--font-size-sm);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

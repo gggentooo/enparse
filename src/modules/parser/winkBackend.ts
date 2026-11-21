@@ -26,7 +26,12 @@
  * Tasks:
  *   1. Load wink-nlp with wink-eng-lite-web-model once. (done)
  *   2. tokenize(text) → sentences and words with character offsets. (done)
- *      TODO(lemma): lemmas per word, including split contraction pieces.
+ *      Lemmas per word (T71, done): a word that is exactly one wink token takes
+ *      wink's lemma (in context; ambiguous 's / 'd follow wink); contraction
+ *      pieces split here (wink keeps "I'm" whole) take CONTRACTION_LEMMAS, the
+ *      base piece its own wink lemma; merged words (URLs, e-mail, hyphenated
+ *      words, symbol runs) keep their form. lemmaOf(word) lemmatizes one word
+ *      out of context for the dictionary pipeline (T70, via tsx).
  *   3. Unit tests in winkBackend.test.ts. (tokenization done)
  *
  * Dependencies:
@@ -35,12 +40,27 @@
  *   Used by: ./parser.worker.ts, ./parser.ts; training/js/align_tokens.mjs and
  *            training/js/evaluate_baselines.mjs (via tsx).
  *
- * Status: tokenization implemented (Phase 3 pre-work); lemmas pending.
+ * Status: tokenization (Phase 3 pre-work) and lemmas (T71) implemented.
  */
 
 import winkNLP, { type ItemSentence, type WinkMethods } from "wink-nlp";
 import model from "wink-eng-lite-web-model";
 import { type SentenceSpan, TokenizerError, type WordSpan } from "./types";
+
+/**
+ * Lemmas of contraction endings split off by this module (wink keeps e.g. "I'm" as one token).
+ * "'s" and "'d" are ambiguous (is/has/possessive, would/had): they keep their form here; when
+ * wink splits them itself, wink's lemma in context is used instead.
+ */
+export const CONTRACTION_LEMMAS: Readonly<Record<string, string>> = {
+  "n't": "not",
+  "'m": "be",
+  "'re": "be",
+  "'ve": "have",
+  "'ll": "will",
+  "'s": "'s",
+  "'d": "'d",
+};
 
 /** Contraction endings split off as their own word (matched case-insensitively). */
 export const CONTRACTION_SUFFIXES: readonly string[] = ["n't", "'m", "'s", "'re", "'ve", "'ll", "'d"];
@@ -51,6 +71,7 @@ export const CONTRACTION_SUFFIXES: readonly string[] = ["n't", "'m", "'s", "'re"
  * left out so typos like "done.It" stay ordinary words; such domains are
  * still caught when written with a scheme or "www.". Must be lowercase in text.
  */
+// prettier-ignore
 export const URL_TLDS: readonly string[] = [
   "com", "org", "net", "edu", "gov", "mil", "info", "biz", "io", "uk", "ca", "au", "nz", "de",
   "fr", "es", "nl", "ch", "se", "dk", "fi", "pl", "ru", "jp", "kr", "cn", "tw", "hk", "sg", "br",
@@ -76,10 +97,15 @@ const PROTECTED_RE = new RegExp(
 const TRAILING_PUNCT_RE = /[.,;:!?)\]'"]+$/u;
 const BARE_DOMAIN_EXEMPT_RE = /^(?:https?:\/\/|ftp:\/\/|www\.)/iu;
 
-/** A runtime word while rules run: span, wink sentence id, and URL lock. */
+/** A runtime word while rules run: span, wink sentence id, URL lock, and wink lemma (if one token). */
 type Piece = WordSpan & { sent: number; locked: boolean };
 
 let nlp: WinkMethods | null = null;
+
+/** Lemmas of a token collection (wink's typings do not accept `its.lemma` in `out()`; it works at runtime). */
+function tokenLemmas(tokens: unknown): string[] {
+  return (tokens as { out(f: unknown): string[] }).out(getNlp().its.lemma);
+}
 
 function getNlp(): WinkMethods {
   // Loaded once; the model is ~4 MB, so loading is deferred to first use.
@@ -94,12 +120,15 @@ function winkPieces(text: string): Piece[] {
     .readDoc(text)
     .sentences()
     .each((s: ItemSentence, sent: number) => {
-      for (const tok of s.tokens().out()) {
-        const start = text.indexOf(tok, cursor);
-        if (start < 0) throw new TokenizerError(`token ${JSON.stringify(tok)} not found after offset ${cursor}`);
-        pieces.push({ text: tok, start, end: start + tok.length, sent, locked: false });
-        cursor = start + tok.length;
-      }
+      const lemmas = tokenLemmas(s.tokens());
+      s.tokens()
+        .out()
+        .forEach((tok, k) => {
+          const start = text.indexOf(tok, cursor);
+          if (start < 0) throw new TokenizerError(`token ${JSON.stringify(tok)} not found after offset ${cursor}`);
+          pieces.push({ text: tok, start, end: start + tok.length, sent, locked: false, lemma: lemmas[k] ?? tok });
+          cursor = start + tok.length;
+        });
     });
   return pieces;
 }
@@ -202,8 +231,15 @@ function splitContractions(pieces: Piece[]): Piece[] {
       continue;
     }
     const cut = w.start + (m[1] as string).length;
-    out.push({ ...w, text: w.text.slice(0, cut - w.start), end: cut });
-    out.push({ ...w, text: w.text.slice(cut - w.start), start: cut });
+    const base = w.text.slice(0, cut - w.start);
+    const suffix = w.text.slice(cut - w.start);
+    out.push({ ...w, text: base, end: cut, lemma: lemmaOf(base) });
+    out.push({
+      ...w,
+      text: suffix,
+      start: cut,
+      lemma: CONTRACTION_LEMMAS[suffix.toLowerCase()] ?? suffix.toLowerCase(),
+    });
   }
   return out;
 }
@@ -231,7 +267,8 @@ function toSentences(pieces: Piece[], original: Piece[]): SentenceSpan[] {
   let curId: number | null = null;
   for (const w of pieces) {
     const id = find(w.sent);
-    const word: WordSpan = { text: w.text, start: w.start, end: w.end };
+    // Merged words (span() pieces carry no lemma) keep their form.
+    const word: WordSpan = { text: w.text, start: w.start, end: w.end, lemma: w.lemma ?? w.text };
     const last = sentences[sentences.length - 1];
     if (last !== undefined && id === curId) {
       last.words.push(word);
@@ -242,6 +279,20 @@ function toSentences(pieces: Piece[], original: Piece[]): SentenceSpan[] {
     }
   }
   return sentences;
+}
+
+/**
+ * Lemma of one word out of context (wink's first-token lemma; contraction endings by
+ * CONTRACTION_LEMMAS; words wink splits into several tokens keep their form). Used by the
+ * dictionary pipeline (T70) so its headwords match runtime lemmas.
+ */
+export function lemmaOf(word: string): string {
+  const ending = CONTRACTION_LEMMAS[word.toLowerCase()];
+  if (ending !== undefined) return ending;
+  const doc = getNlp().readDoc(word);
+  const tokens = doc.tokens().out();
+  if (tokens.length !== 1) return word;
+  return tokenLemmas(doc.tokens())[0] ?? word;
 }
 
 /** Split preprocessed text into sentences and runtime words with character offsets. */
