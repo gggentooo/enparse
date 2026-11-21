@@ -1,0 +1,89 @@
+/*
+ * src/components/Pages/NestedReading.module.css — styles for NestedReading.tsx
+ *
+ * Description: nested phrase boxes colored by category, label line, role badges, head marks.
+ * Dependencies: src/css/tokens.css. Used by: NestedReading.tsx.
+ * Status: implemented (T57).
+ */
+
+.nested {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.phrase {
+  --phrase-color: var(--chunk-o);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px var(--space-1) var(--space-1);
+  border: 2px solid var(--phrase-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
+}
+
+.label {
+  color: var(--color-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.children {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.word {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.badge {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
+/* Bracket collapsed by gating: the role is shown, but the phrase boundary is uncertain (T59). */
+.uncertain {
+  border-style: dashed;
+}
+
+.head > :first-child,
+.word.head {
+  font-weight: 700;
+}
+
+.NP {
+  --phrase-color: var(--chunk-np);
+}
+
+.VP {
+  --phrase-color: var(--chunk-vp);
+}
+
+.PP {
+  --phrase-color: var(--chunk-pp);
+}
+
+.ADJP {
+  --phrase-color: var(--chunk-adjp);
+}
+
+.ADVP {
+  --phrase-color: var(--chunk-advp);
+}
+
+.S {
+  --phrase-color: var(--color-text-muted);
+  border-style: dashed;
+}

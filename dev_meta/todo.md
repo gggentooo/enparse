@@ -53,24 +53,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
 
-#### [Modules/modelLibrary] Downloads · T47 · Build
-
-- **Files:** `src/modules/modelLibrary/downloads.ts`, tests
-- **Task:** Per-model download state, progress, verification into Cache Storage, cancel, delete, retry once on a bad file.
-- **Needs:** T37, T38
-
-#### [Components/Pages] VocabPage and useVocab · T48 · Build
-
-- **Files:** `src/hooks/useVocab.ts`, `src/components/Pages/VocabPage.tsx`, `src/components/Pages/VocabPage.module.css`, tests
-- **Task:** Hook over `vocabService` with `useSyncExternalStore`; list management, export/import UI.
-- **Needs:** T39, T40
-
-#### [Hooks] useSubword · T49 · Build
-
-- **Files:** `src/hooks/useSubword.ts`, tests
-- **Task:** Expose `subwordService` to components (combine with dictionary headwords here if T26 chose that).
-- **Needs:** T39, T41
-
 #### [Modules/preflight] Thresholds and multi-threaded WASM · T65 · Decision
 
 - **Files:** `src/modules/preflight/requirements.ts`, `training/reports/benchmark.md`
@@ -93,11 +75,11 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Per T42: load the manifest and index on first lookup; fetch entry shards on demand into the `enparse-dict-v<N>` cache with size and SHA-256 checks (`core/environment.ts` T38 functions), small in-memory LRU of shards; `lookup()`: `lookupKey` exact match, then the inflection index, and for parse clicks the token's wink lemma first; senses ordered with the predicted part of speech first; `DictionaryLoadError`; `downloadAll(onProgress, signal)` and `deleteAll()` for the offline option; service with `subscribe()` / `getSnapshot()` (offline state, progress).
 - **Needs:** T70
 
-#### [Services/parser] parserService and parser hooks · T52 · Build
+#### [Training] Phase 11 packaging and release · T66 · Build
 
-- **Files:** `src/services/parserService.ts`, `src/hooks/useParser.ts`, `src/hooks/useModelLibrary.ts`, tests
-- **Task:** Status state machine (`idle` → … → `ready` / `failed`), pre-flight stages, model library actions, and the `ParserNotReadyError` guard, with a mocked backend.
-- **Needs:** T35, T36, T37, T39, T47
+- **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
+- **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
+- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65
 
 ---
 
@@ -109,35 +91,11 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Direct lookup UI and the hook; lookup trigger per T25. Typed inflected forms resolve through the inflection index (T42: *ran* → *run*; ambiguous forms list every headword).
 - **Needs:** T25, T39, T46
 
-#### [Components/Pages] ModelsPage · T54 · Build
+#### [Components/Pages] Offline dictionary control · T72 · Build
 
-- **Files:** `src/components/Pages/ModelsPage.tsx`, `src/components/Pages/ModelsPage.module.css`, tests
-- **Task:** Model cards (facts per T22), recommendation, download progress, active model, delete.
-- **Needs:** T22, T52
-
-#### [Components/Shared] DiagnosticsPanel · T55 · Build
-
-- **Files:** `src/components/Shared/DiagnosticsPanel.tsx`, `src/components/Shared/DiagnosticsPanel.module.css`, tests
-- **Task:** Show the pre-flight report and model status with retry, at the detail level from T24.
-- **Needs:** T24, T52
-
-#### [Components/Pages] InputPage · T56 · Build
-
-- **Files:** `src/components/Pages/InputPage.tsx`, `src/components/Pages/InputPage.module.css`, tests
-- **Task:** Textarea with character count, drag-and-drop, too-long and removed-text notices; Parse enabled only when `useParser().canParse`, with the reason shown otherwise.
-- **Needs:** T09, T52
-
-#### [Modules/output, Components/Pages] Annotator and OutputPage · T57 · Build
-
-- **Files:** `src/modules/output/types.ts`, `src/modules/output/annotator.ts`, `src/modules/output/index.ts`, `src/components/Pages/OutputPage.tsx`, `src/components/Pages/OutputPage.module.css`, tests
-- **Task:** Annotation model and both views (flat chunks, nested phrases with roles), word selection, alternative switching, against mock `ParseResult` fixtures. Inline dictionary and subword lookup once T49 and T53 are done.
-- **Needs:** T11, T34, T35, T39, T52
-
-#### [Training] Phase 11 packaging and release · T66 · Build
-
-- **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
-- **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model.
-- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65
+- **Files:** `src/components/Pages/ModelsPage.tsx` (or the settings location chosen in T54), `src/hooks/useDictionary.ts`, tests
+- **Task:** "Make dictionary available offline" with size, byte progress, cancel, delete, and a pre-flight storage check (T24: block if it cannot fit), next to the model downloads (T15 full PWA; T42 opt-in offline download).
+- **Needs:** T46, T54
 
 ---
 
@@ -149,15 +107,41 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
 - **Needs:** T13, T48, T53, T56, T57
 
-#### [Components/Pages] Offline dictionary control · T72 · Build
-
-- **Files:** `src/components/Pages/ModelsPage.tsx` (or the settings location chosen in T54), `src/hooks/useDictionary.ts`, tests
-- **Task:** "Make dictionary available offline" with size, byte progress, cancel, delete, and a pre-flight storage check (T24: block if it cannot fit), next to the model downloads (T15 full PWA; T42 opt-in offline download).
-- **Needs:** T46, T54
-
 ---
 
 ## Done
+
+#### [Components/Pages] ModelsPage · T54 · Build
+
+- **Done:** 2026-11-21. `ModelsPage` + `ModelCard`: labels (recommended, most accurate, fastest here, in use), device fit with reasons and hints, download state with byte progress, use / download only / cancel / delete (confirmed; warns when active), "Details" with accuracy, size, expected speed, structure view, license, base model (T22, T21); first-visit notice; catalog descriptions shown as English drafts until T43. Download size per device variant comes from `parserService`. Tests: `ModelsPage.test.tsx`.
+
+#### [Components/Shared] DiagnosticsPanel · T55 · Build
+
+- **Done:** 2026-11-21. `DiagnosticsPanel` (device and model stages, failures first, status as text with marks, hints per check, measured / required with units), `ModelStatus` (status line with progress, retry, details dialog), Header status badge opening the panel (T24). Tests: `DiagnosticsPanel.test.tsx` (includes the Header badge).
+
+#### [Components/Pages] InputPage · T56 · Build
+
+- **Done:** 2026-11-21. Textarea kept as the `parserService` draft (survives page changes and model loading), live count in code points vs 5,000, too-long error, `.txt` drag-and-drop, Parse only when ready (`ModelStatus` explains why), parse errors, navigation to the output. Removed-text notice is on `OutputPage`. Tests: `InputPage.test.tsx`.
+
+#### [Modules/output, Components/Pages] Annotator and OutputPage · T57 · Build
+
+- **Done:** 2026-11-21. `modules/output` (`annotate`, structural input type checked against `ParseResult`), wired into `parserService.parseText`. `OutputPage` with `SentenceView` ("Other readings (n)" radio group; T11), `FlatReading` (chunk highlights with type tags; T20), `NestedReading` (category · role boxes, head marks, dashed badges for uncertain roles; T59), `OutputWord`, `WordDetails` (base form, part of speech in the shown reading, word parts via `useSubword`, add to list via `useVocab`). Dictionary lookup in the panel follows with T53. Fixed on the way: `winkBackend.tokenize` made paragraph breaks a word. Checked end to end in Chrome with the trained DeBERTa export served locally (download, verify, load 1.8 s; parse; both views; a real alternative reading; word details; keyboard selection; narrow and dark). Tests: `annotator.test.ts`, `OutputPage.test.tsx`, `winkBackend.test.ts`.
+
+#### [Components/Pages] VocabPage and useVocab · T48 · Build
+
+- **Done:** 2026-11-21. `useVocab` (snapshot via `useSyncExternalStore`, loads on first use, service actions). `VocabPage` with page parts `VocabLists` (select, create), `VocabListDetail` (rename, delete with confirmation, add a word by hand: word, Korean meaning, notes, tags), `VocabItemRow` (edit, move, remove with confirmation; duplicate badge), `VocabTransfer` (JSON/CSV download, import with a merge / new list / skip dialog on name conflicts, summary); backup reminder and action errors shown from the snapshot; Korean and English strings. Checked in Chrome (wide, narrow, dark; keyboard: dialog focus and return). Tests: `useVocab.test.ts`, `VocabPage.test.tsx` (real service, fake-indexeddb).
+
+#### [Hooks] useSubword · T49 · Build
+
+- **Done:** 2026-11-21. `useSubword` (`segment(word, lemma)`, `clear()`; loading and error state; stale responses ignored). T26 bundles the known-word list in `subword/`, so no dictionary headwords are combined. Tests: `useSubword.test.ts`.
+
+#### [Services/parser] parserService and parser hooks · T52 · Build
+
+- **Done:** 2026-11-21. `parserService` (`createParserService(deps)` with injected modules and worker): `start()` (device checks → catalog, states, fitness, recommendation, badges → saved choice loaded only if fully cached), `chooseModel` (download with throttled progress, `persist()` after the first download, model checks with one re-download of corrupt files, worker load → `ready`, saved choice), `downloadModel`, `cancelDownload`, `deleteModel` (unloads the active model, clears its saved choice), `retryLoad`, `parseText` (`ParserNotReadyError` guard without a worker call, preprocess, `ParseSupersededError` for stale parses). New `failed` reason `storage`; `ModelUnavailableError` for unknown or blocked models. Hooks `useParser` and `useModelLibrary` (optional service argument for tests). Started in `main.tsx`. Parse output is the raw `ParseResult` until the annotator (T57). Tests: `parserService.test.ts`, `useParser.test.ts`, `useModelLibrary.test.ts`.
+
+#### [Modules/modelLibrary] Downloads · T47 · Build
+
+- **Done:** 2026-11-21. `downloads.ts`: `getModelStates` (cached sizes vs. catalog, live progress while downloading, `corrupted` after a failed verification), `downloadModel` (missing files only, overall byte progress, `downloadToCache` size + SHA-256 check, a bad file deleted and fetched once more, `ModelDownloadError` with `integrity` / `cancelled` / `quota` / `network`), `cancelDownload` (abort, delete this run's files), `deleteModel` (all variants); `createDownloads(cache)` for injected tests. Failed or cancelled downloads delete only the files they stored, so shared files of another cached variant stay. `storage.persist()` after the first download is left to `parserService` (T52). Tests: `downloads.test.ts`.
 
 #### [App shell] Offline / PWA · T69 · Build
 
@@ -459,3 +443,24 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T71, T36, T37, T40, T41, T68, T69 moved to *Done* with outcomes (owner choices: hand-written service worker, header language menu, fake-indexeddb).
 - Modified: stages recomputed from *Needs*: T47 1→0, T48 1→0, T49 1→0, T65 1→0, T70 1→0, T46 2→1, T52 2→1, T53 3→2, T54 3→2, T55 3→2, T56 3→2, T57 3→2, T66 3→2, T62 4→3, T72 4→3.
+
+### 2026-11-21T06:00:49Z — Claude Opus 5.5, T47 done; restaged
+
+- Modified: T47 moved to *Done* with the outcome.
+- Modified: stages recomputed from *Needs*: T52 1→0, T54 2→1, T55 2→1, T56 2→1, T57 2→1, T66 2→1, T72 3→2.
+
+### 2026-11-21T06:11:22Z — Claude Opus 5.5, T52 done; restaged
+
+- Modified: T52 moved to *Done* with the outcome.
+- Modified: stages recomputed from *Needs*: T54 1→0, T55 1→0, T56 1→0, T57 1→0.
+
+### 2026-11-21T06:20:35Z — Claude Opus 5.5, T48 and T49 done
+
+- Modified: T48 and T49 moved to *Done* with outcomes.
+- Modified: stages recomputed from *Needs*: no change (T62 still waits on T53).
+
+### 2026-11-21T06:41:53Z — Claude Opus 5.5, T54–T57 done
+
+- Modified: T54, T55, T56, T57 moved to *Done* with outcomes.
+- Modified: T66 notes the base-model license for `catalog.json` (About page credits).
+- Modified: stages recomputed from *Needs*: no change (T66 waits on T43, T65; T72 on T46; T62 on T53).

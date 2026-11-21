@@ -128,6 +128,8 @@ function winkPieces(text: string): Piece[] {
           if (start < 0) throw new TokenizerError(`token ${JSON.stringify(tok)} not found after offset ${cursor}`);
           pieces.push({ text: tok, start, end: start + tok.length, sent, locked: false, lemma: lemmas[k] ?? tok });
           cursor = start + tok.length;
+          // wink emits line breaks (paragraph breaks in preprocessed text) as tokens; they are not words.
+          if (tok.trim() === "") pieces.pop();
         });
     });
   return pieces;

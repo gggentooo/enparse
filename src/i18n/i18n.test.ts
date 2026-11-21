@@ -4,7 +4,15 @@
 
 import { describe, expect, it } from "vitest";
 import { en } from "./en";
-import { DEFAULT_LANGUAGE, LANGUAGES, formatDisplayDate, isLanguage, translate } from "./i18n";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGES,
+  formatBytes,
+  formatDisplayDate,
+  formatNumber,
+  isLanguage,
+  translate,
+} from "./i18n";
 
 const placeholders = (s: string): string[] => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1] as string).sort();
 
@@ -42,5 +50,17 @@ describe("translate and formats", () => {
     const d = new Date(Date.UTC(2026, 10, 21, 12));
     expect(formatDisplayDate(d, "en")).toMatch(/November 21, 2026/);
     expect(formatDisplayDate(d, "ko")).toMatch(/2026년 11월 21일/);
+  });
+});
+
+describe("formatBytes and formatNumber", () => {
+  it("uses decimal units with sensible precision", () => {
+    expect(formatBytes(0, "en")).toBe("0 B");
+    expect(formatBytes(999, "en")).toBe("999 B");
+    expect(formatBytes(89_854_726, "en")).toBe("89.9 MB");
+    expect(formatBytes(144_029_758, "en")).toBe("144 MB");
+    expect(formatBytes(2_500_000_000, "ko")).toBe("2.5 GB");
+    expect(formatNumber(0.8734 * 100, "en")).toBe("87.3");
+    expect(formatNumber(1234.5, "en", 0)).toBe("1,235");
   });
 });

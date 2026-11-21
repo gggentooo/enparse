@@ -1,0 +1,38 @@
+/*
+ * src/components/Pages/SentenceView.module.css — styles for SentenceView.tsx
+ *
+ * Description: sentence block and the "other readings" disclosure.
+ * Dependencies: src/css/tokens.css. Used by: SentenceView.tsx.
+ * Status: implemented (T57).
+ */
+
+.sentence {
+  display: grid;
+  gap: var(--space-1);
+  padding-block: var(--space-2);
+}
+
+.readings {
+  font-size: var(--font-size-sm);
+}
+
+.readings summary {
+  width: fit-content;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.choices {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

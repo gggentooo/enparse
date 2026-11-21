@@ -1,0 +1,52 @@
+/*
+ * src/components/Pages/VocabItemRow.module.css — styles for VocabItemRow.tsx
+ *
+ * Description: word cell with the duplicate badge, tags, row actions, dialog forms.
+ * Dependencies: src/css/tokens.css. Used by: VocabItemRow.tsx.
+ * Status: implemented (T48).
+ */
+
+.word {
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+
+.date {
+  white-space: nowrap;
+}
+
+.duplicate {
+  display: inline-block;
+  margin-inline-start: var(--space-2);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.tags {
+  display: block;
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.form input,
+.form select {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}

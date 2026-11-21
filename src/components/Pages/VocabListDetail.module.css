@@ -1,0 +1,94 @@
+/*
+ * src/components/Pages/VocabListDetail.module.css — styles for VocabListDetail.tsx
+ *
+ * Description: list header actions, add-word form, scrollable item table.
+ * Dependencies: src/css/tokens.css. Used by: VocabListDetail.tsx.
+ * Status: implemented (T48).
+ */
+
+.detail {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.header,
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  margin: 0;
+  margin-inline-end: auto;
+  font-size: var(--font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.add {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.add > button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.add input,
+.inline input {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  /* Scroll sideways on narrow screens instead of breaking words. */
+  min-width: 40rem;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.caption {
+  padding-block-end: var(--space-2);
+  text-align: start;
+  color: var(--color-text-muted);
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+@media (max-width: 40rem) {
+  .add {
+    grid-template-columns: 1fr;
+  }
+
+  .add > button {
+    grid-column: 1;
+  }
+}

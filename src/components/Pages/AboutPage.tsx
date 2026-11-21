@@ -18,11 +18,13 @@
  *   2. user-facing text via useI18n() catalog keys (T68).
  *
  * Dependencies:
- *   External: react. Internal: ./AboutPage.module.css (hooks/useModelLibrary.ts with T54).
+ *   External: react. Internal: ./AboutPage.module.css.
  *   Used by: src/routes.tsx (#/about), Layout/Sidebar.tsx link.
  *
- * Status: implemented (T50). Models are listed from a static list of the offered
- *   models until the catalog is loaded through useModelLibrary (TODO(T54));
+ * Status: implemented (T50). Models are listed from a static list: catalog.json
+ *   carries only the trained models' license, not the base models' (MIT,
+ *   Apache 2.0), so it cannot replace these credits yet (TODO(T66): add base
+ *   license to the catalog in Phase 11 packaging, then read it here);
  *   app license: PolyForm Noncommercial 1.0.0 (owner, T16); dictionary sources
  *   are added with the dictionary build (T25 decided; T46).
  *   Tests: AboutPage.test.tsx (the attribution must match training/MODEL_CARD.md).
@@ -48,7 +50,7 @@ const POLYFORM = {
 /** A credited work: proper name, URL, a catalog key for the description, and the license (a catalog key or a literal name). */
 type Credit = { name: string; url: string; detail: MessageKey; license: { key: MessageKey } | { literal: string } };
 
-/** Offered parser models (TODO(T54): read base model, license, and version from catalog.json). */
+/** Offered parser models (static until catalog.json carries the base-model license; TODO(T66)). */
 const MODELS: Credit[] = [
   {
     name: "DeBERTa-v3-xsmall",

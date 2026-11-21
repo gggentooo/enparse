@@ -133,7 +133,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/winkBackend.ts`      | wink-nlp support (not a `ParserBackend`): sentence split and runtime words (hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL) and lemmas. |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
-| `output/annotator.ts`        | Converts parse results into an annotation model (flat chunks, nested phrases, tokens, highlights, alternatives). Rendering is in `OutputPage`. |
+| `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (wrapper brackets collapsed). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
@@ -218,7 +218,7 @@ The app ships up to four models (one per base model) and the user chooses which 
 | `modules/modelLibrary/selection.ts` | modules | Persisted user choice (`core/storage`); recommendation. |
 | `modules/modelLibrary/types.ts`, `index.ts` | modules | `Catalog`, `CatalogEntry`, `ModelState`, errors; public API. |
 | `modules/parser/parser.worker.ts` | modules | `load(model)` / `unload()`: one model in memory at a time. |
-| `services/parserService.ts` | services | Owns the worker, library, and pre-flight; `chooseModel`, `deleteModel`, `cancelDownload`. |
+| `services/parserService.ts` | services | Owns the worker, library, and pre-flight; `start`, `chooseModel`, `downloadModel`, `cancelDownload`, `deleteModel`, `retryLoad`, `parseText`. |
 | `hooks/useModelLibrary.ts` | hooks | Library state and actions for components. |
 | `components/Pages/ModelsPage.tsx` | components | Model cards (`#/models`). |
 
@@ -244,7 +244,7 @@ Top level: `schema_version` (1), `generated_at`, `models`.
 - **Later visits:** the saved choice is loaded automatically if it is fully cached; otherwise the status is `no-model`.
 - **Memory:** one model is loaded at a time; switching unloads the previous model first.
 - **Storage:** any number of downloaded models stay cached; the library shows each model's size on disk with a delete button, and pre-flight warns when storage is low. Deleting the active model unloads it first.
-- **Downloads:** started only by the user; byte progress; each file verified (size and SHA-256 from `labels.json` → `files`) as it arrives; a failed file is deleted and retried once.
+- **Downloads:** started only by the user; byte progress; each file verified (size and SHA-256 from `labels.json` → `files`) as it arrives; a failed file is deleted and retried once. A second failure fails the download (`integrity`; state `corrupted`). Only missing files are fetched. A failed or cancelled download deletes only the files it stored, so shared files of another cached variant stay. `downloadModel` for a model already downloading returns the running download (same variant) or cancels it first (other variant). `parserService` calls `storage.persist()` after the first download (T24).
 - **Cache contract (T31 spike, 2026-11-21):** verified files are stored in the Cache Storage cache `transformers-cache` under their absolute URL `<origin>/models/<model-id>/<file>`. Transformers.js 4.3.2 looks that key up before fetching, so loading a downloaded model makes no model-file requests (checked in Chrome 158 and Safari 27). Whole-file SHA-256 with `crypto.subtle.digest` is fast enough (302 MB in ≤ 0.26 s); no streaming hash or split files are needed. Private windows may not have the quota to store a model (Chrome's `cache.put` failed for 302 MB), so pre-flight must check `storage.estimate()` before a download (`training/reports/benchmark.md`).
 - **Per-model features:** the nested view is available only for models with `nested_view: true`.
 - `modules/modelLibrary` does not import `modules/parser` or `modules/preflight`; `parserService` passes plain data between them.
@@ -277,10 +277,11 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 | `downloading` | The chosen model's files are downloading and being verified (byte progress) | Parse disabled; progress shown |
 | `loading` | Initializing the chosen model (progress) | Parse disabled; progress shown |
 | `ready` | Model fully loaded (see below); records model id, backend (`webgpu` or `wasm`), and `model_version` | Parse enabled |
-| `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
+| `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`, and `storage` when a download does not fit; T52) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
 
 - **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v2, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
 - Parse requests are refused unless the status is `ready`: `parserService.parseText()` rejects with `ParserNotReadyError` without contacting the worker, and the worker also rejects parse messages before `ready`.
+- **Service contract (T52):** `start()` runs once at app start (`main.tsx`) and only loads a saved choice that is fully cached. A newer `chooseModel` supersedes an older one (its download is cancelled). Cancelling the chosen model's download returns to the still-loaded model (`ready`) or `no-model`. Deleting the active model unloads it and clears the saved choice. `retryLoad()` reruns `start()` (no model id) or `chooseModel` for the failed model. A parse started later supersedes an earlier one (`ParseSupersededError`). Download progress updates the snapshot at most every 1% (`PROGRESS_NOTIFY_STEP`).
 - Input entered while loading is kept; the user starts parsing once the model is ready.
 - WebGPU → WASM is a device choice inside model loading, not a fallback parser: both run the same model.
 
@@ -425,21 +426,33 @@ Component ─► Hook ─► Service ─► Module(s)
 main.tsx (entry: mounts <RouterProvider> into index.html)
   └── App.tsx (root)
       ├── Layout.tsx
-      │   ├── Header.tsx (branding, global actions)
+      │   ├── Header.tsx (branding, language menu, parser status badge → DiagnosticsPanel dialog; T55)
       │   ├── Sidebar.tsx (page navigation)
       │   └── ContentArea.tsx (route outlet)
-      │       ├── InputPage.tsx (raw text input: textarea, paste, drag-drop)
-      │       ├── OutputPage.tsx (annotated results, word selection, inline lookup)
-      │       ├── VocabPage.tsx (custom vocab lists)
+      │       ├── InputPage.tsx (text input kept as parserService draft; count, .txt drop, model status; T56)
+      │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
+      │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
+      │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
+      │       │   │   └── NestedReading.tsx (nested boxes: category · role, head marks, role badges)
+      │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
+      │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary with T53)
+      │       ├── VocabPage.tsx (custom vocab lists; T48)
+      │       │   ├── VocabLists.tsx (list overview, create list)
+      │       │   ├── VocabListDetail.tsx (rename, delete, add word, item table)
+      │       │   │   └── VocabItemRow.tsx (edit, move, remove a word)
+      │       │   └── VocabTransfer.tsx (JSON/CSV export, import with name-conflict dialog)
       │       ├── DictionaryPage.tsx (lookup results)
-      │       ├── ModelsPage.tsx (model library: choose, download, delete models; license and source per model)
+      │       ├── ModelsPage.tsx (model library: choose, download, delete models; T54)
+      │       │   └── ModelCard.tsx (labels, device fit with reasons, download state, actions, details: metrics, license, base model)
       │       └── AboutPage.tsx (About & licenses: attribution for app, models, data, libraries, dictionary; T21)
       └── Shared/
           ├── Button.tsx
           ├── Modal.tsx
           ├── Tooltip.tsx
           ├── LoadingSpinner.tsx
-          └── DiagnosticsPanel.tsx (pre-flight report and model status; used by Header, InputPage)
+          ├── ModelStatus.tsx (one-line model status with retry / details; InputPage, ModelsPage, DiagnosticsPanel)
+          ├── checkText.ts (check names, hints, value units for DiagnosticsPanel and ModelCard)
+          └── DiagnosticsPanel.tsx (pre-flight report by stage, failures first, hints; Header dialog, ModelStatus details; T55)
 ```
 
 ### Services and hooks
@@ -501,9 +514,12 @@ enparse/
 │   │   ├── Pages/
 │   │   │   ├── InputPage.tsx + InputPage.module.css
 │   │   │   ├── OutputPage.tsx + OutputPage.module.css
+│   │   │   ├── SentenceView.tsx, FlatReading.tsx, NestedReading.tsx, OutputWord.tsx, WordDetails.tsx (+ .module.css each; OutputPage parts)
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
+│   │   │   ├── VocabLists.tsx, VocabListDetail.tsx, VocabItemRow.tsx, VocabTransfer.tsx (+ .module.css each; VocabPage parts)
 │   │   │   ├── DictionaryPage.tsx + DictionaryPage.module.css
 │   │   │   ├── ModelsPage.tsx + ModelsPage.module.css
+│   │   │   ├── ModelCard.tsx + ModelCard.module.css (ModelsPage part)
 │   │   │   └── AboutPage.tsx + AboutPage.module.css (About & licenses; T21)
 │   │   └── Shared/
 │   │       ├── Button.tsx + Button.module.css
@@ -511,6 +527,8 @@ enparse/
 │   │       ├── Tooltip.tsx + Tooltip.module.css
 │   │       ├── LoadingSpinner.tsx + LoadingSpinner.module.css
 │   │       ├── UpdateBanner.tsx + UpdateBanner.module.css (new version prompt; T69)
+│   │       ├── ModelStatus.tsx + ModelStatus.module.css
+│   │       ├── checkText.ts
 │   │       └── DiagnosticsPanel.tsx + DiagnosticsPanel.module.css
 │   ├── hooks/
 │   │   ├── useParser.ts
@@ -555,7 +573,9 @@ enparse/
 │   │   │   ├── bio.ts (BIO repair and chunk grouping)
 │   │   │   └── testFixtures.ts (test-only: mocked backend for *.test.ts)
 │   │   ├── output/
-│   │   │   └── annotator.ts
+│   │   │   ├── annotator.ts
+│   │   │   ├── types.ts
+│   │   │   └── index.ts
 │   │   ├── dictionary/
 │   │   │   ├── dictionary.ts
 │   │   │   └── staticDb.ts
@@ -819,3 +839,23 @@ enparse/
 - Added: *Services and hooks* → `languageService` / `useI18n`, `appUpdateService` / `useAppUpdate`.
 - Added: *Deployment* → offline app shell (`sw.js`); `_headers` → `sw.js` no-cache.
 - Modified: skeleton → i18n, pwa, `core/pwa.ts`, `UpdateBanner`, manifest and icons, `vocab/csv.ts`, `subword/knownWords.generated.ts`, test fixtures.
+
+### 2026-11-21T06:00:49Z — Claude Opus 5.5, Model downloads (T47)
+
+- Modified: *Model library* → *Behavior* → *Downloads*: retry limit, missing-files-only, cleanup scope on failure or cancel, concurrent calls, `persist()` owner.
+
+### 2026-11-21T06:11:22Z — Claude Opus 5.5, parserService and parser hooks (T52)
+
+- Added: *Model readiness* → *Service contract* (start, superseded choices and parses, cancel, delete, retry, progress throttle).
+- Modified: `failed` status reasons gain `storage` (download did not fit); `parserService` row lists its actions.
+
+### 2026-11-21T06:20:35Z — Claude Opus 5.5, VocabPage parts (T48)
+
+- Added: component hierarchy and skeleton → `VocabLists`, `VocabListDetail`, `VocabItemRow`, `VocabTransfer` (page-specific parts of `VocabPage`; presentational, data via props from `useVocab`).
+
+### 2026-11-21T06:41:53Z — Claude Opus 5.5, Model library, input, output, and diagnostics UI (T54–T57)
+
+- Added: component hierarchy and skeleton → `ModelCard`, `SentenceView`, `FlatReading`, `NestedReading`, `OutputWord`, `WordDetails` (page parts), `Shared/ModelStatus`, `Shared/checkText.ts`; Header status badge opening `DiagnosticsPanel` (T24, T55).
+- Modified: `output/annotator.ts` row and skeleton (`types.ts`, `index.ts`): the annotation model (T57).
+- Modified: `parserService` keeps the input `draft` and stores the annotation (not the raw `ParseResult`); library snapshot carries each model's download size for this device.
+- Modified: `parser/winkBackend.ts` no longer emits line breaks as words (paragraph breaks became a word at the start of the next sentence, which the model then parsed).

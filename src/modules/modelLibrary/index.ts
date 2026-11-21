@@ -15,7 +15,7 @@
  * Tasks:
  *   1. Re-export from ./catalog.ts: loadCatalog, modelFiles, variantFor.
  *   2. Re-export from ./downloads.ts (T47): getModelStates, downloadModel,
- *      cancelDownload, deleteModel.
+ *      cancelDownload, deleteModel, createDownloads (injected cache API).
  *   3. Re-export from ./selection.ts: getSavedChoice, saveChoice,
  *      clearChoice, recommendModel.
  *   4. Re-export public types and errors from ./types.ts.
@@ -24,8 +24,7 @@
  *   Internal: ./catalog.ts, ./downloads.ts, ./selection.ts, ./types.ts.
  *   Used by: services/parserService.ts.
  *
- * Status: implemented for the catalog and selection (T37); downloads.ts follows in
- *   T47.
+ * Status: implemented (T37 catalog and selection; T47 downloads).
  */
 
 export {
@@ -39,6 +38,15 @@ export {
   requirementsOf,
   variantFor,
 } from "./catalog";
+export {
+  INTEGRITY_RETRIES,
+  cancelDownload,
+  createDownloads,
+  deleteModel,
+  downloadModel,
+  getModelStates,
+} from "./downloads";
+export type { DownloadProgress, Downloads, ModelCacheApi } from "./downloads";
 export { CHOICE_KEY, cardBadges, clearChoice, getSavedChoice, recommendModel, saveChoice } from "./selection";
 export { CatalogLoadError, ModelDownloadError } from "./types";
 export type {

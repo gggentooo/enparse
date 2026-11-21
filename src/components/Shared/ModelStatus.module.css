@@ -1,0 +1,39 @@
+/*
+ * src/components/Shared/ModelStatus.module.css — styles for ModelStatus.tsx
+ *
+ * Description: inline status line; failure box with actions.
+ * Dependencies: src/css/tokens.css. Used by: ModelStatus.tsx.
+ * Status: implemented (T55).
+ */
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.ok {
+  font-weight: 700;
+}
+
+.failed {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+}
+
+.reason {
+  margin: 0;
+  color: var(--color-error);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

@@ -35,6 +35,15 @@ import {
   VocabManager,
 } from "../modules/vocab";
 
+export type {
+  ImportSummary,
+  NameConflictChoice,
+  NameConflictResolver,
+  NewVocabItem,
+  VocabItem,
+  VocabList,
+} from "../modules/vocab";
+
 /** Shared vocabulary state for the UI (immutable snapshots). */
 export type VocabSnapshot = {
   status: "idle" | "loading" | "ready" | "error";

@@ -43,3 +43,23 @@ export function translate(lang: Language, key: MessageKey, params?: Readonly<Rec
 export function formatDisplayDate(date: Date, lang: Language): string {
   return new Intl.DateTimeFormat(lang, { year: "numeric", month: "long", day: "numeric" }).format(date);
 }
+
+const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;
+const BYTE_STEP = 1000;
+
+/** Byte size for display ("89.9 MB"; decimal units, as browsers report storage). */
+export function formatBytes(bytes: number, lang: Language): string {
+  let value = Math.max(0, bytes);
+  let unit = 0;
+  while (value >= BYTE_STEP && unit < BYTE_UNITS.length - 1) {
+    value /= BYTE_STEP;
+    unit++;
+  }
+  const digits = unit === 0 || value >= 100 ? 0 : 1;
+  return `${new Intl.NumberFormat(lang, { maximumFractionDigits: digits }).format(value)} ${BYTE_UNITS[unit]}`;
+}
+
+/** Number for display in the UI language, with at most `digits` decimals. */
+export function formatNumber(value: number, lang: Language, digits = 1): string {
+  return new Intl.NumberFormat(lang, { maximumFractionDigits: digits }).format(value);
+}

@@ -27,11 +27,14 @@ import "./css/global.css";
 import { router } from "./routes";
 import { appUpdateService } from "./services/appUpdateService";
 import { languageService } from "./services/languageService";
+import { parserService } from "./services/parserService";
 
 // Restore the saved UI language (T68); the default (Korean) shows until then.
 void languageService().restore();
 // Offline app shell and update prompt (T69; production builds only).
 void appUpdateService().start();
+// Pre-flight checks and the model library; loads the saved model if it is cached (T52). Nothing downloads here.
+void parserService().start();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("index.html is missing the #root element");

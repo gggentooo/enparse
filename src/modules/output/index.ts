@@ -1,5 +1,5 @@
 /**
- * src/modules/output/index.ts — public API of the output module (proposed file)
+ * src/modules/output/index.ts — public API of the output module
  *
  * Description:
  *   Builds the render-ready annotation model from parse results. Other
@@ -15,5 +15,21 @@
  *   Internal: ./annotator.ts, ./types.ts.
  *   Used by: services/parserService.ts.
  *
- * Status: header only; not implemented.
+ * Status: implemented (T57).
  */
+
+export { annotate } from "./annotator";
+export type {
+  AnnotatedNode,
+  AnnotatedPhraseNode,
+  AnnotatedSentence,
+  AnnotatedToken,
+  AnnotatedWordNode,
+  Annotation,
+  AnnotatorInput,
+  CategoryKind,
+  ChunkKind,
+  FlatSegment,
+  Reading,
+  RoleKind,
+} from "./types";

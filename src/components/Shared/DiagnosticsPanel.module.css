@@ -1,8 +1,78 @@
 /*
  * src/components/Shared/DiagnosticsPanel.module.css — styles for DiagnosticsPanel.tsx
  *
- * Description: check list layout and status styles (pass, warn, fail, skipped).
- * Tasks: 1. Grouped list. 2. Status icons plus text (not color alone). 3. Retry action placement.
+ * Description: check stages and rows; status shown by mark and text, color only reinforces it.
  * Dependencies: src/css/tokens.css. Used by: DiagnosticsPanel.tsx.
- * Status: header only; not implemented.
+ * Status: implemented (T55).
  */
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.stage {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.stageTitle {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.summary,
+.muted {
+  margin: 0;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.checks {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  gap: 0 var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.mark {
+  grid-row: span 3;
+  font-weight: 700;
+  text-align: center;
+}
+
+.status {
+  justify-self: end;
+}
+
+.hint,
+.values {
+  grid-column: 2 / 4;
+  color: var(--color-text-muted);
+}
+
+.fail .mark,
+.fail .status {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.warn .status {
+  font-weight: 600;
+}
+
+.skip {
+  color: var(--color-text-muted);
+}

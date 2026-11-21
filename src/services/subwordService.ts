@@ -24,6 +24,8 @@
 
 import { type KnownWordPredicate, type SubwordSegmentation, loadKnownWords, segment } from "../modules/subword";
 
+export type { SubwordSegmentation } from "../modules/subword";
+
 /** Results kept per (word, lemma); the oldest is dropped beyond this. */
 export const SEGMENT_CACHE_SIZE = 500;
 

@@ -1,14 +1,64 @@
 /*
  * src/components/Pages/InputPage.module.css — styles for InputPage.tsx
  *
- * Description: textarea, character counter, drop zone, notices.
- * Tasks: 1. Textarea. 2. Counter (over-limit state). 3. Drop-zone highlight. 4. Notice/error styles.
+ * Description: textarea with drop highlight, character count, errors, actions.
  * Dependencies: src/css/tokens.css. Used by: InputPage.tsx.
- * Status: page frame (T39); page styles with the page task.
+ * Status: implemented (T56).
  */
 
 .page {
   display: grid;
   gap: var(--space-3);
   max-width: var(--content-max-width);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  font-weight: 600;
+}
+
+.hint,
+.count {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 14rem;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  line-height: var(--line-height);
+  resize: vertical;
+}
+
+.dragging {
+  border: 2px dashed var(--color-accent);
+}
+
+.count {
+  justify-self: end;
+}
+
+.over {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-error);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
 }

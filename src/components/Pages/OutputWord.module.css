@@ -1,0 +1,38 @@
+/*
+ * src/components/Pages/OutputWord.module.css — styles for OutputWord.tsx
+ *
+ * Description: words as text-like buttons; selection, ambiguity, and change marks.
+ * Dependencies: src/css/tokens.css. Used by: OutputWord.tsx.
+ * Status: implemented (T57).
+ */
+
+.word {
+  padding: 0 1px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.word:hover {
+  background: var(--color-surface-raised);
+}
+
+.word[aria-pressed="true"] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.ambiguous {
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 4px;
+}
+
+.changed {
+  font-weight: 700;
+  text-decoration: underline solid 2px;
+  text-underline-offset: 4px;
+}
