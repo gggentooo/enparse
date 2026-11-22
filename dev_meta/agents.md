@@ -210,10 +210,11 @@ Tooling decisions: T13 (owner, 2026-11-21).
 | Command | Purpose | Status |
 |---------|---------|--------|
 | `npm run dev` | Start the Vite dev server | Available |
+| `npm run dev:models` | Dev server plus a local `/models/*` route serving the selected training exports (`vite.localModels.ts`; README → *Test the models locally*) | Available |
 | `npm run build` | Production build into `dist/` | Available |
 | `npm run typecheck` | `tsc --noEmit` | Available |
 | `npm test` | Unit tests (`vitest run`) | Available |
-| `npm run lint` | oxlint + Prettier check (`src/`, `functions/`, `vite.config.ts`) | Available |
+| `npm run lint` | oxlint + Prettier check (`src/`, `functions/`, `vite.config.ts`, `vite.localModels.ts`) | Available |
 | `npm run format` | Prettier write | Available |
 | `npm run test:e2e` | Playwright tests | Added with the first tests (T62) |
 
@@ -338,3 +339,8 @@ Tooling decisions: T13 (owner, 2026-11-21).
 ### 2026-11-21T05:43:45Z — Claude Opus 5.5, i18n and PWA layers
 
 - Added: *Architecture rules* → `i18n/` (message catalogs; T68) and `pwa/` (service worker; T69).
+
+### 2026-11-21T07:18:46Z — Claude Opus 5.5, Local model testing command
+
+- Added: *Tooling and commands* → `npm run dev:models` (trained models served locally by `vite.localModels.ts`).
+- Modified: `npm run lint` covers `vite.localModels.ts`.

@@ -11,8 +11,11 @@
  *   2. Target modern browsers (ES2022), module "ESNext", moduleResolution "Bundler".
  *   3. "jsx": "react-jsx"; "isolatedModules": true (Vite requirement).
  *   4. Include "vite/client" types (CSS Modules, worker imports).
- *   5. "include": ["src", "functions", "vite.config.ts"] (functions/: Cloudflare
- *      Pages Function for /models/*; T12).
+ *   4b. "allowImportingTsExtensions": vite.config.ts imports vite.localModels.ts with
+ *      its extension (Vite's native config loader needs it; no emit, so allowed).
+ *   5. "include": ["src", "functions", "vite.config.ts", "vite.localModels.ts"]
+ *      (functions/: Cloudflare Pages Function for /models/*; T12;
+ *      vite.localModels.ts: local model route for `npm run dev:models`).
  *
  * Dependencies:
  *   Dev: typescript, vite (client types).
@@ -45,12 +48,14 @@
     "types": [
       "vite/client"
     ],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src",
     "functions",
-    "vite.config.ts"
+    "vite.config.ts",
+    "vite.localModels.ts"
   ]
 }
 

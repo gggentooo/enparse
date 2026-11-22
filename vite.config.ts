@@ -37,6 +37,7 @@ import { join, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { build, type Plugin } from "vite";
 import { defineConfig } from "vitest/config";
+import { localModels } from "./vite.localModels.ts";
 
 /** Production response headers (public/_headers): cross-origin isolation for multi-threaded WASM. */
 const ISOLATION_HEADERS = {
@@ -105,13 +106,17 @@ function pwaServiceWorker(): Plugin {
   };
 }
 
-export default defineConfig({
+/** `vite --mode local-models` (npm run dev:models) serves the trained exports at /models/* (vite.localModels.ts). */
+export default defineConfig(({ mode }) => ({
   root: "src",
   publicDir: "../public",
   base: "./",
-  plugins: [react(), skipModelFiles(), pwaServiceWorker()],
+  plugins: [react(), skipModelFiles(), pwaServiceWorker(), ...(mode === "local-models" ? [localModels()] : [])],
   build: { outDir: "../dist", emptyOutDir: true },
   worker: { format: "es" },
+  // Pre-bundle the worker's dependencies at server start: found later (first model load), they make
+  // Vite reload the page, which cancels a running model download.
+  optimizeDeps: { include: ["@huggingface/transformers", "wink-nlp", "wink-eng-lite-web-model"] },
   // Dev and preview send the production isolation headers, so development matches the deployed app.
   server: { headers: ISOLATION_HEADERS },
   preview: { headers: ISOLATION_HEADERS },
@@ -121,4 +126,4 @@ export default defineConfig({
     // Module tests run in Node; component tests (*.test.tsx) opt in with `// @vitest-environment jsdom`.
     environment: "node",
   },
-});
+}));

@@ -7,7 +7,8 @@
     "  manifest in training/js/package.json.",
     "",
     "Tasks:",
-    "  1. Scripts (agents.md -> Tooling and commands): dev, build, typecheck, lint,",
+    "  1. Scripts (agents.md -> Tooling and commands): dev, dev:models (trained",
+    "     models served locally; vite.localModels.ts), build, typecheck, lint,",
     "     format, test; test:e2e is added with the first Playwright tests (T62).",
     "  2. Pin exact versions in the lockfile.",
     "  3. Keep wink-nlp and @huggingface/transformers versions identical to",
@@ -27,7 +28,7 @@
     "  Optional later (not approved): jszip, csv-*.",
     "  System:  Node.js 20+.",
     "",
-    "Status: T13 tooling installed; scripts: dev, build, typecheck, lint, format, test."
+    "Status: T13 tooling installed; scripts: dev, dev:models, build, typecheck, lint, format, test."
   ],
   "name": "enparse",
   "private": true,
@@ -35,10 +36,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:models": "vite --mode local-models",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint -c .oxlintrc.json src functions vite.config.ts && prettier --check \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts",
+    "lint": "oxlint -c .oxlintrc.json src functions vite.config.ts vite.localModels.ts && prettier --check \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts vite.localModels.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts vite.localModels.ts",
     "test": "vitest run"
   },
   "dependencies": {

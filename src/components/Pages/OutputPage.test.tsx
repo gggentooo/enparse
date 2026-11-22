@@ -198,6 +198,20 @@ describe("OutputPage", () => {
     expect(within(clause).getByText("Complement").className).toMatch(/uncertain/);
   });
 
+  it("toggles the nested look: labels on hover or always, brackets or boxes", () => {
+    setup();
+    expect(screen.queryByRole("checkbox", { name: "Draw phrases as brackets" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
+    const clause = screen.getByRole("group", { name: "Clause (S)" });
+    const nested = clause.closest("div") as HTMLElement;
+    expect(nested.className).toMatch(/brackets/);
+    expect(nested.className).toMatch(/hover/);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show labels only on hover" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Draw phrases as brackets" }));
+    expect(nested.className).toMatch(/boxes/);
+    expect(nested.className).toMatch(/always/);
+  });
+
   it("selects a word: details with base form, part of speech, word parts, and add to list", async () => {
     setup();
     expect(screen.getByText("Select a word to see its details.")).toBeTruthy();

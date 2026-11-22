@@ -36,7 +36,8 @@
  *      file (null if absent), without hashing.
  *   5c. downloadToCache(url, expected { bytes, sha256 }, onProgress, signal):
  *      Promise<void> — stream the file with byte progress, check size and
- *      SHA-256, then store it in the model cache; abortable.
+ *      SHA-256, then store it in the model cache; abortable. A failing
+ *      cache.put becomes AssetError("cache") (storage, not network).
  *   T31 spike (2026-11-21; training/reports/benchmark.md): MODEL_CACHE_NAME is
  *   "transformers-cache" and entries are keyed by the absolute URL
  *   <origin>/models/<model-id>/<file>; Transformers.js 4.3.2 then loads them
@@ -322,7 +323,16 @@ export async function downloadToCache(
   const sha256 = await sha256Hex(await blob.arrayBuffer());
   if (sha256 !== expected.sha256.toLowerCase()) throw new AssetError("sha256", abs, `SHA-256 mismatch for ${abs}`);
   const type = res.headers.get("Content-Type") ?? "application/octet-stream";
-  await cache.put(abs, new Response(blob, { headers: { "Content-Type": type, "Content-Length": String(blob.size) } }));
+  try {
+    await cache.put(
+      abs,
+      new Response(blob, { headers: { "Content-Type": type, "Content-Length": String(blob.size) } }),
+    );
+  } catch (e) {
+    // Storing failed (quota, or a private window's small storage: Chrome reports "Unexpected internal
+    // error" for a 302 MB file). Report it as a storage problem, not a download problem.
+    throw new AssetError("cache", abs, `could not store ${abs}: ${e instanceof Error ? e.message : String(e)}`);
+  }
   return { bytes: blob.size, sha256 };
 }
 

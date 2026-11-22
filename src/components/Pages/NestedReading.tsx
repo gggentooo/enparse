@@ -2,8 +2,9 @@
  * src/components/Pages/NestedReading.tsx — nested phrase view of one reading (OutputPage)
  *
  * Description:
- *   Nested boxes with the phrase label and role badge (T20): "명사구 (NP) ·
- *   주어 (Subject)". Head words of their parent are marked; words whose
+ *   Nested phrases colored by category (T20), drawn as boxes or as brackets at both ends, per the OutputPage toggles (NestedLook). The label ("명사구 (NP) ·
+ *   주어 (Subject)") and word role badges are in the DOM and shown either always or only on
+ *   hover or keyboard focus of the innermost phrase/word (CSS). Head words of their parent are marked; words whose
  *   bracket collapsed carry their role as a badge (T59); split phrases
  *   (non-contiguous) are noted. Nesting is exposed as groups for screen
  *   readers.
@@ -23,6 +24,14 @@ import type { AnnotatedNode } from "../../hooks/useParser";
 import type { ReadingViewProps } from "./FlatReading";
 import styles from "./NestedReading.module.css";
 import { OutputWord } from "./OutputWord";
+
+/** Look of the nested view (OutputPage toggles). */
+export type NestedLook = {
+  /** Phrases drawn as rounded boxes or as colored brackets. */
+  shape: "boxes" | "brackets";
+  /** Phrase and role labels always shown, or only while hovered or focused. */
+  labels: "always" | "hover";
+};
 
 function Node({ node, ...props }: ReadingViewProps & { node: AnnotatedNode }): React.JSX.Element | null {
   const { t } = useI18n();
@@ -67,9 +76,9 @@ function Node({ node, ...props }: ReadingViewProps & { node: AnnotatedNode }): R
   );
 }
 
-export function NestedReading(props: ReadingViewProps): React.JSX.Element {
+export function NestedReading({ look, ...props }: ReadingViewProps & { look: NestedLook }): React.JSX.Element {
   return (
-    <div className={styles.nested}>
+    <div className={`${styles.nested} ${styles[look.shape]} ${styles[look.labels]}`}>
       {(props.reading.nodes ?? []).map((node) => (
         <Node key={node.id} node={node} {...props} />
       ))}

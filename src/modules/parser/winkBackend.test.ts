@@ -35,9 +35,9 @@ describe("tokenize", () => {
   it("does not make words of paragraph or line breaks", () => {
     const text = "I saw it.\n\nShe left.\nHe stayed.";
     const sentences = tokenize(text);
-    const words = sentences.flatMap((s) => s.words);
-    expect(words.map((w) => w.text)).toEqual(["I", "saw", "it", ".", "She", "left", ".", "He", "stayed", "."]);
-    for (const w of words) expect(text.slice(w.start, w.end)).toBe(w.text);
+    const all = sentences.flatMap((s) => s.words);
+    expect(all.map((w) => w.text)).toEqual(["I", "saw", "it", ".", "She", "left", ".", "He", "stayed", "."]);
+    for (const w of all) expect(text.slice(w.start, w.end)).toBe(w.text);
     expect(sentences[1]?.start).toBe(text.indexOf("She"));
   });
 

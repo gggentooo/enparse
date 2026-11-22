@@ -1,7 +1,9 @@
 /*
  * src/components/Pages/NestedReading.module.css — styles for NestedReading.tsx
  *
- * Description: nested phrase boxes colored by category, label line, role badges, head marks.
+ * Description: nested phrases, in one of two shapes (.boxes: rounded boxes; .brackets: colored brackets at both
+ *   ends, no vertical padding so depth widens a line instead of growing it) and with labels either always shown
+ *   (.always: in the layout) or only on hover/focus of the innermost phrase/word (.hover: floating over it).
  * Dependencies: src/css/tokens.css. Used by: NestedReading.tsx.
  * Status: implemented (T57).
  */
@@ -9,39 +11,37 @@
 .nested {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
   gap: var(--space-1);
 }
 
 .phrase {
   --phrase-color: var(--chunk-o);
+  --bracket-style: solid;
+  position: relative;
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  padding: 2px var(--space-1) var(--space-1);
-  border: 2px solid var(--phrase-color);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
-}
-
-.label {
-  color: var(--color-text);
-  font-size: 0.7rem;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .children {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
   gap: var(--space-1);
 }
 
 .word {
+  position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
+}
+
+.label {
+  padding: 0 var(--space-1);
+  color: var(--color-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .badge {
@@ -51,6 +51,85 @@
   color: var(--color-text);
   font-size: 0.65rem;
   white-space: nowrap;
+}
+
+/* Shape: boxes */
+.boxes,
+.boxes .children {
+  align-items: flex-end;
+}
+
+.boxes .phrase {
+  padding: 2px var(--space-1) var(--space-1);
+  border: 2px var(--bracket-style) var(--phrase-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
+}
+
+/* Shape: brackets, a vertical rule with short serifs at either end. */
+.brackets,
+.brackets .children {
+  align-items: center;
+}
+
+.brackets .phrase {
+  align-items: center;
+  padding: 0 calc(var(--space-1) + 5px);
+}
+
+.brackets .phrase::before,
+.brackets .phrase::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border: 2px var(--bracket-style) var(--phrase-color);
+  pointer-events: none;
+}
+
+.brackets .phrase::before {
+  left: 0;
+  border-right: none;
+  border-radius: 3px 0 0 3px;
+}
+
+.brackets .phrase::after {
+  right: 0;
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+}
+
+/* Labels on hover: floating, so they take no space. Only the innermost hovered/focused phrase shows its label. */
+.hover .label,
+.hover .badge {
+  position: absolute;
+  z-index: 2;
+  background: var(--color-surface, Canvas);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hover .label {
+  bottom: 100%;
+  left: 0;
+  border: 1px solid var(--phrase-color);
+  border-radius: var(--radius-sm);
+}
+
+.hover .badge {
+  top: 100%;
+}
+
+.hover .phrase:hover:not(:has(.phrase:hover)) > .label,
+.hover .phrase:focus-within:not(:has(.phrase:focus-within)) > .label,
+.hover .word:hover > .badge,
+.hover .word:focus-within > .badge {
+  opacity: 1;
+}
+
+.hover .phrase:hover:not(:has(.phrase:hover)) {
+  background: color-mix(in srgb, var(--phrase-color) 16%, transparent);
 }
 
 /* Bracket collapsed by gating: the role is shown, but the phrase boundary is uncertain (T59). */
@@ -85,5 +164,5 @@
 
 .S {
   --phrase-color: var(--color-text-muted);
-  border-style: dashed;
+  --bracket-style: dashed;
 }

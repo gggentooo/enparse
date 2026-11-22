@@ -12,7 +12,7 @@ Tasks:
 Dependencies:
   dev_meta/agents.md, dev_meta/architecture.md, training/README.md.
 
-Status: setup and available commands written (2026-11-18).
+Status: setup and available commands written (2026-11-18); local model testing (2026-11-21).
 -->
 
 # Enparse
@@ -36,11 +36,36 @@ npm run dev                # http://localhost:5173/#/input
 
 Deployment: Cloudflare Pages builds `dist/` (`npm run build`); model files are uploaded to the R2 bucket bound as `MODELS` and served at `/models/*` by `functions/models/[[path]].ts` (`dev_meta/architecture.md` → *Deployment*).
 
+## Test the models locally
+
+Until Phase 11 packages the models into `public/models/`, `npm run dev` has no models to offer (the app shows "the model list could not be loaded"). To try the trained models in the real app on your machine:
+
+```bash
+npm run dev:models         # http://localhost:5173/#/models
+```
+
+This is the normal dev server plus a local `/models/*` route (`vite.localModels.ts`) that serves the selected Phase 7 export of each offered model from `training/data/onnx/<model>/<run>/` (run from `training/data/eval/<model>/phase7_biaffine.json`), the way the deployed site serves them from R2. Names, metrics, and speeds come from the catalog fixture (`src/modules/modelLibrary/catalog.fixture.json`); file sizes and SHA-256 are computed from the files on disk, so a re-export is picked up on the next page load. The terminal lists the models it serves.
+
+Then, in Chrome or Safari:
+
+1. **Models** (`#/models`): choose a model (*이 모델 사용*). It downloads once, is verified, and loads; the header badge shows *준비됨* when ready. Downloaded models stay in the browser's cache, so later visits load them without downloading.
+2. **Input** (`#/input`): paste English text and press *분석하기*.
+3. **Output** (`#/output`): switch between the flat and structure views, open *다른 해석* where a sentence has other readings, and select words for details.
+
+Notes:
+
+- Needs the training exports on this machine (`training/data/` is not in git). Models without an export are left out and named in the terminal.
+- Use a normal browser window. Private windows have too little storage for the larger model (the app says so).
+- Model files are not cached by the dev server, but the browser keeps downloaded models in Cache Storage. To re-test a download after a re-export, delete the model on the Models page (or clear the site data).
+- `labels.json` gets `model_version` = `local-<run>` (Phase 11 sets the real one).
+- Local only: the route exists only in `npm run dev:models`, never in builds or the deployed site.
+
 ## Commands
 
 | Command | Purpose | Status |
 |---------|---------|--------|
 | `npm run dev` | Start the Vite dev server | Available |
+| `npm run dev:models` | Dev server that also serves the trained models locally at `/models/*` (see *Test the models locally*) | Available |
 | `npm run build` | Production build into `dist/` | Available |
 | `npm run typecheck` | `tsc --noEmit` | Available |
 | `npm test` | Unit tests (`vitest run`) | Available |

@@ -10,7 +10,7 @@
  * Tasks:
  *   1. Render the annotation model from useParser: flat view (chunks
  *      color-coded by type with text labels; ./FlatReading.tsx) or nested
- *      view (boxes with role badges; ./NestedReading.tsx) when the model has
+ *      view (boxes or brackets, labels always or on hover, per two toggles; ./NestedReading.tsx) when the model has
  *      it (T20). Paragraphs as in the input.
  *   2. Mark words with other readings; "Other readings (n)" per sentence
  *      switches the whole sentence view (./SentenceView.tsx; T11).
@@ -45,6 +45,7 @@ import {
 import { PATHS } from "../../paths";
 import { useModelName } from "../Shared/ModelStatus";
 import styles from "./OutputPage.module.css";
+import type { NestedLook } from "./NestedReading";
 import { SentenceView } from "./SentenceView";
 import { WordDetails } from "./WordDetails";
 
@@ -69,6 +70,7 @@ export function OutputPage(): React.JSX.Element {
   const { annotation, notice } = useParser();
   const modelName = useModelName();
   const [view, setView] = useState<"flat" | "nested">("flat");
+  const [look, setLook] = useState<NestedLook>({ shape: "brackets", labels: "hover" });
   const [selection, setSelection] = useState<Selection | null>(null);
   const viewName = useId();
 
@@ -120,6 +122,27 @@ export function OutputPage(): React.JSX.Element {
             </label>
           ))}
         </fieldset>
+        {shownView === "nested" && (
+          <fieldset className={styles.views}>
+            <legend>{t("output.look")}</legend>
+            <label className={styles.viewChoice}>
+              <input
+                type="checkbox"
+                checked={look.labels === "hover"}
+                onChange={(e) => setLook({ ...look, labels: e.target.checked ? "hover" : "always" })}
+              />
+              {t("output.labelsOnHover")}
+            </label>
+            <label className={styles.viewChoice}>
+              <input
+                type="checkbox"
+                checked={look.shape === "brackets"}
+                onChange={(e) => setLook({ ...look, shape: e.target.checked ? "brackets" : "boxes" })}
+              />
+              {t("output.brackets")}
+            </label>
+          </fieldset>
+        )}
         {!annotation.hasNested && <p className={styles.muted}>{t("output.nestedUnavailable")}</p>}
         <div className={styles.legend}>
           <span className={styles.legendTitle}>{t("output.legend")}</span>
@@ -146,6 +169,7 @@ export function OutputPage(): React.JSX.Element {
                     sentence={s}
                     number={number}
                     view={shownView}
+                    look={look}
                     selectedId={current?.token.id ?? null}
                     onSelect={(token, sentence, rank) => setSelection({ token, sentence, rank })}
                   />

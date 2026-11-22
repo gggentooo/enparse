@@ -263,6 +263,8 @@ The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2**
 | Source of truth | Git LFS (`public/models/`) | Uploaded to R2 by the Phase 11 packaging step (upload tool chosen there). |
 | Dictionary data | R2, same origin | Sharded JSON (T42), under a versioned path (proposed: `/dict/v<N>/`, a Pages Function route like `/models/*`; T70). |
 
+**Local model testing (2026-11-21):** `npm run dev:models` (`vite --mode local-models`) adds a dev-server-only Vite plugin, `vite.localModels.ts`, that emulates the `/models/*` route from the selected training exports (`training/data/onnx/<model>/<run>/`), with `catalog.json` built from the catalog fixture and file sizes and SHA-256 from disk, and `/models/_ort/*` from `node_modules/onnxruntime-web/dist`. Never in builds. The dev server pre-bundles the worker's dependencies (`optimizeDeps.include`), because discovering them at the first model load reloads the page and cancels the download.
+
 Open checks (T31): Range requests and streaming through the Function into Cache Storage; Function request quotas for the expected traffic.
 
 ### Model readiness (no fallback)
@@ -433,7 +435,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
-      │       │   │   └── NestedReading.tsx (nested boxes: category · role, head marks, role badges)
+      │       │   │   └── NestedReading.tsx (nested phrases as boxes or brackets, labels always or on hover per two OutputPage toggles; head marks)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
       │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary with T53)
       │       ├── VocabPage.tsx (custom vocab lists; T48)
@@ -859,3 +861,11 @@ enparse/
 - Modified: `output/annotator.ts` row and skeleton (`types.ts`, `index.ts`): the annotation model (T57).
 - Modified: `parserService` keeps the input `draft` and stores the annotation (not the raw `ParseResult`); library snapshot carries each model's download size for this device.
 - Modified: `parser/winkBackend.ts` no longer emits line breaks as words (paragraph breaks became a word at the start of the next sentence, which the model then parsed).
+
+### 2026-11-21T07:18:46Z — Claude Opus 5.5, Local model testing; storage errors
+
+- Added: *Deployment* → *Local model testing* (`npm run dev:models`, `vite.localModels.ts`, `optimizeDeps.include` for the worker's dependencies).
+- Modified: `core/environment.ts` `downloadToCache`: a failing `cache.put` (quota, private windows) is an `AssetError("cache")`, so the model status says `storage`, not `network`.
+- Changed: `NestedReading` shows phrase labels and word role badges only on hover or keyboard focus of the innermost box (2026-11-23T00:00:00Z, Claude Opus 5.5).
+- Changed: `NestedReading` draws phrases as colored brackets at both ends instead of rounded boxes (no vertical padding per level) (2026-11-23T00:10:00Z, Claude Opus 5.5).
+- Added: OutputPage nested-view toggles: labels always or on hover; phrases as boxes or brackets (`NestedLook`; defaults: brackets, on hover) (2026-11-23T00:20:00Z, Claude Opus 5.5).

@@ -21,7 +21,7 @@ import { useId, useState } from "react";
 import { useI18n } from "../../hooks/useI18n";
 import type { AnnotatedSentence, AnnotatedToken } from "../../hooks/useParser";
 import { FlatReading } from "./FlatReading";
-import { NestedReading } from "./NestedReading";
+import { type NestedLook, NestedReading } from "./NestedReading";
 import styles from "./SentenceView.module.css";
 
 export type SentenceViewProps = {
@@ -29,11 +29,20 @@ export type SentenceViewProps = {
   /** 1-based number for labels. */
   number: number;
   view: "flat" | "nested";
+  /** Shape and labels of the nested view. */
+  look: NestedLook;
   selectedId: string | null;
   onSelect: (token: AnnotatedToken, sentence: AnnotatedSentence, readingRank: number) => void;
 };
 
-export function SentenceView({ sentence, number, view, selectedId, onSelect }: SentenceViewProps): React.JSX.Element {
+export function SentenceView({
+  sentence,
+  number,
+  view,
+  look,
+  selectedId,
+  onSelect,
+}: SentenceViewProps): React.JSX.Element {
   const { t, formatNumber } = useI18n();
   const [rank, setRank] = useState(0);
   const name = useId();
@@ -50,7 +59,7 @@ export function SentenceView({ sentence, number, view, selectedId, onSelect }: S
 
   return (
     <article className={styles.sentence} aria-label={t("output.sentence", { n: number })}>
-      {view === "nested" && reading.nodes ? <NestedReading {...props} /> : <FlatReading {...props} />}
+      {view === "nested" && reading.nodes ? <NestedReading {...props} look={look} /> : <FlatReading {...props} />}
       {alternatives > 0 && (
         <details className={styles.readings} open={rank !== 0 || undefined}>
           <summary>{t("output.otherReadings", { count: alternatives })}</summary>

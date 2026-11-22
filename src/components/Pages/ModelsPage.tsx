@@ -59,7 +59,8 @@ export function ModelsPage(): React.JSX.Element {
       {/* With no model yet, the first-visit notice and the cards say it all. */}
       {status.state !== "no-model" && <ModelStatus />}
       {nothingDownloaded && <p className={styles.notice}>{t("models.firstVisit")}</p>}
-      {library.error && (
+      {/* A failed choice is already explained by the status box; show other action errors (e.g. blocked model). */}
+      {library.error && status.state !== "failed" && (
         <p role="alert" className={styles.error}>
           {library.error.message}
         </p>

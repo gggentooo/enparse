@@ -154,6 +154,23 @@ describe("model cache", () => {
     expect(stores.get(MODEL_CACHE_NAME)?.size ?? 0).toBe(0);
   });
 
+  it("reports a failing cache.put as a storage (cache) error, not a download error", async () => {
+    // Chrome's private windows reject large entries with "Unexpected internal error" (T31 spike).
+    const open = async () => ({
+      match: async () => undefined,
+      put: async () => {
+        throw new DOMException("Unexpected internal error.", "UnknownError");
+      },
+      delete: async () => false,
+    });
+    vi.stubGlobal("caches", { open });
+    vi.stubGlobal("fetch", async () => new Response(body));
+    await expect(downloadToCache(url, { bytes: 1000, sha256: await hex(body) })).rejects.toMatchObject({
+      name: "AssetError",
+      reason: "cache",
+    });
+  });
+
   it("refuses other origins, reports a missing Cache Storage, and passes aborts through", async () => {
     vi.stubGlobal("caches", fakeCaches().caches);
     await expect(downloadToCache("https://cdn.example.com/m.onnx", { bytes: 1, sha256: "0" })).rejects.toMatchObject({
