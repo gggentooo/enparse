@@ -79,14 +79,14 @@ Findings:
 - **Private windows:** Chrome's incognito-like Playwright context failed `cache.put` for the 302 MB file ("Unexpected internal error"; small quota). Pre-flight should treat a low `storage.estimate()` quota as blocking for model download.
 - **ONNX Runtime WASM must be self-hosted:** by default Transformers.js loads it from cdn.jsdelivr.net; the app now sets `wasmPaths` to `/models/_ort/` (`transformerBackend.ts`). The asyncify `.wasm` is 26.9 MB (over Pages' 25 MiB limit), so it ships through R2 with the models.
 
-## Requirements for `catalog.json` (proposed)
+## Parse times for `catalog.json` (owner, T65)
 
-Rule (proposed): `min_device_memory_gb` = the smallest of 4 / 8 / 16 GB that is ≥ the int8 variant's largest warm peak across browsers + 2 GB for the OS and browser. fp16 additionally needs WebGPU.
+Seconds per 5,000 characters, warm median; the slowest browser counts. `wasm` = int8 with many threads, `wasm_2core` = the 2-core VM, `wasm_1thread` = int8 without cross-origin isolation, `webgpu` = fp16. The app picks the tier that matches the device (`preflight/checks.ts` → `wasmTier`). No per-model memory requirement: both models ran in the 4 GB VM, so only the device-wide memory hint (4 GB) warns.
 
-| Model | int8 warm peak, max (GB) | min_device_memory_gb | fp16 warm peak, max (GB) | Fastest variant: chrome / safari / vm-chrome |
-|---|---|---|---|---|
-| deberta_v3_xsmall | 1.75 | 4 | 2.70 | fp16 / int8 / int8 |
-| modernbert_base | 2.14 | 8 | 2.87 | fp16 / fp16 / int8 |
+| Model | wasm | wasm_2core | wasm_1thread | webgpu | Peak memory int8 / fp16, max (GB) |
+|---|---|---|---|---|---|
+| deberta_v3_xsmall | 0.423 | 1.342 | 1.223 | 0.515 | 1.75 / 2.70 |
+| modernbert_base | 1.483 | 5.166 | 4.913 | 0.275 | 2.14 / 2.87 |
 
 ## Lower-end device (T67): findings
 

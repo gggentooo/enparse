@@ -203,6 +203,50 @@ describe("annotate", () => {
     expect(a.sentences[0]?.readings[0]?.nodes).toHaveLength(2);
   });
 
+  it("explains each reading and is not a near-tie when the primary reading clearly leads", () => {
+    const [first] = annotate(result, text).sentences;
+    expect(first?.nearTie).toBe(false);
+    expect(first?.readings[0]?.notes).toEqual([{ kind: "label", word: "ran", upos: "X" }]);
+    expect(first?.readings[1]?.notes).toEqual([{ kind: "label", word: "ran", upos: "NOUN" }]);
+    expect(first?.readings.map((r) => r.forks)).toEqual([[], []]);
+  });
+
+  it("marks a near-tie and gives both readings the disputed phrase's fork and explanation (T83)", () => {
+    // "in parks" (head word 4) goes with "ran" (2) or "dog" (1): 55% against 45%.
+    const words = ["The", "dog", "ran", "in", "parks", "."];
+    const heads = [1, 2, -1, 4, 2, 2];
+    const upos = ["DET", "NOUN", "VERB", "ADP", "NOUN", "PUNCT"];
+    const s = sentence(words, 0, {
+      alternatives: [
+        {
+          rank: 1,
+          probability: 0.45,
+          reason: "attachment",
+          changes: [{ index: 4, head: 1 }],
+          chunks: [],
+          phrases: null,
+          attachment: { word: 4, from: 2, to: 1 },
+        },
+      ],
+    });
+    s.tokens = s.tokens.map((t, i) => ({ ...t, head: heads[i] as number, upos: upos[i] as string }));
+    const [a] = annotate({ ...result, sentences: [s] }, "The dog ran in parks.").sentences;
+    expect(a?.nearTie).toBe(true);
+    const [primary, alt] = a?.readings ?? [];
+    expect(primary?.notes).toEqual([{ kind: "attach", phrase: "in parks", head: "ran", headKind: "verb" }]);
+    expect(alt?.notes).toEqual([{ kind: "attach", phrase: "in parks", head: "dog", headKind: "noun" }]);
+    expect(primary?.forks).toEqual([
+      {
+        token: 4,
+        targets: [
+          { token: 2, share: 0.55 },
+          { token: 1, share: 0.45 },
+        ],
+      },
+    ]);
+    expect(alt?.forks[0]?.targets.map((x) => x.token)).toEqual([1, 2]);
+  });
+
   it("handles empty input", () => {
     expect(annotate({ ...result, sentences: [] }, "").sentences).toEqual([]);
   });

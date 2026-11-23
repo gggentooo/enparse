@@ -80,8 +80,7 @@ describe("variants, files, and requirements", () => {
     expect(requirementsOf(deb!)).toMatchObject({
       id: "deberta_v3_xsmall",
       variants: { int8: { bytes: downloadBytes(deb!, "int8") } },
-      minDeviceMemoryGb: 4,
-      parseSeconds: { wasm: 0.423 },
+      parseSeconds: { wasm: 0.423, wasm_2core: 1.342, wasm_1thread: 1.223 },
     });
   });
 });

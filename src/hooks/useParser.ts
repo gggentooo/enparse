@@ -55,10 +55,12 @@ export type {
   ChunkKind,
   FailureReason,
   FlatSegment,
+  Fork,
   ModelStatus,
   PreflightReport,
   PreprocessResult,
   Reading,
+  ReadingNote,
   RoleKind,
 } from "../services/parserService";
 export { MAX_INPUT_CHARS } from "../services/parserService";

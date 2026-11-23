@@ -61,13 +61,11 @@ export async function clearChoice(storage: AppStorage = appStorage()): Promise<v
   await storage.remove(CHOICE_KEY);
 }
 
-const hasMemoryWarning = (f: FitnessLike): boolean =>
-  f.reasons.some((r) => r.id === "model-memory" && r.status === "warn");
-
 /**
- * Recommended model (owner, T22): among models not blocked and without memory warnings, the
- * highest chunk F1 whose expected parse time on this device is within `budgetSeconds` (unknown
- * times count as within); ties → smaller download for the device's variant.
+ * Recommended model (owner, T22): among models not blocked, the highest chunk F1 whose
+ * expected parse time on this device (its backend and speed tier; T65) is within
+ * `budgetSeconds` (unknown times count as within); ties → smaller download for the device's
+ * variant. Memory only warns device-wide (owner, T65: no per-model memory requirement).
  */
 export function recommendModel(
   catalog: Catalog,
@@ -77,7 +75,7 @@ export function recommendModel(
   const byId = new Map(fitness.map((f) => [f.id, f]));
   const candidates = catalog.models.filter((m) => {
     const f = byId.get(m.id);
-    if (!f || f.verdict === "blocked" || f.variant === null || hasMemoryWarning(f)) return false;
+    if (!f || f.verdict === "blocked" || f.variant === null) return false;
     return f.expectedParseSeconds === null || f.expectedParseSeconds <= budgetSeconds;
   });
   const size = (id: ModelId): number => {

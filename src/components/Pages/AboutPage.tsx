@@ -26,7 +26,7 @@
  *   Apache 2.0), so it cannot replace these credits yet (TODO(T66): add base
  *   license to the catalog in Phase 11 packaging, then read it here);
  *   app license: PolyForm Noncommercial 1.0.0 (owner, T16); dictionary sources
- *   are added with the dictionary build (T25 decided; T46).
+ *   are credited from the dictionary build (T70; data CC BY-SA 4.0).
  *   Tests: AboutPage.test.tsx (the attribution must match training/MODEL_CARD.md).
  */
 
@@ -73,6 +73,31 @@ const WORD_LISTS: Credit[] = [
     url: "https://www.newgeneralservicelist.com/new-general-service-list",
     detail: "about.wordList.ngsl",
     license: { literal: "CC BY-SA 4.0" },
+  },
+];
+
+/**
+ * Dictionary sources (keep in sync with training/configs/dictionary.yaml and
+ * training/dictionary/DATA_CARD.md; T70). The built dictionary data is CC BY-SA 4.0.
+ */
+const DICTIONARY: Credit[] = [
+  {
+    name: "Open English WordNet 2025",
+    url: "https://en-word.net/",
+    detail: "about.dict.wordnet",
+    license: { literal: "CC BY 4.0" },
+  },
+  {
+    name: "English Wiktionary (kaikki.org extract)",
+    url: "https://en.wiktionary.org/",
+    detail: "about.dict.wiktionary",
+    license: { literal: "CC BY-SA 4.0" },
+  },
+  {
+    name: "Tatoeba",
+    url: "https://tatoeba.org",
+    detail: "about.dict.tatoeba",
+    license: { literal: "CC BY 2.0 FR" },
   },
 ];
 
@@ -183,7 +208,10 @@ export function AboutPage(): React.JSX.Element {
 
       <section aria-labelledby="about-dictionary" className={styles.section}>
         <h2 id="about-dictionary">{t("about.dictionaryTitle")}</h2>
-        <p>{t("about.dictionaryNone")}</p>
+        <p>
+          {t("about.dictionaryLicense")} <ExternalLink href={CC_BY_SA.url}>{CC_BY_SA.name}</ExternalLink>
+        </p>
+        <CreditList items={DICTIONARY} />
       </section>
     </section>
   );

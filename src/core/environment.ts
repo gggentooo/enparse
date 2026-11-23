@@ -43,6 +43,9 @@
  *   <origin>/models/<model-id>/<file>; Transformers.js 4.3.2 then loads them
  *   without fetching. Whole-file crypto.subtle.digest is fast enough (302 MB
  *   in ≤ 0.26 s), so downloadToCache hashes the assembled Blob once.
+ *   5d. Every cache function takes an optional cache name (default
+ *      MODEL_CACHE_NAME), so the dictionary keeps its files in its own
+ *      versioned cache (T46); readCached, putCached, cacheNames, deleteCache.
  *   6. Constants: MODEL_CACHE_NAME (the Transformers.js cache name; checked
  *      against the pinned version), PROBE_TIMEOUT_MS for slow adapters.
  *   7. Unit tests in environment.test.ts with stubbed globals.
@@ -52,7 +55,7 @@
  *     WebAssembly, caches, crypto.subtle, fetch, crossOriginIsolated.
  *   No external libraries; no other layers.
  *   Used by: modules/preflight (preflight.ts), modules/modelLibrary
- *            (catalog.ts, downloads.ts).
+ *            (catalog.ts, downloads.ts), modules/dictionary (staticDb.ts).
  *
  * Network: fetchStaticJson only loads assets from the app's own static host
  *   (agents.md → Parser and worker code). No telemetry; results stay local.
@@ -63,7 +66,8 @@
  *
  * Open items (todo.md): pre-flight thresholds (T65).
  *
- * Status: implemented (T30 probes, T38 cache functions). Tests: environment.test.ts.
+ * Status: implemented (T30 probes, T38 cache functions; cache names and dictionary helpers T46).
+ *   Tests: environment.test.ts.
  */
 
 /** Cache Storage name Transformers.js 4.3.2 uses (`env.cacheKey`); model files live here (T31). */
@@ -264,10 +268,14 @@ export async function fetchStaticJson(url: string): Promise<unknown> {
 /** Expected size and SHA-256 (hex) of a model file (labels.json → files). */
 export type FileDigest = { bytes: number; sha256: string };
 
-async function modelCache(url: string): Promise<Cache> {
+function cacheStorage(url: string): CacheStorage {
   const c = (globalThis as { caches?: CacheStorage }).caches;
   if (!c) throw new AssetError("cache", url, "Cache Storage is not available");
-  return c.open(MODEL_CACHE_NAME);
+  return c;
+}
+
+async function modelCache(url: string, name: string = MODEL_CACHE_NAME): Promise<Cache> {
+  return cacheStorage(url).open(name);
 }
 
 async function sha256Hex(data: ArrayBuffer): Promise<string> {
@@ -276,10 +284,13 @@ async function sha256Hex(data: ArrayBuffer): Promise<string> {
 }
 
 /** Cached size in bytes per URL (null if not cached), without hashing. */
-export async function listCached(urls: readonly string[]): Promise<Record<string, number | null>> {
+export async function listCached(
+  urls: readonly string[],
+  cacheName: string = MODEL_CACHE_NAME,
+): Promise<Record<string, number | null>> {
   const out: Record<string, number | null> = {};
   if (urls.length === 0) return out;
-  const cache = await modelCache(urls[0] as string);
+  const cache = await modelCache(urls[0] as string, cacheName);
   for (const url of urls) {
     const res = await cache.match(sameOriginUrl(url));
     if (!res) out[url] = null;
@@ -301,9 +312,10 @@ export async function downloadToCache(
   expected: FileDigest,
   onProgress?: (loaded: number, total: number) => void,
   signal?: AbortSignal,
+  cacheName: string = MODEL_CACHE_NAME,
 ): Promise<FileDigest> {
   const abs = sameOriginUrl(url);
-  const cache = await modelCache(abs);
+  const cache = await modelCache(abs, cacheName);
   const res = await fetch(abs, signal ? { signal } : {});
   if (!res.ok || !res.body) throw new AssetError("http", abs, `HTTP ${res.status} for ${abs}`);
   const reader = res.body.getReader();
@@ -337,10 +349,13 @@ export async function downloadToCache(
 }
 
 /** Size and SHA-256 of each cached file (null if not cached): the pre-load integrity check. */
-export async function digestCachedFiles(urls: readonly string[]): Promise<Record<string, FileDigest | null>> {
+export async function digestCachedFiles(
+  urls: readonly string[],
+  cacheName: string = MODEL_CACHE_NAME,
+): Promise<Record<string, FileDigest | null>> {
   const out: Record<string, FileDigest | null> = {};
   if (urls.length === 0) return out;
-  const cache = await modelCache(urls[0] as string);
+  const cache = await modelCache(urls[0] as string, cacheName);
   for (const url of urls) {
     const res = await cache.match(sameOriginUrl(url));
     if (!res) out[url] = null;
@@ -353,8 +368,39 @@ export async function digestCachedFiles(urls: readonly string[]): Promise<Record
 }
 
 /** Remove files from the model cache (integrity mismatch, or the user deleted the model). */
-export async function deleteCachedFiles(urls: readonly string[]): Promise<void> {
+export async function deleteCachedFiles(urls: readonly string[], cacheName: string = MODEL_CACHE_NAME): Promise<void> {
   if (urls.length === 0) return;
-  const cache = await modelCache(urls[0] as string);
+  const cache = await modelCache(urls[0] as string, cacheName);
   for (const url of urls) await cache.delete(sameOriginUrl(url));
+}
+
+// -- other caches (dictionary data, T46) -----------------------------------------------------
+
+/** Body of a cached same-origin file, or null if it is not in the cache. */
+export async function readCached(url: string, cacheName: string): Promise<ArrayBuffer | null> {
+  const res = await (await modelCache(url, cacheName)).match(sameOriginUrl(url));
+  return res ? res.arrayBuffer() : null;
+}
+
+/** Store a small same-origin file (e.g. a manifest kept for offline use); a failing put → AssetError("cache"). */
+export async function putCached(url: string, body: string, contentType: string, cacheName: string): Promise<void> {
+  const abs = sameOriginUrl(url);
+  const cache = await modelCache(abs, cacheName);
+  try {
+    await cache.put(abs, new Response(body, { headers: { "Content-Type": contentType } }));
+  } catch (e) {
+    throw new AssetError("cache", abs, `could not store ${abs}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Names of the app's Cache Storage caches ([] if Cache Storage is missing). */
+export async function cacheNames(): Promise<string[]> {
+  const c = (globalThis as { caches?: CacheStorage }).caches;
+  return c ? c.keys() : [];
+}
+
+/** Delete a whole cache (true if it existed). */
+export async function deleteCache(cacheName: string): Promise<boolean> {
+  const c = (globalThis as { caches?: CacheStorage }).caches;
+  return c ? c.delete(cacheName) : false;
 }

@@ -45,13 +45,11 @@ export function manifest(over: Partial<ModelManifest> = {}): ModelManifest {
 export const DEBERTA: ModelRequirements = {
   id: "deberta_v3_xsmall",
   variants: { int8: { bytes: 90e6 }, fp16: { bytes: 144e6 } },
-  parseSeconds: { wasm: 0.42, webgpu: 0.23 },
-  minDeviceMemoryGb: 4,
+  parseSeconds: { wasm: 0.42, wasm_2core: 1.34, wasm_1thread: 1.22, webgpu: 0.23 },
 };
 
 export const MODERNBERT: ModelRequirements = {
   id: "modernbert_base",
   variants: { int8: { bytes: 156e6 }, fp16: { bytes: 302e6 } },
-  parseSeconds: { wasm: 5.2, webgpu: 0.15 },
-  minDeviceMemoryGb: 8,
+  parseSeconds: { wasm: 1.48, wasm_2core: 5.17, wasm_1thread: 4.91, webgpu: 0.15 },
 };

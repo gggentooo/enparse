@@ -23,7 +23,7 @@
     "  js-yaml                           — read ../configs/*.yaml (MIT)",
     "  System: Node.js 20+.",
     "",
-    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), baselines (Phase 5), benchmark (Phases 7, 9), nested and errors (Phase 7), bench and bench-report (Phase 10; Chrome via the repo root's @playwright/test), test."
+    "Status: dependencies pinned (Phase 0); scripts: align (Phase 3), baselines (Phase 5), benchmark (Phases 7, 9), nested and errors (Phase 7), bench and bench-report (Phase 10; Chrome via the repo root's @playwright/test), known-words (T41), dict-lemmas (T70; run by dictionary/build.py), test."
   ],
   "name": "enparse-training-js",
   "private": true,
@@ -37,7 +37,8 @@
     "errors": "tsx error_analysis.mjs",
     "bench": "node bench_browsers.mjs",
     "bench-report": "node bench_report.mjs",
-    "known-words": "node build_known_words.mjs"
+    "known-words": "node build_known_words.mjs",
+    "dict-lemmas": "tsx dict_lemmas.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

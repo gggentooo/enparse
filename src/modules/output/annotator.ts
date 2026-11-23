@@ -19,6 +19,12 @@
  *      alternatives) and each alternative with rank, share, reason, and the
  *      words it changes. Words changed by any alternative are `ambiguous`.
  *   4. Carry the model id, model version, and backend for display.
+ *   4b. Near-ties (owner, 2026-11-23; T83): a sentence whose top reading has
+ *      a share below NEAR_TIE_SHARE is `nearTie`. Every reading gets plain
+ *      `notes` of what it says where the readings differ (which word a
+ *      phrase goes with; which part of speech a word is), and, in a
+ *      near-tie, `forks`: the disputed phrase's head token with both
+ *      candidate targets and their shares.
  *   5. Token lookup data (surface form + lemma) for dictionary and subword
  *      lookups; spaceAfter from the input offsets; paragraph index from blank
  *      lines in the preprocessed text.
@@ -31,7 +37,7 @@
  *   ParseResult; parserService passes it through.
  *   Used by: services/parserService.ts (via ./index.ts).
  *
- * Status: implemented (T57; attachments T79). Tests: annotator.test.ts.
+ * Status: implemented (T57; attachments T79; near-tie notes and forks T83). Tests: annotator.test.ts.
  */
 
 import type {
@@ -41,11 +47,15 @@ import type {
   Annotation,
   AnnotatorInput,
   FlatSegment,
+  Fork,
+  HeadKind,
   InputChunk,
   InputPhrase,
   InputWord,
   Reading,
+  ReadingNote,
 } from "./types";
+import { NEAR_TIE_SHARE } from "./types";
 
 type InputSentence = AnnotatorInput["sentences"][number];
 type InputNode = InputPhrase | InputWord;
@@ -88,6 +98,7 @@ export function annotateNodes(nodes: readonly InputNode[], prefix: string): Anno
     return {
       kind: "phrase",
       id,
+      head: n.head,
       category: n.category,
       start: n.start,
       end: n.end,
@@ -125,14 +136,68 @@ function annotateSentence(s: InputSentence, index: number, paragraph: number, te
     };
   });
   const altShare = s.alternatives.reduce((sum, a) => sum + a.probability, 0);
+  const primaryShare = Math.max(0, 1 - altShare);
+  const nearTie = s.alternatives.length > 0 && primaryShare < NEAR_TIE_SHARE;
+
+  /** Words of a word's phrase (its subtree in the primary parse), as text. */
+  const phraseText = (w: number): string => {
+    const inside = s.tokens.map((_, i) => {
+      for (let k = i, steps = 0; k >= 0 && steps <= s.tokens.length; k = s.tokens[k]?.head ?? -1, steps++) {
+        if (k === w) return true;
+      }
+      return false;
+    });
+    return s.tokens
+      .slice(inside.indexOf(true), inside.lastIndexOf(true) + 1)
+      .map((t) => t.text)
+      .join(" ");
+  };
+  const headKind = (upos: string | undefined): HeadKind =>
+    upos === "NOUN" || upos === "PROPN" || upos === "PRON" || upos === "NUM"
+      ? "noun"
+      : upos === "VERB" || upos === "AUX"
+        ? "verb"
+        : upos === "ADJ"
+          ? "adjective"
+          : "other";
+  /** "phrase goes with head", or nothing if the head is the root. */
+  const attachNote = (word: number, head: number): ReadingNote[] => {
+    const h = s.tokens[head];
+    return h ? [{ kind: "attach", phrase: phraseText(word), head: h.text, headKind: headKind(h.upos) }] : [];
+  };
+  /** What a reading says about one alternative's differences: its own side (`own`) or the primary's. */
+  const notesFor = (a: InputSentence["alternatives"][number], own: boolean): ReadingNote[] => {
+    if (a.attachment) return attachNote(a.attachment.word, own ? a.attachment.to : a.attachment.from);
+    return a.changes.flatMap((c): ReadingNote[] => {
+      const tok = s.tokens[c.index];
+      return tok && c.upos !== undefined ? [{ kind: "label", word: tok.text, upos: own ? c.upos : tok.upos }] : [];
+    });
+  };
+  const unique = (notes: ReadingNote[]): ReadingNote[] => {
+    const seen = new Set<string>();
+    return notes.filter((n) => {
+      const key = JSON.stringify(n);
+      return seen.has(key) ? false : (seen.add(key), true);
+    });
+  };
+  /** Fork of one attachment alternative, seen from the primary (`own` false) or from that reading. */
+  const forkOf = (a: InputSentence["alternatives"][number], own: boolean): Fork[] => {
+    if (!nearTie || !a.attachment || a.attachment.from < 0 || a.attachment.to < 0) return [];
+    const mine = { token: a.attachment.to, share: a.probability };
+    const theirs = { token: a.attachment.from, share: primaryShare };
+    return [{ token: a.attachment.word, targets: own ? [mine, theirs] : [theirs, mine] }];
+  };
+
   const primary: Reading = {
     id: `${id}-r0`,
     rank: 0,
-    probability: Math.max(0, 1 - altShare),
+    probability: primaryShare,
     reason: "primary",
     segments: flatSegments(s.chunks, s.tokens.length, `${id}-r0`),
     nodes: s.phrases ? annotateNodes(s.phrases, `${id}-r0-n`) : null,
     changes: {},
+    notes: unique(s.alternatives.flatMap((a) => notesFor(a, false))),
+    forks: s.alternatives.flatMap((a) => forkOf(a, false)),
   };
   const alternatives = s.alternatives.map((a): Reading => {
     const rid = `${id}-r${a.rank}`;
@@ -151,6 +216,8 @@ function annotateSentence(s: InputSentence, index: number, paragraph: number, te
       segments: flatSegments(a.chunks, s.tokens.length, rid),
       nodes: a.phrases ? annotateNodes(a.phrases, `${rid}-n`) : null,
       changes,
+      notes: unique(notesFor(a, true)),
+      forks: forkOf(a, true),
     };
   });
   return {
@@ -159,6 +226,7 @@ function annotateSentence(s: InputSentence, index: number, paragraph: number, te
     text: text.slice(s.start, s.end),
     tokens,
     readings: [primary, ...alternatives.sort((a, b) => a.rank - b.rank)],
+    nearTie,
   };
 }
 

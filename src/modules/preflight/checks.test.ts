@@ -10,7 +10,6 @@ import {
   checkFilesIntegrity,
   checkManifestSchema,
   checkMemoryHint,
-  checkModelMemory,
   checkModelSize,
   checkModelStorage,
   checkModelVariant,
@@ -22,8 +21,10 @@ import {
   checkWebGpu,
   checkWinkVersions,
   chooseVariant,
+  expectedParseSeconds,
+  wasmTier,
 } from "./checks";
-import { STORAGE_MARGIN_BYTES, SUPPORTED_SCHEMA_VERSION } from "./requirements";
+import { MIN_WEBGPU_STORAGE_BINDING_BYTES, STORAGE_MARGIN_BYTES, SUPPORTED_SCHEMA_VERSION } from "./requirements";
 import { DEBERTA, MODERNBERT, manifest, probe } from "./testProbe";
 
 const GB = 1024 ** 3;
@@ -49,6 +50,11 @@ describe("device checks", () => {
       checkWebGpu(probe({ webgpu: { maxBufferSize: 1024, maxStorageBufferBindingSize: 1024, shaderF16: true } }))
         .detail,
     ).toBe("small-buffers-use-wasm");
+    // The storage-binding limit decides (T65), not maxBufferSize: 128 MiB passes, one byte less does not.
+    const binding = (n: number) =>
+      probe({ webgpu: { maxBufferSize: 4 * GB, maxStorageBufferBindingSize: n, shaderF16: true } });
+    expect(backendHint(binding(MIN_WEBGPU_STORAGE_BINDING_BYTES))).toBe("webgpu");
+    expect(backendHint(binding(MIN_WEBGPU_STORAGE_BINDING_BYTES - 1))).toBe("wasm");
   });
 
   it("warns on low quota and low memory hints, and skips them when not exposed", () => {
@@ -80,11 +86,24 @@ describe("model fitness", () => {
     expect(checkModelStorage(DEBERTA, probe()).status).toBe("pass");
   });
 
-  it("warns on memory below the requirement and on parse time over budget", () => {
-    expect(checkModelMemory(MODERNBERT, probe({ deviceMemoryGb: 4 })).status).toBe("warn");
-    expect(checkModelMemory(MODERNBERT, probe({ deviceMemoryGb: null })).status).toBe("skip");
-    expect(checkParseTime(MODERNBERT, probe({ webgpu: null }))).toMatchObject({ status: "warn", measured: 5.2 });
-    expect(checkParseTime(MODERNBERT, probe()).status).toBe("pass");
+  it("estimates parse time by the device's speed tier and warns over budget (T65)", () => {
+    const cpu = { webgpu: null } as const;
+    expect(wasmTier(probe(cpu))).toBe("wasm");
+    expect(expectedParseSeconds(MODERNBERT, probe(cpu))).toBe(1.48);
+    expect(checkParseTime(MODERNBERT, probe(cpu)).status).toBe("pass");
+    // Two cores, or one thread without cross-origin isolation: the slower measured times.
+    const twoCores = probe({ ...cpu, hardwareConcurrency: 2 });
+    expect(wasmTier(twoCores)).toBe("wasm_2core");
+    expect(checkParseTime(MODERNBERT, twoCores)).toMatchObject({ status: "warn", measured: 5.17 });
+    const oneThread = probe({ ...cpu, wasmThreads: false, crossOriginIsolated: false, hardwareConcurrency: 2 });
+    expect(wasmTier(oneThread)).toBe("wasm_1thread");
+    expect(expectedParseSeconds(MODERNBERT, oneThread)).toBe(4.91);
+    expect(expectedParseSeconds(DEBERTA, oneThread)).toBe(1.22);
+    // Unknown core count counts as many; an unmeasured tier falls back to the many-thread time.
+    expect(wasmTier(probe({ ...cpu, hardwareConcurrency: null }))).toBe("wasm");
+    expect(expectedParseSeconds({ ...MODERNBERT, parseSeconds: { wasm: 1.5 } }, twoCores)).toBe(1.5);
+    // fp16 on WebGPU ignores the WASM tier.
+    expect(expectedParseSeconds(MODERNBERT, probe({ hardwareConcurrency: 2 }))).toBe(0.15);
   });
 });
 

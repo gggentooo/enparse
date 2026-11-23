@@ -91,6 +91,7 @@ The app shows two views of each sentence:
      - **Copula:** with a `cop` dependent before the head, the head and its dependents after the copula (and after any auxiliary or subject before the head) form the complement bracket inside the predicate: `[are [from the Scombridae family]]`. Clause-level right dependents (`advcl`, `parataxis`, clausal `conj`) stay outside the complement. A one-word complement is not bracketed (`[is happy]`).
      - **Main clause (owner, 2026-11-23; T82):** the sentence's main clause, and clauses coordinated with it, get no clause bracket: the subject bracket and the predicate bracket are the outermost brackets (`[Mackerel] [typically have …]`), always shown even for one word. Below the bracket threshold they are drawn dashed instead of being removed (Phase 8 task 5). Embedded clauses keep their bracket.
      - **Coordination (owner, 2026-11-23; T82):** conjuncts are shown side by side, `[[red apples] and [green pears]]`. The head's dependents before the first conjunct belong to the first conjunct, which gets its own bracket; each later conjunct is its own bracket with its conjunction and punctuation outside it; the head's later dependents are shared. One-word conjuncts stay plain words (`[apples, pears and oranges]`). The outer bracket carries the shared role. This regroups the model's attachments without changing any.
+     - **Near-ties (owner, 2026-11-23; T83):** when the top reading's share is below 60% (`output/types.ts` → `NEAR_TIE_SHARE`), the app presents the readings as equals: a note on the sentence, the readings list open and lettered A, B, …, the disputed phrase marked with a dashed arrow to each candidate and its share, and a fixed-template sentence per reading saying what it means (which word the phrase goes with; which part of speech a word is).
      - **Prepositions** (`case`) are words of their noun's phrase, so the phrase attaches as a unit: `[given [to …]]`.
      - Each bracket records its level (`phrase`, `complement`, `predicate`, `clause`, `conjunct`) for labeling.
   4. Punctuation is not bracketed. It sits in the innermost bracket of its head that surrounds it; punctuation at the edge of its head's phrase sits in that phrase, and the root's stays outside all brackets.
@@ -192,7 +193,7 @@ training/
 │   ├── data.yaml (UD release tag, paths, window size)
 │   ├── eval.yaml (calibration, export, parity, benchmark settings) (proposed)
 │   ├── catalog.yaml (model library display names and descriptions; owner-editable)
-│   ├── dictionary.yaml (pinned word-list and dictionary sources with SHA-256, licenses, attribution; NGSL for T41, dictionary sources with T70)
+│   ├── dictionary.yaml (pinned word-list and dictionary sources with SHA-256, licenses, attribution: NGSL (T41), Open English WordNet 2025, Wiktionary via kaikki.org with a pinned subset, Tatoeba (T70))
 │   └── train_<model>.yaml (hyperparameters per candidate; one file per model)
 ├── data/ (git-ignored: raw UD files, processed datasets, checkpoints, ONNX exports)
 ├── scripts/
@@ -207,7 +208,7 @@ training/
 │   ├── metrics.py (word-level predictions; UPOS, chunk F1, UAS/LAS; shared by train.py and evaluate.py)
 │   ├── run_smoke.sh, smoke_report.py (Phase 7 task 0)
 │   └── package_models.py (Phase 11: public/models/<model-id>/ and catalog.json)
-├── dictionary/ (dictionary build pipeline, not a model phase: pinned sources, extraction, inflection index, shards; owner T42, build T70)
+├── dictionary/ (dictionary build pipeline, not a model phase; owner T42, built T70: fetch.py (pinned downloads), extract.py (Wiktionary subset), sources.py, build.py (headwords, entries, inflection index, shards, manifest, report), DATA_CARD.md)
 ├── js/
 │   ├── package.json (scripts: align, test)
 │   ├── align_tokens.mjs (runtime words vs UD words; Phase 3)
@@ -227,6 +228,8 @@ training/
 
 
 **Dictionary pipeline (owner, 2026-11-21; T42).** The app's dictionary data is built here too, separate from the model phases: Python in `training/dictionary/` reads pinned sources (Open English WordNet, Wiktionary extracts from kaikki.org, Tatoeba EN–KO, NGSL; T25), and a `training/js` step runs the app's `winkBackend` lemmatizer and `lookupKey` (via `tsx`, like `align_tokens.mjs`) so headwords and the inflection index match runtime words. Output: index + hash-sharded entry JSON + manifest (sizes, SHA-256, sources, licenses), uploaded to R2. Raw sources stay in git-ignored `data/`. Build task: T70 (`todo.md`).
+
+**Dictionary build (T70; owner decisions 2026-11-23).** `python -m dictionary.fetch --pin` → `python -m dictionary.extract` (once) → `python -m dictionary.build` writes `data/dict/v1/` and `reports/dictionary.md`. kaikki.org serves only its latest extract, so the build reads a pinned, byte-reproducible subset (`wiktionary.subset`). Headwords: NGSL ∪ UD EWT lemmas with an entry (lower case or capitalized, e.g. *I*, *American*), filled to 15,000 single words with WordNet words that have a Korean translation in Wiktionary (most widely translated first), plus phrasal verbs of headword verbs. Entries per part of speech: WordNet senses (Wiktionary definitions only for parts of speech WordNet lacks, or for words whose only Wiktionary entries are forms of another word, e.g. *me*), Korean translations under Wiktionary's sense labels (not matched to WordNet senses), up to three Tatoeba pairs. Inflection index: Wiktionary forms of the parts of speech WordNet confirms, WordNet irregular forms, NGSL form lists, and corpus words whose wink lemma is a headword. Shards: FNV-1a 32 of the UTF-8 `lookupKey` mod 128. The combined data is CC BY-SA 4.0. v1 results: `reports/dictionary.md` (16,659 headwords; 99.1% of EWT test words resolve). Format and attribution: `dictionary/DATA_CARD.md`.
 
 ---
 
@@ -668,13 +671,13 @@ Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts
 | Model | UPOS | Chunk F1 | UAS excl. punct | Multi-word bracket F1 | Offered | Nested view |
 |---|---|---|---|---|---|---|
 | DistilBERT | 96.82 | 95.59 | 92.22 | 84.13 | no (UPOS) | no |
-| DeBERTa-v3-xsmall | 97.65 | 97.01 | 94.51 | 89.13 | yes | met (Phase 8) |
+| DeBERTa-v3-xsmall | 97.65 | 97.01 | 94.54 | 89.16 | yes | met (Phase 8) |
 | BERT | 96.995 | 96.13 | 93.80 | 86.89 | no (UPOS; strict ≥ 97) | no |
-| ModernBERT | 97.40 | 96.47 | 94.30 | 89.03 | yes | met (Phase 8) |
+| ModernBERT | 97.40 | 96.47 | 94.38 | 89.19 | yes | met (Phase 8) |
 
 Bracket F1 is measured on the phrase-per-head brackets since 2026-11-23 (T75, T77; re-scored from the stored predictions, no retraining). Under the earlier head-outward brackets it was 84.97 / 89.75 / 87.82 / 89.71; with phrase-per-head brackets before the main-clause and coordination rules (T82) it was 85.52 / 89.85 / 87.91 / 89.98.
 
-**Projective decoding measured, not adopted (owner rule, 2026-11-23; T82):** the best tree without crossing arcs (Eisner; `treeDecoder.ts` → `projectiveTree`, `js/projective_eval.mjs`) against the spanning tree, same arc scores. UAS all words, dev / test: DeBERTa-v3-xsmall 94.25 → 94.21 / 94.35 → 94.38; ModernBERT 94.10 → 94.16 / 94.21 → 94.29. Trees differ in about 3% of sentences. The owner's rule was to adopt it only if accuracy does not drop; it drops on dev for DeBERTa-v3-xsmall, so the app keeps the spanning tree for both models.
+**Projective decoding (measured in T82; turned on for both models by the owner on 2026-11-23, T83; the UAS and bracket F1 of the two offered models in the table above are with it):** the best tree without crossing arcs (Eisner; `treeDecoder.ts` → `projectiveTree`, `js/projective_eval.mjs`) against the spanning tree, same arc scores. UAS all words, dev / test: DeBERTa-v3-xsmall 94.25 → 94.21 / 94.35 → 94.38; ModernBERT 94.10 → 94.16 / 94.21 → 94.29. Trees differ in about 3% of sentences. The first rule was to adopt it only if accuracy does not drop (it drops by 0.04 on dev for DeBERTa-v3-xsmall); the owner then turned it on for both models "for now" (T83), because it keeps attachments consistent with each other. `decodeArcTree` falls back to the spanning tree only when no projective tree is possible.
 
 Best rates: DeBERTa 3e-4 (4e-4 and 5e-4 lower), ModernBERT 2e-4, DistilBERT and BERT 1e-4 (lowest tried). Augmentation used for BERT and ModernBERT only. Words whose MST head differs from the argmax head: 2.6–4.5% (rel_pos tree repair: ~34%).
 
@@ -701,8 +704,8 @@ Alternatives and the nested view's confidence gating are built from model probab
 
 | Model | T (A / rel / arc) | Test ECE A / rel / arc, before → after (%) | Margin / attachment | Bracket threshold | Test shown precision | Test coverage | Role threshold | Test role precision | Roles shown | Nested view |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DeBERTa-v3-xsmall | 1.78 / 1.99 / 5.57 | 2.69 → 0.61 / 4.15 → 0.73 / 5.19 → 0.41 | 0.4 / 0.3 | 0.85 | 95.83 | 66.7% | 0.3 | 95.80 | 98.5% | met |
-| ModernBERT | 2.05 / 2.28 / 9.39 | 2.95 → 0.64 / 4.06 → 0.70 / 5.33 → 1.67 | 0.3 / 0.3 | 0.80 | 95.64 | 68.2% | 0.3 | 95.62 | 97.5% | met |
+| DeBERTa-v3-xsmall | 1.78 / 1.99 / 5.57 | 2.69 → 0.61 / 4.15 → 0.73 / 5.19 → 0.41 | 0.4 / 0.3 | 0.85 | 95.78 | 66.7% | 0.3 | 95.73 | 98.3% | met |
+| ModernBERT | 2.05 / 2.28 / 9.39 | 2.95 → 0.64 / 4.06 → 0.70 / 5.33 → 1.67 | 0.3 / 0.3 | 0.80 | 95.65 | 68.1% | 0.4 | 95.87 | 95.7% | met |
 
 Refitted again on 2026-11-23 for the main-clause and coordination brackets (T82; before it: thresholds 0.80 / 0.75, coverage 76.1% / 75.6%, role thresholds 0.2 / 0.3). About two thirds of the predicted multi-word brackets are shown as certain, and a further 4% (403 / 418 on test) are main-clause subject or predicate brackets drawn dashed, of which 86% / 85% are correct (the rest collapse; 48.6% / 53.7% under the earlier whole-bracket product, thresholds 0.85 / 0.80, role thresholds 0.4); at the chosen margins ~19% of dev sentences get alternatives, recovering 15% (DeBERTa) and 13% (ModernBERT) of label errors and ~20% of PP-attachment errors.
 
@@ -746,7 +749,7 @@ Runs for every offered candidate.
 
 4. Set the pre-flight thresholds in `src/modules/preflight/requirements.ts` from these measurements (memory hint, storage margin, WebGPU buffer size); check single-threaded WASM against the 5 s budget.
 
-5. Record per model, for the catalog: first-load time, parse time per backend, peak memory per backend, and the minimum device memory it needs (`min_device_memory_gb`).
+5. Record per model, for the catalog: first-load time, parse time per backend and WASM speed tier (many threads, two cores, one thread; owner, T65), and peak memory per backend. No per-model minimum memory (owner, T65).
 
 **Deliverables:** `reports/benchmark.md` (one section per model); per-model performance and requirements for `catalog.json`; pre-flight threshold values.
 **Exit criterion:** at least one offered model parses 5,000 characters in ≤ 5 s on a typical laptop with WASM; per-model requirements recorded; minimum device requirements defined and set in `requirements.ts`. Slower models stay available with their measured speed shown.
@@ -758,7 +761,7 @@ Runs for every offered candidate.
 | DeBERTa-v3-xsmall | 423 | 233 | 400 | 515 | 1,223 / 1,182 |
 | ModernBERT | 1,483 | 148 | 1,455 | 275 | 4,913 / 4,854 |
 
-Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm load from Cache Storage 0.8–1.3 s. Warm peak memory (browser-process RSS growth): DeBERTa 1.2–1.8 GB int8, 1.9–2.8 GB fp16; ModernBERT 1.3–2.2 GB int8, 2.4–2.9 GB fp16. Proposed `min_device_memory_gb`: DeBERTa 4, ModernBERT 8 (rule in `js/bench_report.mjs`). Every combination is within 5 s here; ModernBERT int8 on one WASM thread is at the budget edge (4.9 s) on this fast machine. Safari throttles unfocused pages (ModernBERT int8 1.4 s → 4–6 s), so runs record focus. Lower-end device (T67, 2026-11-21): Windows 11 ARM VM (UTM on the development machine), 4 GB RAM, 2 vCPUs, Chrome 158: DeBERTa int8 1.34 s median parse, ModernBERT int8 5.17 s (over the 5 s budget); both ran in 4 GB without a crash (Chrome's working set grew ≤ 0.9 GB); fp16 failed to load because the VM's WebGPU adapter lacks `shader-f16`. The VM's cores are M5 Pro cores, so real low-end laptops will be slower. **Exit criterion:** an offered model (DeBERTa-v3-xsmall) parses 5,000 characters well within 5 s on WASM with 2 cores and 4 GB, and per-model measurements are recorded; the minimum device requirements in `requirements.ts` remain (T65).
+Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm load from Cache Storage 0.8–1.3 s. Warm peak memory (browser-process RSS growth): DeBERTa 1.2–1.8 GB int8, 1.9–2.8 GB fp16; ModernBERT 1.3–2.2 GB int8, 2.4–2.9 GB fp16. Thresholds set by the owner on 2026-11-23 (T65): no per-model memory requirement (the proposed `min_device_memory_gb` of 4 / 8 was dropped: both models ran in the 4 GB VM), catalog parse times per WASM speed tier (`js/bench_report.mjs` → `data/bench/catalog_performance.json`: DeBERTa 0.423 / 1.342 / 1.223 s, ModernBERT 1.483 / 5.166 / 4.913 s for many threads / two cores / one thread; fp16 WebGPU 0.515 / 0.275 s), single-threaded WASM warns only, storage margin 256 MiB, WebGPU storage-binding limit 128 MiB. Every combination is within 5 s here; ModernBERT int8 on one WASM thread is at the budget edge (4.9 s) on this fast machine. Safari throttles unfocused pages (ModernBERT int8 1.4 s → 4–6 s), so runs record focus. Lower-end device (T67, 2026-11-21): Windows 11 ARM VM (UTM on the development machine), 4 GB RAM, 2 vCPUs, Chrome 158: DeBERTa int8 1.34 s median parse, ModernBERT int8 5.17 s (over the 5 s budget); both ran in 4 GB without a crash (Chrome's working set grew ≤ 0.9 GB); fp16 failed to load because the VM's WebGPU adapter lacks `shader-f16`. The VM's cores are M5 Pro cores, so real low-end laptops will be slower. **Exit criterion:** an offered model (DeBERTa-v3-xsmall) parses 5,000 characters well within 5 s on WASM with 2 cores and 4 GB, and per-model measurements are recorded; the minimum device requirements in `requirements.ts` remain (T65).
 
 ### Phase 11 — Packaging and release
 
@@ -1031,3 +1034,17 @@ Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm lo
 - Added: *Decoding* step 3 → main clause without a clause bracket (subject and predicate always shown, dashed when unsure) and side-by-side coordination; level `conjunct`.
 - Modified: biaffine stage outcome → bracket F1 on the new brackets (DeBERTa 89.13, ModernBERT 89.03); projective decoding measured and not adopted.
 - Modified: Phase 8 task 5 and outcome → bracket thresholds 0.85 / 0.80, test shown precision 95.83 / 95.64, coverage 66.7% / 68.2% plus 4% dashed; role thresholds 0.3 / 0.3, role precision 95.80 / 95.62.
+
+### 2026-11-23T03:30:00Z — Claude Fable 5.2, Projective decoding on; near-tie display (T83)
+
+- Modified: projective decoding turned on for both models (owner); biaffine outcome (UAS excl. punct 94.54 / 94.38, bracket F1 89.16 / 89.19) and Phase 8 outcome (test shown precision 95.78 / 95.65, coverage 66.7% / 68.1%; role thresholds 0.3 / 0.4, role precision 95.73 / 95.87) re-measured with it.
+- Added: *Decoding* → near-ties (top reading below 60%).
+
+### 2026-11-23T06:30:00Z — Claude Opus 5.5, Dictionary pipeline built (T70)
+
+- Added: *Dictionary build* paragraph (commands, pinned Wiktionary subset, headword and entry rules, shards, license, v1 results).
+- Modified: layout → `dictionary/` files and `configs/dictionary.yaml` sources.
+
+### 2026-11-23T07:00:00Z — Claude Opus 5.5, Pre-flight thresholds (T65)
+
+- Modified: Phase 10 task 5 and outcome → owner thresholds (T65): no per-model memory requirement; parse times per WASM speed tier for `catalog.json`; single-threaded WASM warns; storage margin 256 MiB; WebGPU storage-binding limit 128 MiB.

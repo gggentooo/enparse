@@ -7,16 +7,20 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AssetError,
-  MODEL_CACHE_NAME,
+  cacheNames,
+  deleteCache,
   deleteCachedFiles,
   digestCachedFiles,
   downloadToCache,
   fetchStaticJson,
   listCached,
+  MODEL_CACHE_NAME,
   probeEnvironment,
+  putCached,
+  readCached,
   requestPersistentStorage,
   sameOriginUrl,
+  AssetError,
 } from "./environment";
 
 const ORIGIN = "https://app.test";
@@ -33,7 +37,9 @@ function fakeCaches() {
       delete: async (k: string) => m.delete(k),
     };
   };
-  return { stores, caches: { open } };
+  const keys = async () => [...stores.keys()];
+  const del = async (name: string) => stores.delete(name);
+  return { stores, caches: { open, keys, delete: del } };
 }
 
 async function hex(text: string): Promise<string> {
@@ -169,6 +175,29 @@ describe("model cache", () => {
       name: "AssetError",
       reason: "cache",
     });
+  });
+
+  it("uses another cache by name: read, store, list names, delete (dictionary, T46)", async () => {
+    const { stores, caches } = fakeCaches();
+    vi.stubGlobal("caches", caches);
+    vi.stubGlobal("fetch", async () => new Response(body));
+    await downloadToCache("/dict/v1/a.json", { bytes: 1000, sha256: await hex(body) }, undefined, undefined, "dict-v1");
+    expect(stores.get(MODEL_CACHE_NAME)).toBeUndefined();
+    expect(await listCached(["/dict/v1/a.json"], "dict-v1")).toEqual({ "/dict/v1/a.json": 1000 });
+    expect(new TextDecoder().decode((await readCached("/dict/v1/a.json", "dict-v1")) as ArrayBuffer)).toBe(body);
+    expect(await readCached("/dict/v1/none.json", "dict-v1")).toBeNull();
+    await putCached("/dict/v1/manifest.json", '{"v":1}', "application/json", "dict-v1");
+    expect(new TextDecoder().decode((await readCached("/dict/v1/manifest.json", "dict-v1")) as ArrayBuffer)).toBe(
+      '{"v":1}',
+    );
+    expect(await digestCachedFiles(["/dict/v1/a.json"], "dict-v1")).toEqual({
+      "/dict/v1/a.json": { bytes: 1000, sha256: await hex(body) },
+    });
+    await deleteCachedFiles(["/dict/v1/a.json"], "dict-v1");
+    expect(await readCached("/dict/v1/a.json", "dict-v1")).toBeNull();
+    expect(await cacheNames()).toEqual(["dict-v1"]);
+    expect(await deleteCache("dict-v1")).toBe(true);
+    expect(await cacheNames()).toEqual([]);
   });
 
   it("refuses other origins, reports a missing Cache Storage, and passes aborts through", async () => {

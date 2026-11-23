@@ -110,7 +110,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | modelLibrary (T23) | `catalog.json` gains the nested-view metrics (UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage, role precision) and makes `variants.int8` / `variants.fp16` each optional. No multi-file ONNX. |
 | preflight (T24) | All proposed checks plus WebGPU `shader-f16`. Low memory → warn. Storage: block a download that cannot fit the quota, warn when tight, call `storage.persist()` after the first download. No `shader-f16` → int8 on WASM. Integrity failure → delete, re-download once, then fail. Diagnostics always reachable from a header status badge. |
 | dictionary (T25) | Definitions: Open English WordNet (CC BY 4.0); Korean translations: Wiktionary translation sections via kaikki.org extracts (CC BY-SA); examples: Tatoeba English–Korean pairs (CC BY 2.0 FR); ~10–20k headwords from a learner list (NGSL) plus frequent EWT words; phrasal verbs only; all senses, the predicted part of speech first; click/tap a word → popup → "more" opens `DictionaryPage`. Licenses to be re-checked before release. Served same-origin from R2. |
-| dictionary (T42) | **Format:** static JSON: a small index (headwords and the inflection map) loaded on first lookup, plus ~64–256 entry shards grouped by a hash of the lookup key, and a manifest with each file's size and SHA-256. **Loading:** shards fetched on demand and kept in a versioned Cache Storage cache (`enparse-dict-v<N>`); an opt-in "Make dictionary available offline" download fetches all shards with progress and integrity checks (T38 functions); nothing large downloads without the user. **Pipeline:** Python in `training/dictionary/` (sources, extraction, sharding) plus a `training/js` step that runs the app's `winkBackend` lemmatizer and `lookupKey` through `tsx`, so headwords match runtime words. **Lemmas:** a build-time inflection index (Wiktionary forms + WordNet exceptions, checked against wink) maps every form to its headword(s), so DictionaryPage resolves *ran* → *run* without wink; parse clicks use the token's wink lemma first (T71). **Keys:** `utils/helpers.ts` → `lookupKey` everywhere; phrasal verbs keyed as "verb particle". No new dependency. |
+| dictionary (T42) | **Format:** static JSON: a small index (headwords and the inflection map) loaded on first lookup, plus ~64–256 entry shards grouped by a hash of the lookup key, and a manifest with each file's size and SHA-256. **Loading:** shards fetched on demand and kept in a versioned Cache Storage cache (`enparse-dict-v<N>`); an opt-in "Make dictionary available offline" download fetches all shards with progress and integrity checks (T38 functions); nothing large downloads without the user. **Pipeline:** Python in `training/dictionary/` (sources, extraction, sharding) plus a `training/js` step that runs the app's `winkBackend` lemmatizer and `lookupKey` through `tsx`, so headwords match runtime words. **Lemmas:** a build-time inflection index (Wiktionary forms + WordNet exceptions, checked against wink) maps every form to its headword(s), so DictionaryPage resolves *ran* → *run* without wink; parse clicks use the token's wink lemma first (T71). **Keys:** `utils/helpers.ts` → `lookupKey` everywhere; phrasal verbs keyed as "verb particle". No new dependency. **Built (T70; owner 2026-11-23):** 128 shards chosen by FNV-1a 32 of the UTF-8 key; `index.json` = sorted headword keys + form key → headword keys; an entry lists parts of speech (UPOS) with WordNet senses (or Wiktionary definitions where WordNet has none) and, separately, Korean translations under Wiktionary's sense labels, plus Tatoeba examples with their sentence ids; data CC BY-SA 4.0 (`training/dictionary/DATA_CARD.md`). |
 | subword (T26) | Own curated affix list (~80–120, ordered by Bauer & Nation 1993 levels) with our own Korean glosses and 1–2 examples each; a compressed known-word list (NGSL + lemma forms) bundled in `subword/`. |
 | vocab (T27) | Entry: `id`, `word`, `lemma`, `upos`, `definitionEn`, `definitionKo`, `example`, `sourceSentence`, `notes`, `tags[]`, `addedAt`, `schemaVersion`. Export: versioned JSON (canonical) + CSV via a small hand-written codec (no new dependency). Import: merge by `id`; same word with another `id` kept and flagged; ask only on list-name collisions. Lists in IndexedDB, settings in LocalStorage (`core/storage.ts`); periodic "export a backup" reminder. |
 
@@ -135,8 +135,8 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
 | `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (each with the token it attaches to, for the arrows; T79). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
-| `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
-| `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
+| `dictionary/dictionary.ts`   | Lookup (T46): the parse's lemma first (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. Display is in components. |
+| `dictionary/staticDb.ts`     | Data access (T46): `manifest.json` from `/dict/v<N>/` (a copy kept for offline use; schema checked), `index.json` and shards from the versioned cache `enparse-dict-v<N>` or downloaded into it with size and SHA-256 checks (one retry after an integrity failure), an in-memory LRU of 16 shards, the offline download (`downloadAll` with byte progress, `deleteAll`, `offlineState`), and deletion of other versions' caches. Shard of a key: FNV-1a 32 of its UTF-8 bytes. Errors: `DictionaryLoadError` (network, integrity, storage, format, cancelled). No live API calls. |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
 | `subword/affixes.ts`         | Affix inventory data used by `subwordParser`.                                                      |
 | `vocab/vocabManager.ts`      | CRUD for custom vocabulary lists. Export/import as JSON or CSV. Persists via `core/storage`.       |
@@ -175,7 +175,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Traceability:** every `ParseResult` carries the model id and model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 (WASM) and fp16 (WebGPU) per model, each shipped only if it passes Phase 9 parity. Phase 9 (2026-11-21): both variants pass for DeBERTa-v3-xsmall (90 / 144 MB) and ModernBERT (156 / 302 MB); chunk F1 and LAS within 0.13 points of fp32 (`training/reports/parity.md`).
 - **Context window:** whole wink sentences are packed into windows of up to 256 subword tokens without overlap, exactly like training windows (`plan-training.md` Phase 4 and *Biaffine design*), so context extends beyond the current sentence. Only a sentence longer than 256 subwords is split with a 32-token overlap; each word then takes its scores from the window where it is farthest from the edge.
-- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Dependents without dependents stay plain words in their phrase. A modifier before its head attaches to everything from just after itself through the head word (*big* → *red dog*; owner, 2026-11-23, T81); the nested view highlights that span and points the arrow at it. Words of a predicate on the other side of the subject (the auxiliary of a question) keep the Predicate role with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated. **Uncertain structure (owner, 2026-11-21; T59):** when gating collapses a bracket that carries a role, the role is shown as a badge on its head word ("phrase boundary uncertain"), never on an inner bracket. A role is shown only if its head word's relation × head probability is ≥ `labels.json` → `nested.role_threshold` (Phase 8, refitted 2026-11-23 after T82: 0.3 for both DeBERTa-v3-xsmall and ModernBERT; test role precision 95.8% and 95.6%, 98% of roles shown). Bracket thresholds (span confidence): 0.85 and 0.80; test precision of brackets shown as certain 95.8% and 95.6%, with 67% and 68% of brackets shown as certain and a further 4% (main-clause subject and predicate) shown dashed.
+- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Dependents without dependents stay plain words in their phrase. A modifier before its head attaches to everything from just after itself through the head word (*big* → *red dog*; owner, 2026-11-23, T81); the nested view highlights that span and points the arrow at it. Words of a predicate on the other side of the subject (the auxiliary of a question) keep the Predicate role with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated. **Uncertain structure (owner, 2026-11-21; T59):** when gating collapses a bracket that carries a role, the role is shown as a badge on its head word ("phrase boundary uncertain"), never on an inner bracket. A role is shown only if its head word's relation × head probability is ≥ `labels.json` → `nested.role_threshold` (Phase 8, refitted 2026-11-23 after T82 and T83: 0.3 for DeBERTa-v3-xsmall and 0.4 for ModernBERT; test role precision 95.7% and 95.9%, 98% and 96% of roles shown). Bracket thresholds (span confidence): 0.85 and 0.80; test precision of brackets shown as certain 95.8% and 95.7%, with 67% and 68% of brackets shown as certain and a further 4% (main-clause subject and predicate) shown dashed.
 - **BIO repair:** a stray `I-X` (after `O` or another type) becomes `B-X` (owner, 2026-11-20). This is how seqeval's default mode already reads chunks for the reported chunk F1, so the app shows what was measured.
 
 ### Model training (offline, `training/`)
@@ -195,7 +195,7 @@ raw text
         └─► parser.worker.ts
               ├─► winkBackend: sentence split, lemmas
               ├─► transformerBackend: windows → UPOS + chunk + relation probabilities, arc scores
-              ├─► treeDecoder.ts: arc scores → dependency tree (MST) → nested phrases (quantifiers.ts display rule; labeled, then gated)
+              ├─► treeDecoder.ts: arc scores → dependency tree (best tree without crossing arcs; T83) → nested phrases (quantifiers.ts display rule; labeled, then gated)
               ├─► phraseLabeler.ts: dependency tree + nested phrases → roles, clause/predicate, head flags
               └─► ambiguity.ts: alternative parses
         └─► output/annotator.ts → annotation model → OutputPage
@@ -234,8 +234,8 @@ The app ships up to four models (one per base model) and the user chooses which 
 | `shared_files` | Config and tokenizer files with sizes and SHA-256 |
 | `metrics` | EWT test UPOS, chunk F1, UAS, LAS; nested view (T23): UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage, role precision |
 | `nested_view` | `true` if the model meets the nested-view targets (*Parsing engine* → *Nested phrases*: UAS without punctuation ≥ 93, multi-word labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets) |
-| `performance` | Phase 10: first-load time, parse time per backend, peak memory per backend |
-| `requirements` | Phase 10: `min_device_memory_gb` |
+| `performance` | Phase 10: first-load time, peak memory per backend, and `parse_5000_chars_s`: `wasm` (int8, many threads), `wasm_2core` (two cores), `wasm_1thread` (no cross-origin isolation), `webgpu` (fp16); the slowest browser counts (owner, T65) |
+| `requirements` | Not used (owner, T65: no per-model memory requirement; ignored if present) |
 
 Top level: `schema_version` (1), `generated_at`, `models`.
 
@@ -262,7 +262,7 @@ The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2**
 | Response headers | `public/_headers` | COOP `same-origin` + COEP `require-corp` (cross-origin isolation for multi-threaded WASM), `nosniff`, `no-referrer`; `sw.js` is `no-cache` so updates are found. |
 | Offline app shell (T69) | `dist/sw.js` (from `src/pwa/sw.ts`) | Precaches the built shell (list and version hash injected at build); page loads network-first with the cached shell offline (COOP/COEP re-applied); never handles `/models/*` or `/dict/*`; a new version waits for the user's "reload" in the update banner. |
 | Source of truth | Git LFS (`public/models/`) | Uploaded to R2 by the Phase 11 packaging step (upload tool chosen there). |
-| Dictionary data | R2, same origin | Sharded JSON (T42), under a versioned path (proposed: `/dict/v<N>/`, a Pages Function route like `/models/*`; T70). |
+| Dictionary data | R2, same origin | Sharded JSON (T42) at `/dict/v<N>/` (owner, 2026-11-23): `functions/dict/[[path]].ts` serves the R2 bucket `MODELS` under the key prefix `dict/`; versioned files are immutable (one-year cache), `manifest.json` revalidates. Built by `training/dictionary/` (T70; format in `training/dictionary/DATA_CARD.md`); data license CC BY-SA 4.0. `npm run dev:models` serves `training/data/dict/` locally. |
 
 **Local model testing (2026-11-21):** `npm run dev:models` (`vite --mode local-models`) adds a dev-server-only Vite plugin, `vite.localModels.ts`, that emulates the `/models/*` route from the selected training exports (`training/data/onnx/<model>/<run>/`), with `catalog.json` built from the catalog fixture and file sizes and SHA-256 from disk, and `/models/_ort/*` from `node_modules/onnxruntime-web/dist`. Never in builds. The dev server pre-bundles the worker's dependencies (`optimizeDeps.include`), because discovering them at the first model load reloads the page and cancels the download.
 
@@ -318,24 +318,24 @@ loading ─► 5. worker loads the model + self-test ──error──► failed
 ready
 ```
 
-**Checks** (severity proposed; `requirements.ts`)
+**Checks** (severity: owner, T24; thresholds: owner, T65; `requirements.ts`)
 
 | Stage | Check | Source | Severity |
 |-------|-------|--------|----------|
 | Device | `module-workers` | Module Web Workers | Fail |
 | Device | `wasm`, `wasm-simd` | `WebAssembly`, `WebAssembly.validate` (ONNX Runtime Web ships SIMD builds only) | Fail |
 | Device | `wasm-threads` | `crossOriginIsolated` + `SharedArrayBuffer` (needs COOP/COEP headers from the host) | Warn (slower) |
-| Device | `webgpu` | `navigator.gpu.requestAdapter()`, buffer limits, and the `shader-f16` feature (the fp16 variant needs it; T67 found a WebGPU adapter without it) | Info (missing or no `shader-f16` → int8 on WASM) |
+| Device | `webgpu` | `navigator.gpu.requestAdapter()`, the `shader-f16` feature (the fp16 variant needs it; T67 found a WebGPU adapter without it), and `maxStorageBufferBindingSize` ≥ 128 MiB (`MIN_WEBGPU_STORAGE_BINDING_BYTES`; the WebGPU default, above the largest fp16 tensor, ~77 MB; T65) | Info (missing, no `shader-f16`, or smaller limit → int8 on WASM) |
 | Device | `cache-storage` | Cache API | Warn (re-download every visit) |
-| Device | `memory-hint` | `navigator.deviceMemory` (Chromium only; skipped elsewhere) | Warn |
+| Device | `memory-hint` | `navigator.deviceMemory` (Chromium only; skipped elsewhere) below 4 GB (the only memory check; owner, T65) | Warn |
 | Model | `manifest-schema` | `labels.json`: supported `schema_version`; needed fields not `null` | Fail |
 | Model | `wink-versions` | `labels.json` → `versions.wink` vs the app's pinned versions | Warn |
 | Model | `storage-quota`, `model-size` | `navigator.storage.estimate()` vs `labels.json` → `files` sizes | Warn |
 | Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256), before every load; skipped while `files` is `null`. Downloads are verified by the model library as they arrive. | Mismatch: delete and offer a re-download; then fail |
-| Fitness (per model) | `model-memory`, `model-storage`, `model-speed` | `catalog.json` requirements and Phase 10 measurements vs this device | Warn (shown on the model card); blocked models cannot be chosen |
+| Fitness (per model) | `model-variant`, `model-storage`, `parse-time` | Download size vs free quota (does not fit → fail; less than `STORAGE_MARGIN_BYTES` = 256 MiB left → warn), and the Phase 10 parse time for this device: fp16 on WebGPU, else the WASM speed tier — one thread without cross-origin isolation, two cores if `hardwareConcurrency` ≤ 2, else many threads (owner, T65) | Warn (shown on the model card); blocked models cannot be chosen |
 
 - Memory cannot be measured reliably in browsers, so low memory only warns; the real test is the model load and self-test (out-of-memory → `failed: out-of-memory`).
-- Thresholds are placeholders until Phase 10 measures peak memory and load times (`TODO(preflight-thresholds)`).
+- Thresholds (owner, 2026-11-23; T65, from Phase 10): no per-model memory requirement (both models ran in a 4 GB, 2-core VM); single-threaded WASM only warns (the host sends COOP/COEP, so it is a fallback; the speed tiers make the recommendation prefer the faster model there); storage margin 256 MiB; WebGPU storage-binding limit 128 MiB. Measured on one fast laptop and one VM only: re-check on a physical low-end device and a phone.
 
 ### Preprocessor (`input/textInput.ts`)
 
@@ -436,7 +436,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
-      │       │   │   └── NestedReading.tsx (one box or bracket per phrase; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
+      │       │   │   └── NestedReading.tsx (one box or bracket per phrase; labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
       │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary with T53)
       │       ├── VocabPage.tsx (custom vocab lists; T48)
@@ -463,7 +463,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
 | `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator` | `useParser`, `useModelLibrary` |
-| `dictionaryService.ts` | `dictionary`, `staticDb`                           | `useDictionary` |
+| `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; offline state and download progress via `subscribe` / `getSnapshot`; T46) | `useDictionary`, offline control (T72) |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
 | `languageService.ts`   | `core/storage`, `i18n` (UI language; T68)          | `useI18n`       |
@@ -891,3 +891,35 @@ enparse/
 
 - Modified: *Nested phrases*, *Role labeling* thresholds, component hierarchy: no bracket around the main clause (pinned subject and predicate brackets, dashed when unsure), side-by-side coordination; `LabeledPhrase.pinned` / `unsure`, `AnnotatedPhraseNode.unsure`; refitted thresholds.
 - Added: `treeDecoder.ts` → `projectiveTree` (measured, not used for decoding).
+
+### 2026-11-23T03:30:00Z — Claude Fable 5.2, Projective decoding and near-tie display (T83)
+
+- Modified: data flow and *Role labeling* thresholds: `decodeArcTree` takes the best projective tree (owner: on for both models); thresholds refitted.
+- Added: near-tie display (top reading below 60%): annotation model `nearTie`, `Reading.notes`, `Reading.forks` (`output/`); `SentenceView` (note, open lettered list, template explanations), `NestedReading` (disputed phrase mark, fork arrows); `Alternative.attachment` in the parser types.
+
+### 2026-11-23T04:00:00Z — Claude Sonnet 5.5, Structure view styling (T84)
+
+- Modified: `SentenceView` (header "Sentence N" with a rule in the structure view), `NestedReading` (arrows drawn straight up, across, and down with rounded corners; bracket lines no longer skewed by raised labels).
+
+### 2026-11-23T04:30:00Z — Claude Opus 5.5, Structure view labels under the sentence (T85)
+
+- Modified: `NestedReading` places phrase labels and role tags in packed rows under the sentence (phrase color) and never scrolls vertically.
+
+### 2026-11-23T05:00:00Z — Claude Opus 5.5, Structure view arrows under the sentence (T86)
+
+- Modified: `NestedReading`: labels back inside the phrases (T85 label rows removed), arrows drawn under the sentence, thin horizontal scrollbar below the arrow room.
+
+### 2026-11-23T06:30:00Z — Claude Opus 5.5, Dictionary data built and served (T70)
+
+- Modified: *Deployment* → dictionary data at `/dict/v<N>/` via `functions/dict/[[path]].ts` (R2 prefix `dict/`), CC BY-SA 4.0; local route in `npm run dev:models`.
+- Modified: *Module decisions* → dictionary (T70): shard hash FNV-1a 32 of the UTF-8 `lookupKey` mod 128; index (headwords, form → headwords); entries per part of speech with Korean translations under Wiktionary sense labels.
+
+### 2026-11-23T07:00:00Z — Claude Opus 5.5, Pre-flight thresholds set (T65)
+
+- Modified: *Pre-flight checks* → thresholds (owner): no per-model memory check (`model-memory` removed; only the 4 GB device hint warns); WASM speed tiers for the expected parse time; single-threaded WASM warns only; storage margin 256 MiB; WebGPU `maxStorageBufferBindingSize` ≥ 128 MiB.
+- Modified: *Model library* → `catalog.json` `performance.parse_5000_chars_s` gains `wasm_2core` and `wasm_1thread`; `requirements` no longer used.
+
+### 2026-11-23T08:00:00Z — Claude Opus 5.5, Dictionary module and service (T46)
+
+- Modified: *Logic modules* → `dictionary/dictionary.ts`, `dictionary/staticDb.ts` (lookup order, versioned cache with integrity checks, shard LRU, offline download, `DictionaryLoadError`); `dictionaryService` (lookups, offline state and progress via `subscribe` / `getSnapshot`).
+- Modified: `core/environment.ts` cache functions take an optional cache name; adds `readCached`, `putCached`, `cacheNames`, `deleteCache`.

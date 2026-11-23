@@ -53,38 +53,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
 
-#### [Modules/preflight] Thresholds and multi-threaded WASM · T65 · Decision
-
-- **Files:** `src/modules/preflight/requirements.ts`, `training/reports/benchmark.md`
-- **Task:** Set memory hint, storage margin, and WebGPU buffer thresholds from Phase 10; decide whether single-threaded WASM (warning only) meets the 5 s budget, given the host's COOP/COEP support. Phase 10 inputs (`reports/benchmark.md`): ModernBERT int8 exceeds 5 s on 2 cores (5.2 s) yet fits in 4 GB, so its limit is speed (cores / fp16 WebGPU), not memory; the proposed `min_device_memory_gb` (DeBERTa 4, ModernBERT 8) should be revisited with this.
-- **Needs:** T12, T36, T64, T67
-
-#### [Training] Dictionary build pipeline · T70 · Build
-
-- **Files:** `training/dictionary/` (Python: fetch, extract, merge, inflections, shard), `training/configs/dictionary.yaml`, `training/js/dict_lemmas.mjs` (tsx step), `training/tests/`, a dictionary data card (sources, versions, licenses, attribution), `functions/` (a `/dict/*` route), `dev_meta/plan-training.md`
-- **Task:** Per T25/T42: pin and checksum the sources (Open English WordNet, kaikki.org Wiktionary English extract, Tatoeba EN–KO pairs, NGSL) and re-check their licenses; select ~10–20k headwords (NGSL + frequent EWT words) and phrasal verbs; build entries (senses by part of speech, Korean translations, examples); build the inflection index (Wiktionary forms + WordNet exceptions), verifying forms and headwords with the app's wink lemmatizer and `lookupKey`; write the index, ~64–256 hash shards, and a manifest (version, sizes, SHA-256, sources, licenses); report coverage (share of EWT test words and wink lemmas that resolve, entry counts, sizes). Serve from R2 under a versioned same-origin path (proposed `/dict/v<N>/`) with a Pages Function route like `/models/*`. Attribution text goes to the About page.
-- **Needs:** T71
-
----
-
-## Stage 1
-
-#### [Modules/dictionary] Dictionary module and service · T46 · Build
-
-- **Files:** `src/modules/dictionary/*` (`staticDb.ts`, `dictionary.ts`, `types.ts`, `index.ts`), `src/services/dictionaryService.ts`, tests
-- **Task:** Per T42: load the manifest and index on first lookup; fetch entry shards on demand into the `enparse-dict-v<N>` cache with size and SHA-256 checks (`core/environment.ts` T38 functions), small in-memory LRU of shards; `lookup()`: `lookupKey` exact match, then the inflection index, and for parse clicks the token's wink lemma first; senses ordered with the predicted part of speech first; `DictionaryLoadError`; `downloadAll(onProgress, signal)` and `deleteAll()` for the offline option; service with `subscribe()` / `getSnapshot()` (offline state, progress).
-- **Needs:** T70
-
-#### [Training] Phase 11 packaging and release · T66 · Build
-
-- **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
-- **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
-- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65, T78
-
----
-
-## Stage 2
-
 #### [Components/Pages] DictionaryPage and useDictionary · T53 · Build
 
 - **Files:** `src/hooks/useDictionary.ts`, `src/components/Pages/DictionaryPage.tsx`, `src/components/Pages/DictionaryPage.module.css`, tests
@@ -99,7 +67,13 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ---
 
-## Stage 3
+## Stage 1
+
+#### [Training] Phase 11 packaging and release · T66 · Build
+
+- **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
+- **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
+- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65, T78
 
 #### [Project] End-to-end tests and CI · T62 · Build
 
@@ -110,6 +84,34 @@ This guide applies to all contributors (human and AI) editing this file.
 ---
 
 ## Done
+
+#### [Modules/dictionary] Dictionary module and service · T46 · Build
+
+- **Done:** 2026-11-23. `src/modules/dictionary/` (`types.ts`, `staticDb.ts`, `dictionary.ts`, `index.ts`) and `src/services/dictionaryService.ts`. Data from `/dict/v1/` (T70): the manifest is fetched on first use and a copy kept for offline use; `index.json` and shards come from the versioned cache `enparse-dict-v1` or are downloaded into it with size and SHA-256 checks (one retry after an integrity failure); 16 shards kept in memory; other versions' caches are deleted. Lookup: the parse's lemma first, then the word as a headword, then the inflection index (all headwords of an ambiguous form); senses of the queried part of speech first. `DictionaryLoadError` (network, integrity, storage, format, cancelled). Offline option: `downloadAll(onProgress, signal)`, `deleteAll()`, `offlineState()`; the service exposes lookups, offline state, download progress, and errors via `subscribe()` / `getSnapshot()`. `core/environment.ts` cache functions take a cache name (`readCached`, `putCached`, `cacheNames`, `deleteCache` added). Tests: fake server and cache, plus the built v1 data; checked in Chrome (first lookup 29 ms with download and checks, then 3 ms; offline download 129 files / 11 MB). Recorded in `architecture.md` → *Logic modules* and *Services*.
+
+#### [Modules/preflight] Thresholds and multi-threaded WASM · T65 · Decision
+
+- **Done:** 2026-11-23 (owner chose 1C, 2A, 3A, 4A, 5A). (1) No per-model memory requirement: the `model-memory` check and `catalog.json` → `requirements.min_device_memory_gb` are dropped; only the device-wide memory hint (4 GB, warn) remains (both models ran in the 4 GB, 2-core VM). (2) Expected parse time per WASM speed tier: `catalog.json` → `performance.parse_5000_chars_s` gains `wasm_2core` and `wasm_1thread`; pre-flight picks one thread without cross-origin isolation, two cores when `hardwareConcurrency` ≤ 2, else many threads (`checks.ts` → `wasmTier`), so the recommendation and the "fastest here" badge prefer Compact on slow devices (ModernBERT int8: 1.48 / 5.17 / 4.91 s). (3) Single-threaded WASM stays a warning. (4) Storage margin stays 256 MiB. (5) The WebGPU check uses `maxStorageBufferBindingSize` ≥ 128 MiB (`MIN_WEBGPU_STORAGE_BINDING_BYTES`) instead of `maxBufferSize`. Built in `src/modules/preflight/` (`requirements.ts`, `checks.ts`, `types.ts`), `modelLibrary` (catalog types, `requirementsOf`, recommendation), the catalog fixture, `training/js/bench_report.mjs` (`data/bench/catalog_performance.json` for T66). Recorded in `architecture.md` → *Pre-flight checks* and *Model library*, `plan-training.md` → Phase 10.
+
+#### [Training] Dictionary build pipeline · T70 · Build
+
+- **Done:** 2026-11-23 (owner decisions the same day: keep a pinned Wiktionary subset; fill headwords with Korean-translated WordNet words; Korean translations per part of speech, not matched to WordNet senses; data CC BY-SA 4.0 at `/dict/v1/`). Sources pinned with SHA-256 in `training/configs/dictionary.yaml`: Open English WordNet 2025, the kaikki.org English Wiktionary extract (downloaded 2026-11-23; a reproducible 7.7 MB subset is kept), Tatoeba Korean–English (11,585 pairs), NGSL 1.2. Pipeline `training/dictionary/` (`fetch.py`, `extract.py`, `build.py`) with `training/js/dict_lemmas.mjs` (the app's `lookupKey` and wink `lemmaOf`). v1: 16,659 headwords (15,000 single words: NGSL ∪ EWT lemmas, then the most widely translated WordNet words with Korean; 1,659 phrasal verbs), 65.8% with Korean translations, 21.2% with Tatoeba examples, 30,457 inflected forms (Wiktionary, WordNet, NGSL form lists, wink), 10.9 MB JSON in 128 shards + 0.82 MB index + manifest; 99.1% of UD EWT test words resolve. Served by `functions/dict/[[path]].ts` (R2 bucket `MODELS`, key prefix `dict/`) and locally by `npm run dev:models`. Credits on the About page. Recorded in `training/dictionary/DATA_CARD.md`, `training/reports/dictionary.md`, `plan-training.md` → *Dictionary pipeline*, and `architecture.md` → *Module decisions* and *Deployment*. Upload to R2 is left to the owner (with T66).
+
+#### [Components/Pages] Structure view: labels back inside, arrows under the sentence, thin scrollbar · T86 · Build
+
+- **Done:** 2026-11-23 (owner request; partly reverts T85). (1) Phrase labels and word role tags are back inside the brackets and boxes as before T85 (the packed label rows under the sentence are removed); labels shown on hover now float **above** the phrase or word. (2) Arrows are drawn **under** the sentence: straight down from the modifier, across, and up into the target, with rounded corners, and the arrow's label under the line, so arrows and labels no longer meet. (3) The horizontal scrollbar is thin (`scrollbar-width: thin`; 6 px in Safari) and sits below the reserved arrow room (bottom padding 2.5rem), so it no longer covers the bottom-most words or arrows. The T85 fix for vertical scrollbars stays (`overflow-y: hidden` with room reserved above for hover labels and below for arrows). Checked in Chrome in both looks: no vertical scrollbar, nothing outside the view, arrow labels inside the view.
+
+#### [Components/Pages] Structure view: labels under the sentence; no vertical scrollbar · T85 · Build
+
+- **Done:** 2026-11-23 (owner request). (1) Phrase labels and word role tags no longer sit on or inside the brackets and boxes: they are in rows under the sentence, each starting under its phrase's first word with a short rule in the phrase's color and text in that color (tinted 30% towards the text color so small text stays readable). `NestedReading.tsx` packs the always-shown labels (Subject and Predicate; all labels in the "always" look) left to right into the first row where they do not overlap, and gives hover-only labels the row under them; the view reserves exactly those rows (`--label-rows`). Deep nesting no longer adds a label row per level inside the boxes, and the arrows (above the words) can no longer cover a label. (2) Vertical scrollbar cause: the view scrolls sideways (`overflow-x: auto`), which makes it scroll vertically too on any overflow; in the hover look each word's hidden role tag (opacity 0, but still laid out) hung 0.6 px below the view, so every sentence with a word role showed a vertical scrollbar (5 of 6 sentences in the check). Fix: `overflow-y: hidden`, and the label rows and arrow room are reserved as padding so nothing is clipped. Checked in Chrome on six sentences in both looks: no vertical overflow, no element outside the view. Recorded in `architecture.md` → component hierarchy.
+
+#### [Components/Pages] Structure view: sentence headers, centered brackets, rounded arrows · T84 · Build
+
+- **Done:** 2026-11-23 (owner request). (1) In the structure view each sentence starts with a "Sentence N" header (`output.sentence`; hidden from screen readers because the article already carries the name) and a 2 px rule below it. The phrase view is unchanged. (2) In the bracket look, the raised labels no longer use `vertical-align: super`, which made each line box taller above the words and skewed the sentence upwards; they are raised by `position: relative` with zero line height, so the words sit centered in their brackets. (3) Modifier arrows are drawn as the top of a rounded rectangle: straight up from the modifier, straight across, straight down onto the target, with rounded corners (radius 8 px, rise 18 px; `NestedReading.tsx`); fork arrows (T83) use the same shape and the label sits above the line. Checked in Chrome. Recorded in `architecture.md` → component hierarchy.
+
+#### [Modules/parser, Modules/output, Components/Pages] Near-tie display and projective decoding · T83 · Build
+
+- **Done:** 2026-11-23 (owner decisions the same day). (1) **Near-tie display:** a sentence whose top reading has a share below 60% (`NEAR_TIE_SHARE`) shows a note that the readings are about equally likely, opens the readings list from the start, and names the readings A, B, … instead of "most likely". In the nested view the disputed phrase is marked, and pointing at it draws a dashed arrow to each candidate word with its share. Every reading (near-tie or not) lists what it says in plain words from fixed templates written in Korean and English: which word a phrase goes with (noun, verb, adjective, other) or which part of speech a word is. Built in `ambiguity.ts` (`Alternative.attachment`), `output/types.ts` and `annotator.ts` (`nearTie`, `notes`, `forks`), `SentenceView`, `NestedReading`, i18n. (2) **Projective decoding** turned on for both models "for now" (owner; T82 measured it: dev UAS −0.04 DeBERTa-v3-xsmall, +0.06 ModernBERT). Re-measured with it: test UAS excl. punctuation 94.54 / 94.38, bracket F1 89.16 / 89.19; bracket thresholds 0.85 / 0.80, test shown precision 95.78% / 95.65%, 66.7% / 68.1% shown as certain; role thresholds 0.3 / 0.4, role precision 95.73% / 95.87%. Written to the checkpoints' and exports' `labels.json`, the reports, the catalog fixture, `plan-training.md`, and `architecture.md`.
 
 #### [Modules/parser, Training, Components/Pages] Main-clause and coordination brackets; projective decoding check · T82 · Build
 
@@ -524,3 +526,34 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T02:30:00Z — Claude Fable 5.2, T82 added and done
 
 - Added: T82 (Done): main clause without an outer bracket, side-by-side coordination, refitted thresholds; projective decoding measured and not adopted (owner rule).
+
+### 2026-11-23T03:30:00Z — Claude Fable 5.2, T83 added and done
+
+- Added: T83 (Done): near-tie display (below 60%) with template explanations and fork arrows; projective decoding on for both models (owner).
+
+### 2026-11-23T04:00:00Z — Claude Sonnet 5.5, T84 added and done
+
+- Added: T84 (Done): sentence headers with a bottom rule, centered bracket lines, rounded-rectangle arrows in the structure view.
+
+### 2026-11-23T04:30:00Z — Claude Opus 5.5, T85 added and done
+
+- Added: T85 (Done): labels in packed rows under the sentence in the phrase's color; vertical scrollbar cause and fix.
+
+### 2026-11-23T05:00:00Z — Claude Opus 5.5, T86 added and done
+
+- Added: T86 (Done): labels back inside the phrases (reverts the T85 label rows), arrows under the sentence, thin scrollbar.
+
+### 2026-11-23T06:30:00Z — Claude Opus 5.5, T70 done; restaged
+
+- Modified: T70 moved to *Done* with outcomes (owner decisions: Wiktionary subset, headword fill, Korean per part of speech, CC BY-SA 4.0 at `/dict/v1/`).
+- Modified: stages recomputed from *Needs*: T46 1→0, T53 2→1, T72 2→1, T62 3→2; empty stages removed.
+
+### 2026-11-23T07:00:00Z — Claude Opus 5.5, T65 decided and built
+
+- Modified: T65 moved to *Done* (owner: 1C, 2A, 3A, 4A, 5A).
+- Modified: stages: T66 stays in Stage 1 (still waits on T43).
+
+### 2026-11-23T08:00:00Z — Claude Opus 5.5, T46 done; restaged
+
+- Modified: T46 moved to *Done*.
+- Modified: stages recomputed from *Needs*: T53 1→0, T72 1→0, T62 2→1; empty stages removed.

@@ -173,9 +173,9 @@ const notice = {
   },
 } as unknown as PreprocessResult;
 
-function setup(withNotice = false): void {
+function setup(withNotice = false, parsed: ParseResult = result): void {
   const m = mockService({ state: "ready", modelId: "deberta_v3_xsmall", backend: "wasm", modelVersion: "v1" });
-  m.update({ annotation: annotate(result, TEXT), notice: withNotice ? notice : null });
+  m.update({ annotation: annotate(parsed, TEXT), notice: withNotice ? notice : null });
   h.parser = m.service;
   renderPage(<OutputPage />, "/output");
 }
@@ -236,7 +236,7 @@ describe("OutputPage", () => {
 
     fireEvent.mouseOver(word("Dogs"));
     expect(view.querySelector("svg text")?.textContent).toBe("Subject");
-    expect(view.querySelector("svg")?.getAttribute("class")).not.toMatch(/unsure/);
+    expect(view.querySelector("svg g")?.getAttribute("class") ?? "").not.toMatch(/unsure/);
     // The target is a span of words (T81): "look unhappy".
     expect(view.querySelector('[data-token="1"]')?.className).toMatch(/target/);
     expect(view.querySelector('[data-token="2"]')?.className).toMatch(/target/);
@@ -246,7 +246,7 @@ describe("OutputPage", () => {
 
     // An uncertain attachment: dashed arrow; the head word has no arrow of its own.
     fireEvent.focus(word("unhappy"));
-    expect(view.querySelector("svg")?.getAttribute("class")).toMatch(/unsure/);
+    expect(view.querySelector("svg g")?.getAttribute("class")).toMatch(/unsure/);
     expect(view.querySelector('[data-token="0"]')?.className).toMatch(/target/);
     fireEvent.focus(word("look"));
     expect(view.querySelector("svg")).toBeNull();
@@ -275,6 +275,63 @@ describe("OutputPage", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Draw phrases as brackets" }));
     expect(nested.className).toMatch(/boxes/);
     expect(nested.className).toMatch(/always/);
+  });
+
+  it("shows a near-tie as equal readings: note, open list, letters, explanations, and a fork (T83)", () => {
+    const [sentence] = result.sentences;
+    if (!sentence) throw new Error("fixture");
+    // "unhappy" (2) may go with "look" (1; primary) or "Dogs" (0): 55% against 45%.
+    const nearTie: ParseResult = {
+      ...result,
+      sentences: [
+        {
+          ...sentence,
+          tokens: sentence.tokens.map((tok) => ({ ...tok, head: tok.index === 1 ? -1 : 1 })),
+          alternatives: [
+            {
+              rank: 1,
+              probability: 0.45,
+              reason: "attachment",
+              changes: [{ index: 2, head: 0 }],
+              chunks: sentence.chunks,
+              phrases: sentence.phrases,
+              attachment: { word: 2, from: 1, to: 0 },
+            },
+          ],
+        },
+      ],
+    };
+    setup(false, nearTie);
+    const article = screen.getByRole("article", { name: "Sentence 1" });
+    expect(within(article).getByRole("note").textContent).toMatch(/about equally likely/);
+    expect(within(article).getByText("Compare readings (2)")).toBeTruthy();
+    expect(within(article).getByRole("radio", { name: "Reading A (55%)" })).toBeTruthy();
+    expect(within(article).getByRole("radio", { name: "Reading B (45%)" })).toBeTruthy();
+    expect(within(article).queryByRole("radio", { name: /Most likely/ })).toBeNull();
+    expect(
+      within(article).getByText("“unhappy” goes with the verb “look” (where, when, or how it happens)."),
+    ).toBeTruthy();
+    expect(within(article).getByText("“unhappy” describes the noun “Dogs” (which one, or what kind).")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
+    const view = within(article).getByRole("group", { name: /Predicate/ }).parentElement as HTMLElement;
+    const disputed = view.querySelector('[data-token="2"]') as HTMLElement;
+    expect(disputed.className).toMatch(/disputed/);
+    expect(within(disputed).getByText("readings differ here: “look” 55%, “Dogs” 45%")).toBeTruthy();
+    fireEvent.mouseOver(word("unhappy", article));
+    expect([...view.querySelectorAll("svg text")].map((x) => x.textContent)).toEqual(["55%", "45%"]);
+    expect(view.querySelectorAll("svg g[class*='unsure']")).toHaveLength(2);
+    expect(view.querySelector('[data-token="0"]')?.className).toMatch(/target/);
+    expect(view.querySelector('[data-token="1"]')?.className).toMatch(/target/);
+  });
+
+  it("keeps the ranked list closed, with explanations, when one reading clearly leads", () => {
+    setup();
+    const article = screen.getByRole("article", { name: "Sentence 1" });
+    expect(within(article).queryByRole("note")).toBeNull();
+    expect(within(article).getByText("Other readings (1)").closest("details")?.open).toBe(false);
+    expect(within(article).getByText("“look” is read as: Noun (NOUN).")).toBeTruthy();
+    expect(within(article).getByText("“look” is read as: Verb (VERB).")).toBeTruthy();
   });
 
   it("selects a word: details with base form, part of speech, word parts, and add to list", async () => {

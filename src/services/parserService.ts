@@ -129,7 +129,9 @@ export type {
   CategoryKind,
   ChunkKind,
   FlatSegment,
+  Fork,
   Reading,
+  ReadingNote,
   RoleKind,
 } from "../modules/output";
 export type { CheckResult, CheckStatus } from "../modules/preflight";

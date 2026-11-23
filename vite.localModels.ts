@@ -12,6 +12,9 @@
  *                                   model_version becomes "local-<run>"
  *     /models/<id>/<file>         → training/data/onnx/<id>/<selected run>/<file>
  *     /models/_ort/<file>         → node_modules/onnxruntime-web/dist/<file>
+ *     /dict/<path>                → training/data/dict/<path> (the dictionary
+ *                                   build, T70: v1/manifest.json, v1/index.json,
+ *                                   v1/shards/NNN.json), like functions/dict/
  *   The selected run per model is read from
  *   training/data/eval/<id>/phase7_biaffine.json (Phase 7), as in the
  *   benchmark page (training/js/bench-page/). Models without an export are
@@ -39,6 +42,8 @@ const REPO = import.meta.dirname;
 const TRAINING = join(REPO, "training");
 const FIXTURE = join(REPO, "src", "modules", "modelLibrary", "catalog.fixture.json");
 const ORT_DIST = join(REPO, "node_modules", "onnxruntime-web", "dist");
+/** Output of training/dictionary/build.py (T70). */
+const DICT_DIR = join(TRAINING, "data", "dict");
 /** Same folder name as transformerBackend.ts → ORT_FOLDER. */
 const ORT_FOLDER = "_ort";
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
@@ -153,9 +158,25 @@ export function localModels(): Plugin {
         const ids = (catalog as { models: Entry[] }).models.map((m) => m.id);
         server.config.logger.info(`[local-models] serving ${ids.join(", ") || "no models"} from training/data/onnx`);
         if (missing.length) server.config.logger.warn(`[local-models] no export for: ${missing.join(", ")}`);
+        if (existsSync(join(DICT_DIR, "v1", "manifest.json"))) {
+          server.config.logger.info("[local-models] serving the dictionary from training/data/dict");
+        }
       });
       server.middlewares.use((req, res, next) => {
         const path = new URL(req.url ?? "/", "http://localhost").pathname;
+        if (path.startsWith("/dict/")) {
+          const file = resolve(DICT_DIR, decodeURIComponent(path.slice("/dict/".length)));
+          res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+          res.setHeader("Cache-Control", "no-store");
+          if (!file.startsWith(DICT_DIR + sep) || !existsSync(file) || !statSync(file).isFile()) {
+            res.statusCode = 404;
+            return res.end("Not Found");
+          }
+          res.setHeader("Content-Type", file.endsWith(".json") ? "application/json" : "application/octet-stream");
+          res.setHeader("Content-Length", String(statSync(file).size));
+          if (req.method === "HEAD") return res.end();
+          return void createReadStream(file).pipe(res);
+        }
         if (!path.startsWith("/models/")) return next();
         const rel = decodeURIComponent(path.slice("/models/".length));
         // Same-origin assets only (the app's COEP require-corp accepts them).

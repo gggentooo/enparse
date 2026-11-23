@@ -200,6 +200,7 @@ function attachmentCandidates(input: AlternativesInput): Candidate[] {
       build: () => ({
         reason: "attachment",
         changes,
+        attachment: { word: w, from: current - 1, to: target - 1 },
         chunks: groupChunks(input.chunkTags),
         // Gating: the switched word's head is the reading being shown (probability 1; its
         // constrained row in alt.headDist); every other word keeps its calibrated probabilities.

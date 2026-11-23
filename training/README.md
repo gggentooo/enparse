@@ -81,4 +81,9 @@ Run from `training/` with the venv active.
 | 7, 9 | `python scripts/export_onnx.py --model <m> --run <run> [--parity-windows N\|all]` | ONNX export (fp32, int8, fp16) to `data/onnx/<m>/<run>/` with `labels.json` file checksums, reference and parity inputs. |
 | 7, 9, 10 | `(cd js && npm run benchmark -- --model <m> --run <run> --mode smoke\|parity\|speed)` | Transformers.js (Node) load, tokenizer, parity, and speed checks; writes `benchmark_<mode>.json`. |
 
+| Dictionary (T70) | `python -m dictionary.fetch --pin` | Downloads missing dictionary sources (`configs/dictionary.yaml`; large files as parallel byte ranges) and checks or pins their SHA-256. |
+| Dictionary (T70) | `python -m dictionary.extract` | Once per Wiktionary download: writes the pinned subset `data/raw/dictionary/wiktionary-subset.jsonl.gz` from the 3.2 GB kaikki.org extract (which may then be deleted). |
+| Dictionary (T70) | `python -m dictionary.build` | Writes `data/dict/v1/` (manifest, index, 128 shards) and `reports/dictionary.md`; runs `js/dict_lemmas.mjs` (app `lookupKey` and wink lemmas) through `npx tsx`. Upload `data/dict/v1/` to R2 under `dict/v1/`. Format and attribution: `dictionary/DATA_CARD.md`. |
+| Dictionary (T70) | `python -m pytest tests/test_dictionary.py` | Dictionary build tests. |
+
 TODO(training-setup): commands for Phases 8, 11, added as scripts are implemented.

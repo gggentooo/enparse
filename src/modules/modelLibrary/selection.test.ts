@@ -43,9 +43,7 @@ describe("recommendModel (owner rule, T22)", () => {
     expect(recommendModel(catalog, [fit("deberta_v3_xsmall"), fit("modernbert_base")], 5)).toBe("deberta_v3_xsmall");
   });
 
-  it("skips blocked models, memory warnings, and models over budget", () => {
-    const memWarn = fit("deberta_v3_xsmall", { reasons: [{ id: "model-memory", status: "warn" }] });
-    expect(recommendModel(catalog, [memWarn, fit("modernbert_base")], 5)).toBe("modernbert_base");
+  it("skips blocked models and models over budget", () => {
     expect(recommendModel(catalog, [fit("deberta_v3_xsmall", { verdict: "blocked" }), fit("modernbert_base")], 5)).toBe(
       "modernbert_base",
     );

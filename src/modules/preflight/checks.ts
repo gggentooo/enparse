@@ -18,10 +18,10 @@
  *      schema_version, REQUIRED_MANIFEST_FIELDS not null), checkWinkVersions,
  *      checkModelSize (sum of files.bytes vs free quota).
  *   2b. Per-model fitness (input: ModelRequirements + EnvironmentProbe):
- *      checkModelMemory (min_device_memory_gb vs deviceMemory; skip if not
- *      exposed), checkModelStorage (download bytes vs free quota),
- *      expectedParseTime (Phase 10 time for this device's backend vs
- *      PARSE_BUDGET_SECONDS; warn if over).
+ *      checkModelStorage (download bytes vs free quota), expectedParseTime
+ *      (Phase 10 time for this device's backend and speed tier vs
+ *      PARSE_BUDGET_SECONDS; warn if over). No per-model memory requirement
+ *      (owner, T65: only the device-wide memory hint warns).
  *   3. Files (input: manifest.files + digests from core/environment):
  *      checkFilesCached, checkFilesIntegrity (bytes and SHA-256 per file;
  *      skip when manifest.files is null, e.g. development models before
@@ -33,20 +33,21 @@
  *   Internal: ./types.ts, ./requirements.ts. External: none.
  *   Used by: ./preflight.ts.
  *
- * Status: implemented (T36). Tests: checks.test.ts.
+ * Status: implemented (T36; thresholds and speed tiers T65). Tests: checks.test.ts.
  */
 
 import type { EnvironmentProbe, FileDigest } from "../../core/environment";
 import {
   APP_WINK_VERSIONS,
-  MIN_WEBGPU_BUFFER_BYTES,
+  MIN_WEBGPU_STORAGE_BINDING_BYTES,
+  TWO_CORE_MAX,
   PARSE_BUDGET_SECONDS,
   REQUIRED_MANIFEST_FIELDS,
   SEVERITY,
   STORAGE_MARGIN_BYTES,
   SUPPORTED_SCHEMA_VERSION,
 } from "./requirements";
-import type { Backend, CheckId, CheckResult, CheckStage, ModelManifest, ModelRequirements } from "./types";
+import type { Backend, CheckId, CheckResult, CheckStage, ModelManifest, ModelRequirements, WasmTier } from "./types";
 
 type Extra = Pick<CheckResult, "measured" | "required">;
 const result = (
@@ -74,10 +75,12 @@ export function freeBytes(probe: EnvironmentProbe): number | null {
   return s === "unknown" || s === null ? null : Math.max(0, s.quotaBytes - s.usageBytes);
 }
 
-/** WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough buffers. */
+/** WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough storage buffer bindings. */
 export function webGpuUsable(probe: EnvironmentProbe): boolean {
   const g = probe.webgpu;
-  return g !== "unknown" && g !== null && g.shaderF16 && g.maxBufferSize >= MIN_WEBGPU_BUFFER_BYTES;
+  return (
+    g !== "unknown" && g !== null && g.shaderF16 && g.maxStorageBufferBindingSize >= MIN_WEBGPU_STORAGE_BINDING_BYTES
+  );
 }
 
 export function backendHint(probe: EnvironmentProbe): Backend {
@@ -102,10 +105,10 @@ export function checkWebGpu(p: EnvironmentProbe): CheckResult {
   if (g === "unknown") return result("webgpu", "device", "skip", "not-measurable");
   if (g === null) return result("webgpu", "device", "pass", "unavailable-use-wasm", { measured: false });
   if (!g.shaderF16) return result("webgpu", "device", "pass", "no-shader-f16-use-wasm", { measured: false });
-  if (g.maxBufferSize < MIN_WEBGPU_BUFFER_BYTES) {
+  if (g.maxStorageBufferBindingSize < MIN_WEBGPU_STORAGE_BINDING_BYTES) {
     return result("webgpu", "device", "pass", "small-buffers-use-wasm", {
-      measured: g.maxBufferSize,
-      required: MIN_WEBGPU_BUFFER_BYTES,
+      measured: g.maxStorageBufferBindingSize,
+      required: MIN_WEBGPU_STORAGE_BINDING_BYTES,
     });
   }
   return result("webgpu", "device", "pass", "ok", { measured: true });
@@ -147,15 +150,6 @@ export function checkModelVariant(model: ModelRequirements, p: EnvironmentProbe)
   return gate("model-variant", "model", v !== null, "needs-webgpu-fp16", { measured: v });
 }
 
-export function checkModelMemory(model: ModelRequirements, p: EnvironmentProbe): CheckResult {
-  if (model.minDeviceMemoryGb === undefined) return result("model-memory", "model", "skip", "no-requirement");
-  if (p.deviceMemoryGb === null) return result("model-memory", "model", "skip", "not-exposed");
-  return gate("model-memory", "model", p.deviceMemoryGb >= model.minDeviceMemoryGb, "below-requirement", {
-    measured: p.deviceMemoryGb,
-    required: model.minDeviceMemoryGb,
-  });
-}
-
 /** Download must fit the free quota (fail, T24: it would fail mid-way); tight → warn. */
 export function checkModelStorage(model: ModelRequirements, p: EnvironmentProbe, cachedBytes = 0): CheckResult {
   const v = chooseVariant(model, p);
@@ -169,11 +163,28 @@ export function checkModelStorage(model: ModelRequirements, p: EnvironmentProbe,
   return result("model-storage", "model", "pass", "ok", extra);
 }
 
-/** Expected parse time from Phase 10 for this device's backend. TODO(preflight-thresholds): scale by cores (T65). */
+/**
+ * WASM speed tier of this device (owner, T65): one thread when multi-threaded WASM is not
+ * available (no cross-origin isolation), two cores when the device reports ≤ TWO_CORE_MAX
+ * logical cores, otherwise many threads.
+ */
+export function wasmTier(p: EnvironmentProbe): WasmTier {
+  if (!p.wasmThreads) return "wasm_1thread";
+  if (p.hardwareConcurrency !== null && p.hardwareConcurrency <= TWO_CORE_MAX) return "wasm_2core";
+  return "wasm";
+}
+
+/**
+ * Expected parse time of 5,000 characters from Phase 10 for this device: the fp16 time on
+ * WebGPU, else the measured time of this device's WASM tier (the many-thread time if that tier
+ * was not measured).
+ */
 export function expectedParseSeconds(model: ModelRequirements, p: EnvironmentProbe): number | null {
   const v = chooseVariant(model, p);
   if (v === null) return null;
-  return (v === "fp16" ? model.parseSeconds?.webgpu : model.parseSeconds?.wasm) ?? null;
+  const t = model.parseSeconds;
+  if (v === "fp16") return t?.webgpu ?? null;
+  return t?.[wasmTier(p)] ?? t?.wasm ?? null;
 }
 
 export function checkParseTime(model: ModelRequirements, p: EnvironmentProbe): CheckResult {

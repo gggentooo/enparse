@@ -130,15 +130,12 @@ export function downloadBytes(entry: CatalogEntry, variant: VariantName): number
 export function requirementsOf(entry: CatalogEntry): {
   id: string;
   variants: { int8?: { bytes: number }; fp16?: { bytes: number } };
-  parseSeconds?: { wasm?: number; webgpu?: number };
-  minDeviceMemoryGb?: number;
+  parseSeconds?: { wasm?: number; wasm_2core?: number; wasm_1thread?: number; webgpu?: number };
 } {
   const variants: { int8?: { bytes: number }; fp16?: { bytes: number } } = {};
   for (const v of ["int8", "fp16"] as const) if (entry.variants[v]) variants[v] = { bytes: downloadBytes(entry, v) };
   const out: ReturnType<typeof requirementsOf> = { id: entry.id, variants };
   const parse = entry.performance?.parse_5000_chars_s;
   if (parse) out.parseSeconds = parse;
-  const mem = entry.requirements?.min_device_memory_gb;
-  if (mem !== undefined) out.minDeviceMemoryGb = mem;
   return out;
 }

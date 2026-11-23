@@ -4,13 +4,19 @@
 #
 # Description:
 #   Pinned sources for app data built outside the model phases: the subword
-#   known-word list (T41, js/build_known_words.mjs) now; the dictionary sources
-#   of T25/T42 are added with the dictionary pipeline (T70). Each source has a
-#   URL, the SHA-256 of the downloaded file, its license, and the attribution
-#   to show in the app (About & licenses).
+#   known-word list (T41, js/build_known_words.mjs) and the dictionary (T25,
+#   T42, T70; dictionary/). Each source has a URL, the local file, the SHA-256
+#   of the downloaded file, its license, and the attribution to show in the
+#   app (About & licenses).
 #
-# Dependencies: read by js/build_known_words.mjs (and T70 scripts).
-# Status: NGSL pinned (2026-11-21); dictionary sources pending (T70).
+#   kaikki.org serves only the latest Wiktionary extract (no dated archive):
+#   the file was downloaded once (date and SHA-256 below) and a compressed
+#   subset with the entries the dictionary can use is kept in data/raw/
+#   (subset.file); rebuilds read the subset (owner, 2026-11-23; T70).
+#
+# Dependencies: read by js/build_known_words.mjs, dictionary/*.py,
+#   js/dict_lemmas.mjs.
+# Status: NGSL pinned (2026-11-21); dictionary sources pinned (2026-11-23, T70).
 # =============================================================================
 
 sources:
@@ -22,6 +28,56 @@ sources:
     license: CC BY-SA 4.0
     license_url: https://creativecommons.org/licenses/by-sa/4.0/
     attribution: "New General Service List by Browne, C., Culligan, B., and Phillips, J. is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (https://www.newgeneralservicelist.com/new-general-service-list)."
+
+  wordnet:
+    name: Open English WordNet 2025
+    url: https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025.xml.gz
+    file: data/raw/dictionary/english-wordnet-2025.xml.gz
+    sha256: 9ca6d1dcb75f822fdd66617f7d9da48142ace38dd544d6ad5e2feca1674ad3fe
+    license: CC BY 4.0
+    license_url: https://creativecommons.org/licenses/by/4.0/
+    attribution: "Open English WordNet 2025 (https://en-word.net/), by John P. McCrae and the Open English WordNet contributors, based on Princeton WordNet 3.0, is licensed under CC BY 4.0."
+
+  wiktionary:
+    name: English Wiktionary, via the kaikki.org English extract (wiktextract)
+    url: https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz
+    file: data/raw/dictionary/kaikki.org-dictionary-English.jsonl.gz
+    sha256: 4d03b6cba283744756c57ff661c2c6cbfe34fcf8ff513a966576cf7d97e91a99
+    downloaded: "2026-11-23"
+    last_modified: "Fri, 30 Oct 2026 23:09:26 GMT"
+    subset:
+      file: data/raw/dictionary/wiktionary-subset.jsonl.gz
+      sha256: 516cc6c2c96a30db0694d6d08df9345188f74e835a8c2b1824a4c9b8e25a27ea
+    license: CC BY-SA 4.0
+    license_url: https://creativecommons.org/licenses/by-sa/4.0/
+    attribution: "Korean translations, word forms, and parts of speech from English Wiktionary (https://en.wiktionary.org/), by Wiktionary contributors, licensed under CC BY-SA 4.0; extracted with wiktextract by Tatu Ylonen (kaikki.org)."
+
+  tatoeba_kor:
+    name: Tatoeba Korean sentences (detailed)
+    url: https://downloads.tatoeba.org/exports/per_language/kor/kor_sentences_detailed.tsv.bz2
+    file: data/raw/dictionary/kor_sentences_detailed.tsv.bz2
+    sha256: 0974a2c2915d0e8179fe50b0eeacf7e1b1fc81b2a8b709505348466c1cdff85e
+    license: CC BY 2.0 FR
+    license_url: https://creativecommons.org/licenses/by/2.0/fr/
+    attribution: "Example sentences from Tatoeba (https://tatoeba.org), by the Tatoeba contributors, licensed under CC BY 2.0 FR."
+
+  tatoeba_eng:
+    name: Tatoeba English sentences
+    url: https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2
+    file: data/raw/dictionary/eng_sentences.tsv.bz2
+    sha256: 0c4d3b18152bd6507bbf77ab690532b25de1e60da950f68705b3c88935c01fb4
+    license: CC BY 2.0 FR
+    license_url: https://creativecommons.org/licenses/by/2.0/fr/
+    attribution: "Example sentences from Tatoeba (https://tatoeba.org), by the Tatoeba contributors, licensed under CC BY 2.0 FR."
+
+  tatoeba_links:
+    name: Tatoeba Korean–English sentence links
+    url: https://downloads.tatoeba.org/exports/per_language/kor/kor-eng_links.tsv.bz2
+    file: data/raw/dictionary/kor-eng_links.tsv.bz2
+    sha256: 6d0815b117f1ae04fe3f90b93c3cd0eb72165b4f805d6444db272dceaaaa83e4
+    license: CC BY 2.0 FR
+    license_url: https://creativecommons.org/licenses/by/2.0/fr/
+    attribution: "Example sentences from Tatoeba (https://tatoeba.org), by the Tatoeba contributors, licensed under CC BY 2.0 FR."
 
 known_words:
   output: ../src/modules/subword/knownWords.generated.ts   # relative to training/

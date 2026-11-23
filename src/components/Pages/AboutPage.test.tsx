@@ -34,6 +34,17 @@ describe("AboutPage", () => {
     expect(screen.getByText(/^Required Notice: Copyright Hankyung Lee/)).toBeTruthy();
   });
 
+  it("credits the dictionary sources and states the dictionary data license (T70)", () => {
+    render(<AboutPage />);
+    const section = screen.getByRole("heading", { name: "Dictionary sources" }).closest("section") as HTMLElement;
+    for (const name of ["Open English WordNet 2025", "English Wiktionary (kaikki.org extract)", "Tatoeba"]) {
+      expect(within(section).getByRole("link", { name: new RegExp(`^${name.replace(/[()]/g, "\\$&")}`) })).toBeTruthy();
+    }
+    for (const license of ["CC BY 4.0", "CC BY 2.0 FR"])
+      expect(within(section).getByText(`License: ${license}`)).toBeTruthy();
+    expect(within(section).getByText(/shared under/)).toBeTruthy();
+  });
+
   it("opens external links in a new tab without opener or referrer", () => {
     render(<AboutPage />);
     const links = screen.getAllByRole("link");

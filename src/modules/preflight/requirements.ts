@@ -5,12 +5,12 @@
  *   Named thresholds and the severity of each check (fail = blocks, warn =
  *   shown but allowed). Single place to change them (agents.md → no magic
  *   numbers). Values come from plan-training.md Phase 10 (browser
- *   benchmarks); until then they are proposed placeholders.
+ *   benchmarks), set by the owner (T24 policies, T65 thresholds).
  *
  * Layer: modules/ (preflight)
  *
  * Tasks:
- *   1. Severity table per CheckId (proposed):
+ *   1. Severity table per CheckId (owner, T24):
  *      - fail (blocks): module-workers, wasm, wasm-simd (ONNX Runtime Web
  *        ships SIMD builds only), manifest-schema, files-integrity (after one
  *        re-download).
@@ -18,11 +18,14 @@
  *        (model re-downloaded every visit), storage-quota, memory-hint,
  *        wink-versions, model-size.
  *      - info only (pass/skip): webgpu (missing → WASM), files-cached.
- *   2. App-wide thresholds (proposed; TODO(preflight-thresholds): set from
- *      Phase 10): STORAGE_MARGIN_BYTES (free quota beyond a model's size),
- *      MIN_WEBGPU_BUFFER_BYTES, MAX_INTEGRITY_RETRIES = 1,
- *      PARSE_BUDGET_SECONDS = 5. Per-model needs (peak memory,
- *      min_device_memory_gb) come from catalog.json, measured in Phase 10.
+ *   2. App-wide thresholds (owner, 2026-11-23; T65, from Phase 10):
+ *      STORAGE_MARGIN_BYTES = 256 MiB (free quota beyond a download; less →
+ *      warn), MIN_WEBGPU_STORAGE_BINDING_BYTES = 128 MiB (maxStorageBuffer-
+ *      BindingSize for the fp16 models), TWO_CORE_MAX = 2 (speed tier),
+ *      MAX_INTEGRITY_RETRIES = 1, PARSE_BUDGET_SECONDS = 5. No per-model
+ *      memory requirement: only the device-wide memory hint (4 GB, warn).
+ *      Single-threaded WASM only warns (wasm-threads), and the speed tier
+ *      makes the recommendation prefer faster models there.
  *   3. SUPPORTED_SCHEMA_VERSION = 2 (= parser LABEL_SCHEMA_VERSION; kept equal
  *      by a test, since this module cannot import modules/parser).
  *   4. APP_WINK_VERSIONS: wink-nlp and wink-eng-lite-web-model versions
@@ -39,8 +42,7 @@
  * Open items (todo.md): pre-flight checks (memory policy,
  *   thresholds, storage policy).
  *
- * Status: implemented (T36; policies owner T24). Numeric thresholds are
- *   (proposed) placeholders until T65 (TODO(preflight-thresholds)).
+ * Status: implemented (T36; policies owner T24; thresholds owner T65).
  */
 
 import { dependencies } from "../../../package.json";
@@ -55,14 +57,21 @@ export const PARSE_BUDGET_SECONDS = 5;
 /** Re-downloads after an integrity failure before the model fails (owner, T24). */
 export const MAX_INTEGRITY_RETRIES = 1;
 
-/** Free quota wanted beyond a download; less → warn. (proposed; TODO(preflight-thresholds): T65) */
+/**
+ * Free quota wanted beyond a download; less → warn (owner, T65). Storage estimates are
+ * approximate (Safari especially); 256 MiB covers about one more model download plus the
+ * dictionary.
+ */
 export const STORAGE_MARGIN_BYTES = 256 * 1024 * 1024;
 
 /**
- * Smallest WebGPU buffer limit for the fp16 models (the WebGPU default limit; ModernBERT's
- * largest tensor is ~77 MB). (proposed; TODO(preflight-thresholds): T65)
+ * Smallest maxStorageBufferBindingSize for the fp16 models (owner, T65): the WebGPU default
+ * limit, above ModernBERT's largest tensor (~77 MB). Smaller → int8 on WASM.
  */
-export const MIN_WEBGPU_BUFFER_BYTES = 256 * 1024 * 1024;
+export const MIN_WEBGPU_STORAGE_BINDING_BYTES = 128 * 1024 * 1024;
+
+/** Devices reporting at most this many logical cores use the two-core speed tier (owner, T65). */
+export const TWO_CORE_MAX = 2;
 
 /** wink versions pinned by the app (labels.json → versions.wink must match). */
 export const APP_WINK_VERSIONS = {
@@ -102,7 +111,6 @@ export const SEVERITY: Readonly<Record<CheckId, Exclude<CheckStatus, "skip">>> =
   "model-size": "fail",
   "files-cached": "pass",
   "files-integrity": "fail",
-  "model-memory": "warn",
   "model-storage": "fail",
   "model-variant": "fail",
   "parse-time": "warn",

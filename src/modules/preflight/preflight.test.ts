@@ -37,11 +37,12 @@ describe("runners", () => {
 
   it("assesses each model for this device (variant, expected time, verdict)", async () => {
     const lowEnd = await runDeviceChecks(
-      env({ probeEnvironment: async () => probe({ webgpu: null, deviceMemoryGb: 4 }) }),
+      env({ probeEnvironment: async () => probe({ webgpu: null, deviceMemoryGb: 4, hardwareConcurrency: 2 }) }),
     );
+    // Two cores without WebGPU: the two-core times (T65); a 4 GB memory hint does not affect models.
     const [deb, mod] = assessModels([DEBERTA, MODERNBERT], lowEnd);
-    expect(deb).toMatchObject({ verdict: "ok", variant: "int8", expectedParseSeconds: 0.42 });
-    expect(mod).toMatchObject({ verdict: "warn", variant: "int8", expectedParseSeconds: 5.2 });
+    expect(deb).toMatchObject({ verdict: "ok", variant: "int8", expectedParseSeconds: 1.34 });
+    expect(mod).toMatchObject({ verdict: "warn", variant: "int8", expectedParseSeconds: 5.17 });
   });
 
   it("model stage: checks the manifest, counts missing files, and deletes corrupt cached files", async () => {

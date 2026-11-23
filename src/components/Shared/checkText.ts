@@ -32,14 +32,13 @@ const HINTS: Readonly<Record<CheckResult["id"], MessageKey>> = {
   "model-size": "hint.storage",
   "files-cached": "hint.files",
   "files-integrity": "hint.files",
-  "model-memory": "hint.memory",
   "model-storage": "hint.storage",
   "model-variant": "hint.variant",
   "parse-time": "hint.speed",
 };
 
 const BYTE_CHECKS = new Set<CheckResult["id"]>(["storage-quota", "model-storage", "model-size", "webgpu"]);
-const GB_CHECKS = new Set<CheckResult["id"]>(["memory-hint", "model-memory"]);
+const GB_CHECKS = new Set<CheckResult["id"]>(["memory-hint"]);
 
 /** Catalog key of a check's name. */
 export const checkNameKey = (id: CheckResult["id"]): MessageKey => `check.${id}`;

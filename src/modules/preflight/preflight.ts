@@ -14,7 +14,7 @@
  *      model download.
  *   2. assessModels(models: ModelRequirements[], device): fitness per model
  *      (ok / warn / blocked, expected parse time for this device's backend)
- *      from each model's size, peak memory, and min_device_memory_gb (catalog
+ *      from each model's size and measured parse times (catalog
  *      data passed in by parserService). Shown in the model library and
  *      used for its recommendation.
  *   3. runModelChecks(manifestUrl, model, device): Promise<{ report,
@@ -60,7 +60,6 @@ import {
   checkFilesIntegrity,
   checkManifestSchema,
   checkMemoryHint,
-  checkModelMemory,
   checkModelSize,
   checkModelStorage,
   checkModelVariant,
@@ -139,7 +138,6 @@ export function assessModels(models: readonly ModelRequirements[], device: Devic
   return models.map((m) => {
     const reasons = [
       checkModelVariant(m, device.probe),
-      checkModelMemory(m, device.probe),
       checkModelStorage(m, device.probe),
       checkParseTime(m, device.probe),
     ];

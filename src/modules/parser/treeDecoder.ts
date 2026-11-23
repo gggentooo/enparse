@@ -16,10 +16,10 @@
  *      = root, column j = word j) read from `arc_scores` at first-subword
  *      positions, and relation candidates per word. Each row is turned into
  *      log-probabilities over the sentence's words plus the root (no self).
- *   2. Maximum spanning tree (Chu-Liu-Edmonds) with exactly one word attached
- *      to the root: if the unconstrained tree has several root children, each
- *      of them is tried as the only one and the best-scoring tree is kept.
- *      The result is always a valid tree; no repair is needed.
+ *   2. The best projective tree (no crossing arcs; Eisner's algorithm) with
+ *      exactly one word attached to the root (see Projective decoding
+ *      below). Fallback: maximum spanning tree (Chu-Liu-Edmonds) with one
+ *      root child. The result is always a valid tree; no repair is needed.
  *   3. Relation: "root" for the root word; otherwise the best candidate that
  *      is not "root" ("dep" if there is none).
  *   4. headProbs: probability of the chosen head per word (for gating);
@@ -90,12 +90,14 @@
  *             "She likes red apples and green pears" →
  *             [She] [likes [[red apples] and [green pears]]]
  *
- * Projective decoding (projectiveTree; T82): the best tree without crossing
- *   arcs (Eisner). Measured against the spanning tree on the stored
- *   predictions (training/js/projective_eval.mjs) and not adopted: dev UAS
- *   changes by −0.04 (DeBERTa-v3-xsmall) and +0.06 (ModernBERT) points, and
- *   the owner's rule was to adopt it only if accuracy does not drop.
- *   decodeArcTree keeps the spanning tree.
+ * Projective decoding (projectiveTree; T82, adopted T83): decodeArcTree
+ *   takes the best tree without crossing arcs (Eisner), which keeps
+ *   attachments consistent with each other (a phrase is never split by
+ *   words attached elsewhere); the spanning tree is the fallback when no
+ *   projective tree has a finite score (constrained alternatives). Measured
+ *   on the stored predictions (training/js/projective_eval.mjs): dev UAS
+ *   −0.04 (DeBERTa-v3-xsmall) and +0.06 (ModernBERT) points, test +0.03 and
+ *   +0.08. Turned on for both models by the owner (2026-11-23).
  *
  * Dependencies:
  *   Internal: ./types.ts. External: none.
@@ -511,7 +513,8 @@ export function decodeArcTree(arc: ArcScores, relations: readonly (readonly Rela
   const logp = headLogProbs(arc);
   // Graph nodes: 0 = root, 1..n = words; score[d][h].
   const score = [new Array<number>(n + 1).fill(-Infinity), ...logp];
-  const tree = maxSpanningTree(score).slice(1);
+  // Best tree without crossing arcs (owner, 2026-11-23); the spanning tree if none is possible.
+  const tree = (projectiveTree(score) ?? maxSpanningTree(score)).slice(1);
   const greedy = greedyHeads(score).slice(1);
   const picked = tree.map((h, i): RelationCandidate => {
     const cands = relations[i] ?? [];

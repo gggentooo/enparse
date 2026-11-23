@@ -66,21 +66,20 @@
         "las": 0.9245,
         "nested": {
           "uas_no_punct": 0.9451,
-          "bracket_f1": 0.8913,
-          "shown_precision": 0.9583,
+          "bracket_f1": 0.8916,
+          "shown_precision": 0.9578,
           "shown_coverage": 0.6671,
-          "role_precision": 0.958
+          "role_precision": 0.9573
         }
       },
       "nested_view": true,
       "performance": {
         "parse_5000_chars_s": {
           "wasm": 0.423,
+          "wasm_2core": 1.342,
+          "wasm_1thread": 1.223,
           "webgpu": 0.515
         }
-      },
-      "requirements": {
-        "min_device_memory_gb": 4
       }
     },
     {
@@ -137,21 +136,20 @@
         "las": 0.9231,
         "nested": {
           "uas_no_punct": 0.943,
-          "bracket_f1": 0.8903,
-          "shown_precision": 0.9564,
-          "shown_coverage": 0.6818,
-          "role_precision": 0.9562
+          "bracket_f1": 0.8919,
+          "shown_precision": 0.9565,
+          "shown_coverage": 0.6805,
+          "role_precision": 0.9587
         }
       },
       "nested_view": true,
       "performance": {
         "parse_5000_chars_s": {
           "wasm": 1.483,
+          "wasm_2core": 5.166,
+          "wasm_1thread": 4.913,
           "webgpu": 0.275
         }
-      },
-      "requirements": {
-        "min_device_memory_gb": 8
       }
     }
   ]

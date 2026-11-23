@@ -12,6 +12,15 @@
   padding-block: var(--space-2);
 }
 
+/* Header of a sentence in the structure view, with a clear rule below it (T84). */
+.header {
+  margin: 0 0 var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 2px solid var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
 .readings {
   font-size: var(--font-size-sm);
 }
@@ -35,4 +44,27 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.option {
+  display: grid;
+  gap: 2px;
+}
+
+/* What a reading says where the readings differ. */
+.notes {
+  margin: 0;
+  padding-left: calc(var(--space-2) + 1.5rem);
+  color: var(--color-text-muted);
+  list-style: none;
+}
+
+/* The readings are about equally likely. */
+.nearTie {
+  width: fit-content;
+  margin: 0;
+  padding: 2px var(--space-2);
+  border: 1px dashed var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
 }

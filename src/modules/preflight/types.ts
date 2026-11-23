@@ -29,7 +29,7 @@
  *      sha256 }> | null).
  *   7. ModelRequirements (structural; from catalog.json, passed in): id,
  *      download bytes per variant, peak_memory_mb per backend,
- *      min_device_memory_gb, parse_5000_chars_s per backend.
+ *      parse_5000_chars_s per backend and WASM speed tier (T65).
  *      ModelFitness: { id, verdict, reasons: CheckResult[],
  *      expectedParseSeconds | null }.
  *   8. FailureReason mapping for parserService: blocked device checks →
@@ -61,7 +61,6 @@ export type CheckId =
   | "model-size"
   | "files-cached"
   | "files-integrity"
-  | "model-memory"
   | "model-storage"
   | "model-variant"
   | "parse-time";
@@ -110,10 +109,15 @@ export type ModelRequirements = {
   id: string;
   /** Download size per shipped variant (each optional; T23). */
   variants: { int8?: { bytes: number }; fp16?: { bytes: number } };
-  /** Measured parse time of 5,000 characters per backend (Phase 10), seconds. */
-  parseSeconds?: { wasm?: number; webgpu?: number };
-  minDeviceMemoryGb?: number;
+  /**
+   * Measured parse time of 5,000 characters (Phase 10), seconds: fp16 on WebGPU, and int8 on
+   * WASM per speed tier (owner, T65): many threads, two cores, one thread.
+   */
+  parseSeconds?: Partial<Record<WasmTier | "webgpu", number>>;
 };
+
+/** WASM speed tiers measured in Phase 10 (catalog.json → performance.parse_5000_chars_s). */
+export type WasmTier = "wasm" | "wasm_2core" | "wasm_1thread";
 
 export type ModelFitness = {
   id: string;

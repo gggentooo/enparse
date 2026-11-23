@@ -58,6 +58,7 @@ Notes:
 - Use a normal browser window. Private windows have too little storage for the larger model (the app says so).
 - Model files are not cached by the dev server, but the browser keeps downloaded models in Cache Storage. To re-test a download after a re-export, delete the model on the Models page (or clear the site data).
 - `labels.json` gets `model_version` = `local-<run>` (Phase 11 sets the real one).
+- The same server serves the dictionary data at `/dict/*` from `training/data/dict/` once it is built (`training/dictionary/`, T70).
 - Local only: the route exists only in `npm run dev:models`, never in builds or the deployed site.
 
 ## Commands

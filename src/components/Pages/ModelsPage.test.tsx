@@ -60,7 +60,7 @@ describe("ModelsPage", () => {
 
   it("shows blocked models with reasons and without actions", () => {
     const m = mockService();
-    const reasons = [{ id: "model-memory", stage: "model", status: "fail", detail: "below-requirement" }] as const;
+    const reasons = [{ id: "model-variant", stage: "model", status: "fail", detail: "needs-webgpu-fp16" }] as const;
     m.update({
       library: fixtureLibrary({
         fitness: [fit(DEBERTA.id), fit(MODERNBERT.id, { verdict: "blocked", variant: null, reasons: [...reasons] })],
@@ -70,7 +70,9 @@ describe("ModelsPage", () => {
     renderPage(<ModelsPage />, "/models");
     const blocked = card(MODERNBERT.display_name);
     expect(within(blocked).getByText("Not supported on this device")).toBeTruthy();
-    expect(within(blocked).getByText(/Memory for this model: This device may not have enough memory/)).toBeTruthy();
+    expect(
+      within(blocked).getByText(/Model format for this device: This model has no format this device can run/),
+    ).toBeTruthy();
     expect((within(blocked).getByRole("button", { name: "Use this model" }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(blocked).queryByRole("button", { name: "Download only" })).toBeNull();
   });

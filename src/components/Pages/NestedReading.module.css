@@ -2,9 +2,10 @@
  * src/components/Pages/NestedReading.module.css — styles for NestedReading.tsx
  *
  * Description: nested phrases, in one of two shapes (.boxes: rounded boxes; .brackets: inline phrases with a
- *   colored bracket at each end); a sentence never wraps: the view scrolls sideways and with labels either always shown
- *   (.always: in the layout) or only on hover/focus of the innermost phrase/word (.hover: floating over it);
- *   pinned labels (Subject, Predicate) always in the layout; the attachment arrow overlay and its target word.
+ *   colored bracket at each end); a sentence never wraps: the view scrolls sideways (thin scrollbar under the
+ *   arrow room), never vertically; labels inside the phrases, either always shown (.always) or only on
+ *   hover/focus of the innermost phrase/word (.hover: floating above it); pinned labels (Subject, Predicate)
+ *   always shown; the attachment arrow overlay under the sentence (T86) and its target word.
  * Dependencies: src/css/tokens.css. Used by: NestedReading.tsx.
  * Status: implemented (T57).
  */
@@ -14,11 +15,25 @@
   display: flex;
   flex-wrap: nowrap;
   gap: var(--space-1);
-  /* One sentence, one line: a long sentence scrolls sideways. The top padding leaves room for the
-     floating labels and the arrow, which the scroll container would otherwise clip. */
+  /* One sentence, one line: a long sentence scrolls sideways, never vertically (T85): a box that scrolls
+     sideways would also scroll vertically on any overflow. The top padding leaves room for the labels
+     floating above a hovered phrase or word; the bottom padding for the arrows under the sentence and
+     their labels (T86), so the thin scrollbar below them covers nothing. */
   overflow-x: auto;
-  padding: 1.75rem 0 var(--space-1);
+  overflow-y: hidden;
+  padding: 1.25rem 0 2.5rem;
   white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+/* Safari: a thin horizontal scrollbar (other browsers use scrollbar-width). */
+.nested::-webkit-scrollbar {
+  height: 6px;
+}
+
+.nested::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-text-muted) 60%, transparent);
 }
 
 .phrase {
@@ -101,14 +116,18 @@
    words and after a single word. */
 .brackets .label,
 .brackets .badge {
+  /* Raised by position, not by vertical-align: a raised inline box would push the whole line's words
+     down inside a taller line box and skew the sentence upwards (T84). */
+  position: relative;
+  top: -0.65em;
   margin: 0 3px 0 0;
   padding: 0;
   border: none;
   color: var(--color-text-muted);
   font-size: 0.6rem;
   font-weight: 700;
-  line-height: 1;
-  vertical-align: super;
+  line-height: 0;
+  vertical-align: baseline;
 }
 
 .brackets .badge {
@@ -119,37 +138,34 @@
   text-decoration: underline dashed;
 }
 
-/* Labels on hover: floating, so they take no space. Only the innermost hovered/focused phrase shows its label.
-   Pinned labels (Subject, Predicate) stay in the layout in every look. */
+/* Labels on hover: floating above the phrase or word, so they take no space and stay clear of the arrows
+   under the sentence. Only the innermost hovered/focused phrase shows its label. Pinned labels (Subject,
+   Predicate) stay in the layout in every look. */
 .hover .label:not(.pinned),
 .hover .badge:not(.pinned) {
   position: absolute;
+  bottom: 100%;
+  left: 0;
   z-index: 2;
+  margin: 0;
+  padding: 0 var(--space-1);
   background: var(--color-surface, Canvas);
+  font-size: 0.7rem;
+  line-height: 1.4;
   opacity: 0;
   pointer-events: none;
 }
 
 .hover .label:not(.pinned) {
-  bottom: 100%;
-  left: 0;
-  margin: 0;
-  padding: 0 var(--space-1);
-  font-size: 0.7rem;
-  line-height: 1.4;
   border: 1px solid var(--phrase-color);
   border-radius: var(--radius-sm);
 }
 
 .hover .badge:not(.pinned) {
-  top: 100%;
-  left: 0;
-  margin: 0;
-  padding: 0 var(--space-1);
+  top: auto;
   border: 1px solid var(--color-text-muted);
   font-size: 0.65rem;
   font-weight: 400;
-  line-height: 1.4;
   text-decoration: none;
 }
 
@@ -168,10 +184,6 @@
   background: color-mix(in srgb, var(--phrase-color) 16%, transparent);
 }
 
-.pinned {
-  color: var(--color-text-muted);
-}
-
 /* Arrow from the pointed phrase or word to the word it attaches to. */
 .arrow {
   position: absolute;
@@ -186,6 +198,8 @@
 .arrow path {
   fill: none;
   stroke: var(--color-text);
+  stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-width: 1.5;
 }
 
@@ -207,6 +221,12 @@
 /* The model is unsure of this attachment. */
 .unsure > path {
   stroke-dasharray: 4 3;
+}
+
+/* A phrase or word the readings dispute (near-tie): pointing at it shows both candidates. */
+.disputed {
+  text-decoration: underline wavy var(--color-text-muted);
+  text-underline-offset: 4px;
 }
 
 /* The word an arrow points to. */

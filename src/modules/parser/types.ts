@@ -334,6 +334,11 @@ export type Alternative = {
   reason: "probability" | "attachment";
   /** Tokens whose labels or head differ from the primary parse (the UI marks these words). */
   changes: TokenChange[];
+  /**
+   * Attachment alternatives: the word whose head was switched (the head of the disputed phrase),
+   * its head in the primary parse (`from`) and in this reading (`to`); 0-based, -1 = root.
+   */
+  attachment?: { word: number; from: number; to: number };
   chunks: Chunk[];
   phrases: LabeledSentencePhrases | null;
 };

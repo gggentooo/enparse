@@ -26,7 +26,10 @@ Tasks:
     4. Write catalog.json (schema v1; architecture.md → Model library):
        id, display_name, description, base_model, license, model_version,
        folder, labels, variants (file, bytes), shared_files, metrics,
-       nested_view, performance, requirements. Validate before writing.
+       nested_view, performance (parse_5000_chars_s per WASM speed tier and
+       WebGPU from data/bench/catalog_performance.json; owner, T65). No
+       requirements (owner, T65: no per-model memory requirement). Validate
+       before writing.
     5. Check every labels.json passes validate_labels_json with no needed
        field null, and print SHA-256 checksums for MODEL_CARD.md.
 

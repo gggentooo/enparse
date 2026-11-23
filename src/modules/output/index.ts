@@ -19,6 +19,7 @@
  */
 
 export { annotate } from "./annotator";
+export { NEAR_TIE_SHARE } from "./types";
 export type {
   AnnotatedNode,
   AnnotatedPhraseNode,
@@ -30,6 +31,8 @@ export type {
   CategoryKind,
   ChunkKind,
   FlatSegment,
+  Fork,
   Reading,
+  ReadingNote,
   RoleKind,
 } from "./types";

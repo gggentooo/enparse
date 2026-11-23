@@ -5,12 +5,15 @@
  *   Reads data/bench/phase10_<browsers>.json and spike_<browsers>.json
  *   (bench_browsers.mjs) and writes reports/benchmark.md: load and parse
  *   times, memory, budget check, download sizes, the T31 cache spike, and the
- *   proposed per-model requirements for catalog.json.
+ *   parse times catalog.json carries per model.
  *
- * Requirement rule (proposed): min_device_memory_gb = the smallest of
- *   MEMORY_TIERS_GB that is ≥ (largest warm peak of the model's int8 variant
- *   across browsers + OS_BROWSER_HEADROOM_GB). int8 is the variant every
- *   device can run (WASM); fp16 needs WebGPU and is listed separately.
+ * Catalog parse times (owner, 2026-11-23; T65): performance.parse_5000_chars_s
+ *   = the slowest warm median across the full-speed browsers (chrome, safari)
+ *   for `wasm` (int8, many threads) and `webgpu` (fp16); the two-core VM
+ *   (vm-chrome) for `wasm_2core`; the slowest single-threaded run for
+ *   `wasm_1thread`. No per-model memory requirement (owner, T65: the 4 GB VM
+ *   ran both models; only the device-wide memory hint warns). Written to
+ *   data/bench/catalog_performance.json for package_models.py (T66).
  *
  * Phase: 10 (T64). Run (from training/js): node bench_report.mjs
  * Dependencies: js-yaml; ../configs/eval.yaml (benchmark).
@@ -26,8 +29,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const TRAINING = resolve(HERE, "..");
 const BENCH = join(TRAINING, "data", "bench");
 const cfg = yaml.load(readFileSync(join(TRAINING, "configs", "eval.yaml"), "utf8")).benchmark;
-export const MEMORY_TIERS_GB = [4, 8, 16];
-export const OS_BROWSER_HEADROOM_GB = 2;
+/** Runs on full-speed machines (many threads) vs the two-core VM (T67). */
+export const TWO_CORE_BROWSERS = ["vm-chrome"];
 
 const files = readdirSync(BENCH).filter((f) => /^(phase10|spike)_.*\.json$/.test(f));
 const stRuns = readdirSync(BENCH)
@@ -172,25 +175,34 @@ out("- **Private windows:** Chrome's incognito-like Playwright context failed `c
 out("- **ONNX Runtime WASM must be self-hosted:** by default Transformers.js loads it from cdn.jsdelivr.net; the app now sets `wasmPaths` to `/models/_ort/` (`transformerBackend.ts`). The asyncify `.wasm` is 26.9 MB (over Pages' 25 MiB limit), so it ships through R2 with the models.");
 out();
 
-out("## Requirements for `catalog.json` (proposed)");
+out("## Parse times for `catalog.json` (owner, T65)");
 out();
 out(
-  `Rule (proposed): \`min_device_memory_gb\` = the smallest of ${MEMORY_TIERS_GB.join(" / ")} GB that is ≥ the int8 variant's largest warm peak across browsers + ${OS_BROWSER_HEADROOM_GB} GB for the OS and browser. fp16 additionally needs WebGPU.`,
+  "Seconds per 5,000 characters, warm median; the slowest browser counts. `wasm` = int8 with many threads, `wasm_2core` = the 2-core VM, " +
+    "`wasm_1thread` = int8 without cross-origin isolation, `webgpu` = fp16. The app picks the tier that matches the device (`preflight/checks.ts` → `wasmTier`). " +
+    "No per-model memory requirement: both models ran in the 4 GB VM, so only the device-wide memory hint (4 GB) warns.",
 );
 out();
-out(`| Model | int8 warm peak, max (GB) | min_device_memory_gb | fp16 warm peak, max (GB) | Fastest variant: ${browsers.join(" / ")} |`);
-out("|---|---|---|---|---|");
-const requirements = {};
+out(`| Model | wasm | wasm_2core | wasm_1thread | webgpu | Peak memory int8 / fp16, max (GB) |`);
+out("|---|---|---|---|---|---|");
+const performance = {};
+const full = browsers.filter((b) => !TWO_CORE_BROWSERS.includes(b));
+const slowest = (xs) => {
+  const v = xs.filter((x) => typeof x === "number");
+  return v.length ? Math.round(Math.max(...v)) / 1000 : undefined;
+};
 for (const m of models) {
-  const peak = (v) => Math.max(...browsers.map((b) => pair(b, m, v).warm?.memory?.warm_peak_mb ?? 0)) / 1024;
-  const need = peak("int8") + OS_BROWSER_HEADROOM_GB;
-  const tier = MEMORY_TIERS_GB.find((t) => t >= need) ?? MEMORY_TIERS_GB[MEMORY_TIERS_GB.length - 1];
-  requirements[m] = tier;
-  const fastest = (b) => {
-    const xs = cfg.variants.map((v) => [v, pair(b, m, v).warm?.parse_median_ms ?? Infinity]).sort((a, c) => a[1] - c[1]);
-    return xs[0][1] === Infinity ? "—" : xs[0][0];
+  const median = (b, v) => pair(b, m, v).warm?.parse_median_ms;
+  const t = {
+    wasm: slowest(full.map((b) => median(b, "int8"))),
+    wasm_2core: slowest(TWO_CORE_BROWSERS.map((b) => median(b, "int8"))),
+    wasm_1thread: slowest(stRuns.filter((r) => r.model === m).map((r) => r.parse_median_ms)),
+    webgpu: slowest(full.map((b) => median(b, "fp16"))),
   };
-  out(`| ${m} | ${peak("int8").toFixed(2)} | ${tier} | ${peak("fp16").toFixed(2)} | ${browsers.map(fastest).join(" / ")} |`);
+  performance[m] = Object.fromEntries(Object.entries(t).filter(([, v]) => v !== undefined));
+  const peak = (v) => Math.max(...browsers.map((b) => pair(b, m, v).warm?.memory?.warm_peak_mb ?? 0)) / 1024;
+  const cell = (v) => (v === undefined ? "—" : v.toFixed(3));
+  out(`| ${m} | ${cell(t.wasm)} | ${cell(t.wasm_2core)} | ${cell(t.wasm_1thread)} | ${cell(t.webgpu)} | ${peak("int8").toFixed(2)} / ${peak("fp16").toFixed(2)} |`);
 }
 out();
 out("## Lower-end device (T67): findings");
@@ -206,5 +218,5 @@ out("- Firefox and Edge (owner: Safari and Chrome only for now).");
 out("- Real network download time (sizes and estimates above).");
 out();
 writeFileSync(join(TRAINING, "reports", "benchmark.md"), L.join("\n"));
-writeFileSync(join(BENCH, "requirements.json"), JSON.stringify(requirements, null, 2) + "\n");
-console.log("-> reports/benchmark.md", requirements);
+writeFileSync(join(BENCH, "catalog_performance.json"), JSON.stringify(performance, null, 2) + "\n");
+console.log("-> reports/benchmark.md", performance);

@@ -21,9 +21,11 @@
  *      nested_view (true if the model meets the nested-view targets:
  *      UAS excl. punctuation, multi-word bracket F1, shown-bracket precision;
  *      plan-training.md → Nested phrase structure),
- *      performance: { first_load_s, parse_5000_chars_s: { wasm, webgpu },
- *      peak_memory_mb: { wasm, webgpu } } (Phase 10), requirements:
- *      { min_device_memory_gb } (Phase 10).
+ *      performance: { first_load_s, parse_5000_chars_s: { wasm, wasm_2core,
+ *      wasm_1thread, webgpu },
+ *      peak_memory_mb: { wasm, webgpu } } (Phase 10). No per-model memory
+ *      requirement (owner, T65; the former requirements.min_device_memory_gb
+ *      is ignored if present).
  *   3. Catalog: { schema_version: 1, generated_at, models: CatalogEntry[] }.
  *   4. ModelState per id: "not-downloaded" | { downloading, bytesDone,
  *      bytesTotal } | { downloaded, bytesOnDisk, variant } | "corrupted"
@@ -83,10 +85,14 @@ export type CatalogEntry = {
   nested_view: boolean;
   performance?: {
     first_load_s?: number;
-    parse_5000_chars_s?: { wasm?: number; webgpu?: number };
+    /**
+     * Seconds per 5,000 characters (Phase 10): int8 on WASM with many threads (`wasm`), on two
+     * cores (`wasm_2core`), and on one thread (`wasm_1thread`; no cross-origin isolation), and
+     * fp16 on WebGPU (owner, T65).
+     */
+    parse_5000_chars_s?: { wasm?: number; wasm_2core?: number; wasm_1thread?: number; webgpu?: number };
     peak_memory_mb?: { wasm?: number; webgpu?: number };
   };
-  requirements?: { min_device_memory_gb?: number };
 };
 
 export type Catalog = { schema_version: number; generated_at: string; models: CatalogEntry[] };

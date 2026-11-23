@@ -19,7 +19,7 @@
  * Dependencies:
  *   None. Used by: ./annotator.ts, ./index.ts.
  *
- * Status: implemented (T57; attachments T79).
+ * Status: implemented (T57; attachments T79; near-tie notes and forks T83).
  */
 
 /** Flat chunk types (parser ChunkType). */
@@ -70,6 +70,8 @@ export type InputToken = {
   lemma: string | null;
   upos: string;
   chunkTag: string;
+  /** 0-based head in the sentence; -1 = root. */
+  head: number;
 };
 export type InputChunk = { type: ChunkKind; start: number; end: number };
 export type InputChange = { index: number; upos?: string; chunkTag?: string; head?: number; relation?: string };
@@ -87,6 +89,7 @@ export type AnnotatorInput = {
       changes: readonly InputChange[];
       chunks: readonly InputChunk[];
       phrases: ReadonlyArray<InputPhrase | InputWord> | null;
+      attachment?: { word: number; from: number; to: number };
     }>;
   }>;
   modelId: string;
@@ -138,6 +141,8 @@ export type AnnotatedWordNode = NodeLabels & { kind: "word"; id: string; token: 
 export type AnnotatedPhraseNode = NodeLabels & {
   kind: "phrase";
   id: string;
+  /** Token index of the phrase's head word. */
+  head: number;
   category: CategoryKind;
   start: number;
   end: number;
@@ -147,6 +152,26 @@ export type AnnotatedPhraseNode = NodeLabels & {
   children: AnnotatedNode[];
 };
 export type AnnotatedNode = AnnotatedWordNode | AnnotatedPhraseNode;
+
+/** A top reading share below this is a near-tie: the readings are shown as equals (owner, 2026-11-23; T83). */
+export const NEAR_TIE_SHARE = 0.6;
+
+/** What kind of word a disputed phrase attaches to (picks the explanation template). */
+export type HeadKind = "noun" | "verb" | "adjective" | "other";
+
+/**
+ * One plain-language statement of what a reading says where the readings differ (T83): which
+ * word a phrase goes with, or which part of speech a word is. The UI renders it from a fixed
+ * template per kind.
+ */
+export type ReadingNote =
+  { kind: "attach"; phrase: string; head: string; headKind: HeadKind } | { kind: "label"; word: string; upos: string };
+
+/**
+ * A phrase whose attachment the readings dispute, in a near-tie sentence: its head token, and
+ * the tokens it may attach to with each reading's share (this reading's target first).
+ */
+export type Fork = { token: number; targets: Array<{ token: number; share: number }> };
 
 /** The primary parse (rank 0) or one alternative. */
 export type Reading = {
@@ -161,6 +186,10 @@ export type Reading = {
   nodes: AnnotatedNode[] | null;
   /** Words whose labels or head differ from the primary parse, with their values in this reading. */
   changes: Readonly<Record<number, { upos?: string; chunkTag?: string }>>;
+  /** What this reading says where the readings differ, in plain statements. */
+  notes: ReadingNote[];
+  /** Disputed attachments to show as a fork (near-tie sentences only; else empty). */
+  forks: Fork[];
 };
 
 export type AnnotatedSentence = {
@@ -171,6 +200,8 @@ export type AnnotatedSentence = {
   tokens: AnnotatedToken[];
   /** readings[0] is the primary parse. */
   readings: Reading[];
+  /** The top reading's share is below NEAR_TIE_SHARE: no reading is presented as the likely one. */
+  nearTie: boolean;
 };
 
 export type Annotation = {
