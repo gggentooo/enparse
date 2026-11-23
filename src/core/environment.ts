@@ -45,7 +45,8 @@
  *   in ≤ 0.26 s), so downloadToCache hashes the assembled Blob once.
  *   5d. Every cache function takes an optional cache name (default
  *      MODEL_CACHE_NAME), so the dictionary keeps its files in its own
- *      versioned cache (T46); readCached, putCached, cacheNames, deleteCache.
+ *      versioned cache (T46); readCached, putCached, cacheNames, deleteCache;
+ *      estimateStorage (free space before the dictionary download, T72).
  *   6. Constants: MODEL_CACHE_NAME (the Transformers.js cache name; checked
  *      against the pinned version), PROBE_TIMEOUT_MS for slow adapters.
  *   7. Unit tests in environment.test.ts with stubbed globals.
@@ -390,6 +391,20 @@ export async function putCached(url: string, body: string, contentType: string, 
     await cache.put(abs, new Response(body, { headers: { "Content-Type": contentType } }));
   } catch (e) {
     throw new AssetError("cache", abs, `could not store ${abs}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** navigator.storage.estimate() as quota and usage in bytes, or null when not available. */
+export async function estimateStorage(): Promise<{ quotaBytes: number; usageBytes: number } | null> {
+  const store = (
+    globalThis as { navigator?: { storage?: { estimate?(): Promise<{ quota?: number; usage?: number }> } } }
+  ).navigator?.storage;
+  if (!store?.estimate) return null;
+  try {
+    const e = await withTimeout(store.estimate(), PROBE_TIMEOUT_MS);
+    return e === "unknown" ? null : { quotaBytes: e.quota ?? 0, usageBytes: e.usage ?? 0 };
+  } catch {
+    return null;
   }
 }
 

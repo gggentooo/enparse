@@ -72,6 +72,8 @@ export type InputToken = {
   chunkTag: string;
   /** 0-based head in the sentence; -1 = root. */
   head: number;
+  /** UD relation to the head (with kept subtypes, e.g. "compound:prt"). */
+  relation: string;
 };
 export type InputChunk = { type: ChunkKind; start: number; end: number };
 export type InputChange = { index: number; upos?: string; chunkTag?: string; head?: number; relation?: string };
@@ -112,6 +114,13 @@ export type AnnotatedToken = {
   spaceAfter: boolean;
   /** Some alternative reading changes this word (marked in the primary view; T11). */
   ambiguous: boolean;
+  /**
+   * Phrasal verb this word belongs to in the primary parse (the verb and its particle,
+   * relation compound:prt): "looked" and "up" in "She looked it up" both give
+   * { verb: 1, particle: 3, text: "look up" (verb lemma + particle), written: "looked up" }.
+   * Null otherwise.
+   */
+  phrasal: { verb: number; particle: number; text: string; written: string } | null;
 };
 
 /** A run of words in the flat view: a chunk, or words outside chunks (type null). */

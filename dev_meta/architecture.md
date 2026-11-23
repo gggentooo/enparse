@@ -135,7 +135,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
 | `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (each with the token it attaches to, for the arrows; T79). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
-| `dictionary/dictionary.ts`   | Lookup (T46): the parse's lemma first (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. Display is in components. |
+| `dictionary/dictionary.ts`   | Lookup (T46): a possible phrasal verb from neighbouring words first if it is a headword (T87), then the parse's lemma (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. Display is in components. |
 | `dictionary/staticDb.ts`     | Data access (T46): `manifest.json` from `/dict/v<N>/` (a copy kept for offline use; schema checked), `index.json` and shards from the versioned cache `enparse-dict-v<N>` or downloaded into it with size and SHA-256 checks (one retry after an integrity failure), an in-memory LRU of 16 shards, the offline download (`downloadAll` with byte progress, `deleteAll`, `offlineState`), and deletion of other versions' caches. Shard of a key: FNV-1a 32 of its UTF-8 bytes. Errors: `DictionaryLoadError` (network, integrity, storage, format, cancelled). No live API calls. |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
 | `subword/affixes.ts`         | Affix inventory data used by `subwordParser`.                                                      |
@@ -438,14 +438,16 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
       │       │   │   └── NestedReading.tsx (one box or bracket per phrase; labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
-      │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary with T53)
+      │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary summary with "More in the dictionary": T25 popup, T53)
       │       ├── VocabPage.tsx (custom vocab lists; T48)
       │       │   ├── VocabLists.tsx (list overview, create list)
       │       │   ├── VocabListDetail.tsx (rename, delete, add word, item table)
       │       │   │   └── VocabItemRow.tsx (edit, move, remove a word)
       │       │   └── VocabTransfer.tsx (JSON/CSV export, import with name-conflict dialog)
-      │       ├── DictionaryPage.tsx (lookup results)
+      │       ├── DictionaryPage.tsx (search; query in the URL: #/dictionary?q=…&lemma=…&upos=…; entries, word parts, add to list; T53)
+      │       │   └── DictionaryEntry.tsx (one entry: Korean words by sense label, definitions with "show all", Tatoeba examples with attribution; compact mode for WordDetails)
       │       ├── ModelsPage.tsx (model library: choose, download, delete models; T54)
+      │       │   ├── DictionaryOffline.tsx ("Make dictionary available offline": size, storage check, progress, cancel, delete; T72)
       │       │   └── ModelCard.tsx (labels, device fit with reasons, download state, actions, details: metrics, license, base model)
       │       └── AboutPage.tsx (About & licenses: attribution for app, models, data, libraries, dictionary; T21)
       └── Shared/
@@ -463,7 +465,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
 | `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator` | `useParser`, `useModelLibrary` |
-| `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; offline state and download progress via `subscribe` / `getSnapshot`; T46) | `useDictionary`, offline control (T72) |
+| `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; offline state, storage check, and download progress via `subscribe` / `getSnapshot`; T46, T72) | `useDictionary`, `useDictionaryOffline` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
 | `languageService.ts`   | `core/storage`, `i18n` (UI language; T68)          | `useI18n`       |
@@ -520,7 +522,8 @@ enparse/
 │   │   │   ├── SentenceView.tsx, FlatReading.tsx, NestedReading.tsx, OutputWord.tsx, WordDetails.tsx (+ .module.css each; OutputPage parts)
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
 │   │   │   ├── VocabLists.tsx, VocabListDetail.tsx, VocabItemRow.tsx, VocabTransfer.tsx (+ .module.css each; VocabPage parts)
-│   │   │   ├── DictionaryPage.tsx + DictionaryPage.module.css
+│   │   │   ├── DictionaryPage.tsx, DictionaryEntry.tsx + .module.css each
+│   │   │   ├── DictionaryOffline.tsx + DictionaryOffline.module.css (ModelsPage part)
 │   │   │   ├── ModelsPage.tsx + ModelsPage.module.css
 │   │   │   ├── ModelCard.tsx + ModelCard.module.css (ModelsPage part)
 │   │   │   └── AboutPage.tsx + AboutPage.module.css (About & licenses; T21)
@@ -923,3 +926,12 @@ enparse/
 
 - Modified: *Logic modules* → `dictionary/dictionary.ts`, `dictionary/staticDb.ts` (lookup order, versioned cache with integrity checks, shard LRU, offline download, `DictionaryLoadError`); `dictionaryService` (lookups, offline state and progress via `subscribe` / `getSnapshot`).
 - Modified: `core/environment.ts` cache functions take an optional cache name; adds `readCached`, `putCached`, `cacheNames`, `deleteCache`.
+
+### 2026-11-23T09:00:00Z — Claude Opus 5.5, Dictionary page, word-panel summary, offline control (T53, T72)
+
+- Added: component hierarchy → `DictionaryEntry` (DictionaryPage part, compact in WordDetails), `DictionaryOffline` (ModelsPage part); `Shared/upos.ts`.
+- Modified: `DictionaryPage` (search, query in the URL), `WordDetails` (dictionary summary with "More in the dictionary"; T25 trigger); `dictionaryService` storage check (blocked if it cannot fit, warn if tight; T24); `core/environment.ts` → `estimateStorage`.
+
+### 2026-11-23T09:30:00Z — Claude Opus 5.5, Phrasal verbs in the word panel (T87)
+
+- Modified: annotation model → `AnnotatedToken.phrasal` (verb and particle from `compound:prt`); dictionary lookup → `DictionaryQuery.phrase` (verb + particle from neighbouring words, used only if it is a headword; `PHRASAL_PARTICLES`); `WordDetails` looks phrasal verbs up as a whole.

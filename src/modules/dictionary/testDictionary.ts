@@ -31,6 +31,19 @@ export const ENTRIES: Record<string, unknown> = {
   saw: { headword: "saw", pos: [pos("NOUN", ["a cutting tool"], [["tool", ["톱"]]])], examples: [] },
   see: { headword: "see", pos: [pos("VERB", ["perceive by sight"], [["perceive", ["보다"]]])], examples: [] },
   "look up": { headword: "look up", pos: [pos("VERB", ["seek information from"])], examples: [] },
+  "run out": {
+    headword: "run out",
+    pos: [pos("VERB", ["be used up"], [["to have none left", ["떨어지다"]]])],
+    examples: [],
+  },
+  look: {
+    headword: "look",
+    pos: [
+      pos("NOUN", ["the act of looking"]),
+      pos("VERB", ["perceive with attention", "appear"], [["to try to see", ["보다"]]]),
+    ],
+    examples: [],
+  },
   i: {
     headword: "I",
     pos: [pos("NOUN", ["the letter"]), pos("PRON", ["the speaker"], [["self", ["나"]]], "wiktionary")],

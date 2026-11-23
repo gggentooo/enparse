@@ -9,6 +9,8 @@
  * Layer: modules/ (dictionary)
  *
  * Lookup order (keys from utils/helpers.ts → lookupKey, like the build):
+ *   0. a possible phrasal verb from neighbouring words (query.phrase: "ran
+ *      out" → run out), if it is a headword;
  *   1. the lemma from the parse (wink, T71), if it is a headword (parse clicks);
  *   2. the word itself, if it is a headword ("look up", "American");
  *   3. the inflection index: the word as a form of headwords ("ran" → run,
@@ -58,6 +60,8 @@ export function createDictionary(db: StaticDb): Dictionary {
     const add = (key: string, match: MatchKind): void => {
       if (key && !keys.some(([k]) => k === key)) keys.push([key, match]);
     };
+    const phrase = query.phrase ? lookupKey(query.phrase.lemma) : null;
+    if (phrase && idx.headwords.has(phrase)) add(phrase, "phrase");
     if (lemma && idx.headwords.has(lemma)) add(lemma, "lemma");
     if (idx.headwords.has(word)) add(word, "headword");
     for (const k of idx.forms.get(word) ?? []) add(k, "form");
@@ -72,7 +76,7 @@ export function createDictionary(db: StaticDb): Dictionary {
 
   return {
     lookup(query) {
-      const id = `${query.word}\u0000${query.lemma ?? ""}\u0000${query.upos ?? ""}`;
+      const id = `${query.word}\u0000${query.lemma ?? ""}\u0000${query.upos ?? ""}\u0000${query.phrase?.lemma ?? ""}`;
       const hit = recent.get(id);
       if (hit) return hit;
       const p = run(query);
@@ -83,3 +87,14 @@ export function createDictionary(db: StaticDb): Dictionary {
     },
   };
 }
+
+/**
+ * Particles of phrasal verbs (identical to training/dictionary/common.py → PARTICLES): a verb
+ * directly followed by one of these may form a phrasal verb headword ("run out").
+ */
+export const PHRASAL_PARTICLES: ReadonlySet<string> = new Set(
+  (
+    "about across after along apart around aside away back by down forth in into off on onto out" +
+    " over round through together under up upon with without"
+  ).split(" "),
+);

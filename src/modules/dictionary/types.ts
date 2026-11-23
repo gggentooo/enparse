@@ -83,10 +83,15 @@ export type DictionaryQuery = {
   lemma?: string | null;
   /** Part of speech from the parse (UPOS); its senses are shown first. */
   upos?: string | null;
+  /**
+   * A possible phrasal verb the parse did not mark: the word with its neighbouring verb or
+   * particle ("ran out" → lemma "run out"). Tried first; ignored unless it is a headword.
+   */
+  phrase?: { word: string; lemma: string } | null;
 };
 
-/** How an entry was found. */
-export type MatchKind = "lemma" | "headword" | "form";
+/** How an entry was found ("phrase": a possible phrasal verb from neighbouring words, tried first). */
+export type MatchKind = "phrase" | "lemma" | "headword" | "form";
 
 export type LookupResult = {
   query: DictionaryQuery;

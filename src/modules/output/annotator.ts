@@ -25,7 +25,8 @@
  *      phrase goes with; which part of speech a word is), and, in a
  *      near-tie, `forks`: the disputed phrase's head token with both
  *      candidate targets and their shares.
- *   5. Token lookup data (surface form + lemma) for dictionary and subword
+ *   5. Token lookup data (surface form + lemma; the phrasal verb a word
+ *      belongs to, from compound:prt in the primary parse) for dictionary and subword
  *      lookups; spaceAfter from the input offsets; paragraph index from blank
  *      lines in the preprocessed text.
  *   6. Unit tests in annotator.test.ts.
@@ -123,6 +124,20 @@ function paragraphIndexes(sentences: readonly InputSentence[], text: string): nu
 function annotateSentence(s: InputSentence, index: number, paragraph: number, text: string): AnnotatedSentence {
   const id = `s${index}`;
   const ambiguous = new Set(s.alternatives.flatMap((a) => a.changes.map((c) => c.index)));
+  // Phrasal verbs (compound:prt): the dictionary looks them up as "verb particle" (T53).
+  const phrasal = new Map<number, AnnotatedToken["phrasal"]>();
+  for (const t of s.tokens) {
+    const verb = s.tokens[t.head];
+    if (t.relation !== "compound:prt" || !verb) continue;
+    const p = {
+      verb: verb.index,
+      particle: t.index,
+      text: `${verb.lemma ?? verb.text.toLowerCase()} ${t.text.toLowerCase()}`,
+      written: `${verb.text} ${t.text}`,
+    };
+    phrasal.set(verb.index, p);
+    phrasal.set(t.index, p);
+  }
   const tokens: AnnotatedToken[] = s.tokens.map((t, i) => {
     const next = s.tokens[i + 1];
     return {
@@ -133,6 +148,7 @@ function annotateSentence(s: InputSentence, index: number, paragraph: number, te
       upos: t.upos,
       spaceAfter: next ? next.start > t.end : false,
       ambiguous: ambiguous.has(t.index),
+      phrasal: phrasal.get(t.index) ?? null,
     };
   });
   const altShare = s.alternatives.reduce((sum, a) => sum + a.probability, 0);

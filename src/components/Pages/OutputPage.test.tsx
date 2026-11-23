@@ -15,6 +15,9 @@ import { languageService } from "../../services/languageService";
 import type { ParserService, PreprocessResult } from "../../services/parserService";
 import type { SubwordService } from "../../services/subwordService";
 import { type VocabService, createVocabService } from "../../services/vocabService";
+import { type DictionaryService, createDictionaryService } from "../../services/dictionaryService";
+import { createDictionaryModule } from "../../modules/dictionary";
+import { fakeApi } from "../../modules/dictionary/testDictionary";
 import { renderPage } from "../testUtils";
 import { OutputPage } from "./OutputPage";
 
@@ -22,6 +25,7 @@ const h = vi.hoisted(() => ({
   parser: null as ParserService | null,
   vocab: null as VocabService | null,
   subword: null as SubwordService | null,
+  dict: null as DictionaryService | null,
 }));
 vi.mock("../../services/parserService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../services/parserService")>()),
@@ -35,11 +39,16 @@ vi.mock("../../services/subwordService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../services/subwordService")>()),
   subwordService: () => h.subword,
 }));
+vi.mock("../../services/dictionaryService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/dictionaryService")>()),
+  dictionaryService: () => h.dict,
+}));
 
 afterEach(cleanup);
 beforeEach(async () => {
   await languageService().setLanguage("en");
   h.vocab = createVocabService(new VocabManager({ storage: createStorage({ indexedDB: new IDBFactory() }) }));
+  h.dict = createDictionaryService(createDictionaryModule({ api: fakeApi() }), async () => null);
   h.subword = {
     segmentWord: vi.fn<SubwordService["segmentWord"]>(async (word) =>
       word === "unhappy"
@@ -173,9 +182,9 @@ const notice = {
   },
 } as unknown as PreprocessResult;
 
-function setup(withNotice = false, parsed: ParseResult = result): void {
+function setup(withNotice = false, parsed: ParseResult = result, text = TEXT): void {
   const m = mockService({ state: "ready", modelId: "deberta_v3_xsmall", backend: "wasm", modelVersion: "v1" });
-  m.update({ annotation: annotate(parsed, TEXT), notice: withNotice ? notice : null });
+  m.update({ annotation: annotate(parsed, text), notice: withNotice ? notice : null });
   h.parser = m.service;
   renderPage(<OutputPage />, "/output");
 }
@@ -357,5 +366,142 @@ describe("OutputPage", () => {
     await waitFor(() => expect(screen.getByRole("complementary").textContent).toContain("Noun (NOUN)"));
     fireEvent.click(within(screen.getByRole("complementary")).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("looks up both words of a phrasal verb as the phrasal verb (looked … up → look up)", async () => {
+    const text = "She looked it up.";
+    const parts: Array<[string, string, number, string]> = [
+      ["She", "PRON", 1, "nsubj"],
+      ["looked", "VERB", -1, "root"],
+      ["it", "PRON", 1, "obj"],
+      ["up", "ADP", 1, "compound:prt"],
+      [".", "PUNCT", 1, "punct"],
+    ];
+    let pos = 0;
+    const toks: Token[] = parts.map(([w, upos, head, relation], index) => {
+      const start = text.indexOf(w, pos);
+      pos = start + w.length;
+      return {
+        index,
+        text: w,
+        start,
+        end: start + w.length,
+        lemma: w === "looked" ? "look" : w.toLowerCase(),
+        upos,
+        uposProb: 0.9,
+        chunkTag: "O",
+        chunkProb: 0.9,
+        head,
+        relation,
+        headProb: 0.9,
+        relationProb: 0.9,
+      };
+    });
+    const phrasal: ParseResult = {
+      ...result,
+      sentences: [
+        { start: 0, end: text.length, tokens: toks, chunks: [], phrases: null, treeRepaired: false, alternatives: [] },
+      ],
+    };
+    setup(false, phrasal, text);
+    for (const w of ["looked", "up"]) {
+      fireEvent.click(word(w));
+      const panel = screen.getByRole("complementary", { name: `Selected word: ${w}` });
+      const dict = within(panel).getByRole("region", { name: "Dictionary" });
+      expect(await within(dict).findByRole("heading", { level: 3, name: "look up" })).toBeTruthy();
+      expect(within(dict).getByText("“looked up” → base form: look up")).toBeTruthy();
+      expect(within(dict).getByText("seek information from")).toBeTruthy();
+      expect(within(dict).getByRole("link", { name: "More in the dictionary" }).getAttribute("href")).toBe(
+        "/dictionary?q=looked+up&lemma=look+up&upos=VERB",
+      );
+    }
+    // Other words are looked up on their own.
+    fireEvent.click(word("it"));
+    expect(await within(screen.getByRole("complementary")).findByText("No dictionary entry for “it”.")).toBeTruthy();
+  });
+
+  it("shows a phrasal verb the parse did not mark (ran out of → run out) with the word's own entry", async () => {
+    const text = "They ran out of milk.";
+    const parts: Array<[string, string, number, string]> = [
+      ["They", "PRON", 1, "nsubj"],
+      ["ran", "VERB", -1, "root"],
+      ["out", "ADP", 4, "case"],
+      ["of", "ADP", 2, "fixed"],
+      ["milk", "NOUN", 1, "obl"],
+      [".", "PUNCT", 1, "punct"],
+    ];
+    let pos = 0;
+    const toks: Token[] = parts.map(([w, upos, head, relation], index) => {
+      const start = text.indexOf(w, pos);
+      pos = start + w.length;
+      return {
+        index,
+        text: w,
+        start,
+        end: start + w.length,
+        lemma: w === "ran" ? "run" : w.toLowerCase(),
+        upos,
+        uposProb: 0.9,
+        chunkTag: "O",
+        chunkProb: 0.9,
+        head,
+        relation,
+        headProb: 0.9,
+        relationProb: 0.9,
+      };
+    });
+    setup(
+      false,
+      {
+        ...result,
+        sentences: [
+          {
+            start: 0,
+            end: text.length,
+            tokens: toks,
+            chunks: [],
+            phrases: null,
+            treeRepaired: false,
+            alternatives: [],
+          },
+        ],
+      },
+      text,
+    );
+    // "out" has no entry of its own in the test dictionary, so only the phrasal verb is shown for it.
+    for (const [w, headings] of [
+      ["ran", ["run out", "run"]],
+      ["out", ["run out"]],
+    ] as const) {
+      fireEvent.click(word(w));
+      const dict = within(screen.getByRole("complementary")).getByRole("region", { name: "Dictionary" });
+      await within(dict).findByRole("heading", { level: 3, name: "run out" });
+      expect(
+        within(dict)
+          .getAllByRole("article")
+          .map((a) => a.querySelector("h3")?.textContent),
+      ).toEqual(headings);
+      expect(within(dict).getByText("떨어지다")).toBeTruthy();
+      expect(within(dict).getByRole("link", { name: "More in the dictionary" }).getAttribute("href")).toBe(
+        "/dictionary?q=ran+out&lemma=run+out&upos=VERB",
+      );
+    }
+  });
+
+  it("shows a dictionary summary for the selected word with a link to the dictionary page (T25, T53)", async () => {
+    setup();
+    fireEvent.click(word("look"));
+    const panel = screen.getByRole("complementary", { name: "Selected word: look" });
+    const dict = within(panel).getByRole("region", { name: "Dictionary" });
+    // The parse's part of speech (VERB) comes first; compact: Korean words and two definitions.
+    expect(await within(dict).findByText("보다")).toBeTruthy();
+    expect(within(dict).getByRole("heading", { level: 3, name: "Verb (VERB)" })).toBeTruthy();
+    expect(within(dict).getByText("perceive with attention")).toBeTruthy();
+    expect(within(dict).queryByText("the act of looking")).toBeNull();
+    expect(within(dict).getByRole("link", { name: "More in the dictionary" }).getAttribute("href")).toBe(
+      "/dictionary?q=look&lemma=look&upos=VERB",
+    );
+    fireEvent.click(word("Dogs"));
+    expect(await within(screen.getByRole("complementary")).findByText("No dictionary entry for “Dogs”.")).toBeTruthy();
   });
 });

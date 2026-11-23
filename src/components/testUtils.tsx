@@ -50,11 +50,11 @@ export function fixtureLibrary(over: Partial<LibrarySnapshot> = {}): LibrarySnap
 }
 
 /** Render `element` at `path`; other paths render their path name (to check navigation). */
-export function renderPage(element: React.JSX.Element, path = "/") {
-  const others = ["/input", "/output", "/models", "/vocab"].filter((p) => p !== path);
+export function renderPage(element: React.JSX.Element, path = "/", initialEntry: string = path) {
+  const others = ["/input", "/output", "/models", "/vocab", "/dictionary"].filter((p) => p !== path);
   const router = createMemoryRouter(
     [{ path, element }, ...others.map((p) => ({ path: p, element: <p>route:{p}</p> }))],
-    { initialEntries: [path] },
+    { initialEntries: [initialEntry] },
   );
   render(<RouterProvider router={router} />);
   return router;

@@ -46,7 +46,7 @@ export function createDictionaryModule(options: { api?: DictCacheApi; db?: Stati
   };
 }
 
-export { LOOKUP_CACHE_SIZE, orderPos } from "./dictionary";
+export { LOOKUP_CACHE_SIZE, PHRASAL_PARTICLES, orderPos } from "./dictionary";
 export {
   DICTIONARY_CACHE_PREFIX,
   DICTIONARY_VERSION,

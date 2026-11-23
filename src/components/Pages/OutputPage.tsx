@@ -186,6 +186,8 @@ export function OutputPage(): React.JSX.Element {
               current.token.upos
             }
             sentenceText={current.sentence.text}
+            prev={current.sentence.tokens[current.token.index - 1] ?? null}
+            next={current.sentence.tokens[current.token.index + 1] ?? null}
             onClose={() => setSelection(null)}
           />
         ) : (

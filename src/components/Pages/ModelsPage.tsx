@@ -23,25 +23,28 @@
  *      with aria attributes; status not by color alone.
  *   6. user-facing text via useI18n() catalog keys (T68) (descriptions come from the
  *      catalog).
+ *   6b. The dictionary's offline download next to the models
+ *      (./DictionaryOffline.tsx; T72).
  *   7. Component test in ModelsPage.test.tsx with a mocked service.
  *
  * Dependencies:
  *   External: react.
  *   Internal: hooks/useModelLibrary.ts, hooks/useParser.ts (status),
  *             hooks/useI18n.ts, components/Shared/ModelStatus.tsx,
- *             ./ModelCard.tsx, ./ModelsPage.module.css.
+ *             ./ModelCard.tsx, ./DictionaryOffline.tsx, ./ModelsPage.module.css.
  *   Used by: src/routes.tsx (#/models).
  *
  * Open items (todo.md): final display names and descriptions (T43): the
  *   catalog's English drafts are shown (lang="en") until then.
  *
- * Status: implemented (T54). Tests: ModelsPage.test.tsx.
+ * Status: implemented (T54; dictionary offline control T72). Tests: ModelsPage.test.tsx.
  */
 
 import { useI18n } from "../../hooks/useI18n";
 import { useModelLibrary } from "../../hooks/useModelLibrary";
 import { useParser } from "../../hooks/useParser";
 import { ModelStatus } from "../Shared/ModelStatus";
+import { DictionaryOffline } from "./DictionaryOffline";
 import { ModelCard } from "./ModelCard";
 import styles from "./ModelsPage.module.css";
 
@@ -80,6 +83,7 @@ export function ModelsPage(): React.JSX.Element {
           ))}
         </ul>
       )}
+      <DictionaryOffline />
     </section>
   );
 }

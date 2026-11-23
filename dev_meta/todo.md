@@ -53,17 +53,11 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
 
-#### [Components/Pages] DictionaryPage and useDictionary · T53 · Build
+#### [Project] End-to-end tests and CI · T62 · Build
 
-- **Files:** `src/hooks/useDictionary.ts`, `src/components/Pages/DictionaryPage.tsx`, `src/components/Pages/DictionaryPage.module.css`, tests
-- **Task:** Direct lookup UI and the hook; lookup trigger per T25. Typed inflected forms resolve through the inflection index (T42: *ran* → *run*; ambiguous forms list every headword).
-- **Needs:** T25, T39, T46
-
-#### [Components/Pages] Offline dictionary control · T72 · Build
-
-- **Files:** `src/components/Pages/ModelsPage.tsx` (or the settings location chosen in T54), `src/hooks/useDictionary.ts`, tests
-- **Task:** "Make dictionary available offline" with size, byte progress, cancel, delete, and a pre-flight storage check (T24: block if it cannot fit), next to the model downloads (T15 full PWA; T42 opt-in offline download).
-- **Needs:** T46, T54
+- **Files:** `package.json` (`test:e2e`), Playwright config, CI config
+- **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
+- **Needs:** T13, T48, T53, T56, T57
 
 ---
 
@@ -75,15 +69,21 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
 - **Needs:** T12, T23, T43, T50, T52, T63, T64, T65, T78
 
-#### [Project] End-to-end tests and CI · T62 · Build
-
-- **Files:** `package.json` (`test:e2e`), Playwright config, CI config
-- **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
-- **Needs:** T13, T48, T53, T56, T57
-
 ---
 
 ## Done
+
+#### [Modules/output, Modules/dictionary, Components/Pages] Phrasal verbs in the word panel · T87 · Build
+
+- **Done:** 2026-11-23 (owner request; closes the gap noted in T53). (1) Marked by the parse: the annotator gives both words of a phrasal verb (relation `compound:prt`, e.g. "looked … up", "gave it up") `token.phrasal` (verb, particle, "look up", "looked up"); the word panel looks the phrasal verb up with "looked up" / "look up", and "More in the dictionary" opens it. (2) Not marked (UD analyses "ran out of milk" as a verb plus a preposition): a verb directly followed by a particle, or a particle right after a verb, is tried first as a phrasal verb (`DictionaryQuery.phrase`, match `phrase`; particles = the build's list, `PHRASAL_PARTICLES`); it is used only if it is a headword, and the panel then shows it together with the word's own entry. The parse is not changed. Checked in Chrome with both models: looked/up → look up, gave → give up, ran/out → run out (+ run / out), "looked at" → at. Files: `output/types.ts`, `output/annotator.ts`, `dictionary/dictionary.ts`, `dictionary/types.ts`, `WordDetails.tsx`, `OutputPage.tsx`, tests.
+
+#### [Components/Pages] Offline dictionary control · T72 · Build
+
+- **Done:** 2026-11-23. `DictionaryOffline.tsx` on the Models page under the model cards: what is stored (not stored / partly / all, with sizes), "Make dictionary available offline (size)", byte progress with cancel, delete with confirmation, errors by reason. Pre-flight storage check (T24): `dictionaryService` compares the rest of the download with `navigator.storage.estimate()` (`core/environment.ts` → `estimateStorage`): the button is disabled with "not enough storage" when it cannot fit, and a warning is shown with less than `STORAGE_MARGIN_BYTES` (256 MiB) left. `useDictionaryOffline` hook. Checked in Chrome (partly stored 1.2 of 11 MB after lookups → complete → deleted).
+
+#### [Components/Pages] DictionaryPage and useDictionary · T53 · Build
+
+- **Done:** 2026-11-23. `DictionaryPage` (#/dictionary): search form; the query lives in the URL (`?q=…&lemma=…&upos=…`); entries via `DictionaryEntry.tsx`: headword, "ran → base form: run" for inflected forms, every headword of an ambiguous form (saw → saw, see), per part of speech (the queried one first) the Korean words under Wiktionary's sense labels and the definitions with examples (five, then "show all"), Tatoeba examples linked to their sentences (attribution); word parts (useSubword); "Add to list" (useVocab, with English and Korean definitions); loading, not-found, and error states with a link to the offline option. Lookup trigger per T25: the word panel on the output page (`WordDetails`) shows a compact summary (Korean words and two definitions of the parse's part of speech, using its lemma first) with "More in the dictionary" opening the page. `useDictionary` hook (stale responses ignored). `uposKey` moved to `Shared/upos.ts`. Checked in Chrome with the built data. Not yet: a clicked verb of a phrasal verb ("looked" in "looked up") opens the verb, not the phrasal verb (the word panel has no head or relation of the token).
 
 #### [Modules/dictionary] Dictionary module and service · T46 · Build
 
@@ -557,3 +557,12 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T46 moved to *Done*.
 - Modified: stages recomputed from *Needs*: T53 1→0, T72 1→0, T62 2→1; empty stages removed.
+
+### 2026-11-23T09:00:00Z — Claude Opus 5.5, T53 and T72 done; restaged
+
+- Modified: T53 and T72 moved to *Done*.
+- Modified: stages recomputed from *Needs*: T62 1→0.
+
+### 2026-11-23T09:30:00Z — Claude Opus 5.5, T87 added and done
+
+- Added: T87 (Done): phrasal verbs in the word panel (parse-marked `compound:prt`, and a verb + particle fallback when it is a dictionary headword).

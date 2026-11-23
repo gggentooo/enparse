@@ -28,7 +28,7 @@ import type { AnnotatedSentence, AnnotatedToken, ReadingNote } from "../../hooks
 import { FlatReading } from "./FlatReading";
 import { type NestedLook, NestedReading } from "./NestedReading";
 import styles from "./SentenceView.module.css";
-import { uposKey } from "./WordDetails";
+import { uposKey } from "../Shared/upos";
 
 export type SentenceViewProps = {
   sentence: AnnotatedSentence;

@@ -247,6 +247,22 @@ describe("annotate", () => {
     expect(alt?.forks[0]?.targets.map((x) => x.token)).toEqual([1, 2]);
   });
 
+  it("marks both words of a phrasal verb (compound:prt) with the phrase to look up", () => {
+    const s = sentence(["She", "looked", "it", "up", "."], 0);
+    const rel = [
+      [1, "nsubj"],
+      [-1, "root"],
+      [1, "obj"],
+      [1, "compound:prt"],
+      [1, "punct"],
+    ] as const;
+    s.tokens = s.tokens.map((t, i) => ({ ...t, head: rel[i]?.[0] ?? -1, relation: rel[i]?.[1] ?? "dep" }));
+    s.tokens[1] = { ...(s.tokens[1] as Token), lemma: "look" };
+    const [a] = annotate({ ...result, sentences: [s] }, "She looked it up.").sentences;
+    const want = { verb: 1, particle: 3, text: "look up", written: "looked up" };
+    expect(a?.tokens.map((t) => t.phrasal)).toEqual([null, want, null, want, null]);
+  });
+
   it("handles empty input", () => {
     expect(annotate({ ...result, sentences: [] }, "").sentences).toEqual([]);
   });

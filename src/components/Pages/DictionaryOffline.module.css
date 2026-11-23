@@ -1,0 +1,38 @@
+/*
+ * src/components/Pages/DictionaryOffline.module.css — styles for DictionaryOffline.tsx
+ *
+ * Description: the dictionary offline box under the model cards; state, actions, progress, problems.
+ * Dependencies: src/css/tokens.css. Used by: DictionaryOffline.tsx.
+ * Status: implemented (T72).
+ */
+
+.box {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.text {
+  margin: 0;
+}
+
+.actions,
+.progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.problem {
+  margin: 0;
+  color: var(--color-error);
+}

@@ -143,7 +143,7 @@ describe("offline download", () => {
     expect(first?.[0]).toBe(partial.cachedBytes);
     expect(last?.[0]).toBe(last?.[1]);
     expect(await db.offlineState()).toMatchObject({ state: "complete", cachedFiles: 5 });
-    expect(Object.keys(ENTRIES)).toHaveLength(5);
+    expect(Object.keys(ENTRIES)).toHaveLength(7);
   });
 
   it("stops on cancel, and deleteAll empties the cache", async () => {

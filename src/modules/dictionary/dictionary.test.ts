@@ -35,6 +35,17 @@ describe("lookup", () => {
     expect(hits(await d.lookup({ word: "rann", lemma: "runs" }))).toEqual(["run:form"]);
   });
 
+  it("tries a phrasal verb from neighbouring words first, only if it is a headword", async () => {
+    const d = dict();
+    const phrase = { word: "ran out", lemma: "run out" };
+    expect(hits(await d.lookup({ word: "ran", lemma: "run", upos: "VERB", phrase }))).toEqual([
+      "run out:phrase",
+      "run:lemma",
+    ]);
+    const none = { word: "ran to", lemma: "run to" };
+    expect(hits(await d.lookup({ word: "ran", lemma: "run", upos: "VERB", phrase: none }))).toEqual(["run:lemma"]);
+  });
+
   it("puts the queried part of speech first", async () => {
     const r = await dict().lookup({ word: "run", upos: "NOUN" });
     expect(r.entries[0]?.entry.pos.map((g) => g.upos)).toEqual(["NOUN", "VERB"]);

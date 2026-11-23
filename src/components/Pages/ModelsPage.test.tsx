@@ -10,16 +10,34 @@ import { languageService } from "../../services/languageService";
 import type { ParserService } from "../../services/parserService";
 import { DEBERTA, MODERNBERT, fit, fixtureLibrary, renderPage } from "../testUtils";
 import { ModelsPage } from "./ModelsPage";
+import { createDictionaryModule } from "../../modules/dictionary";
+import { type FakeApi, fakeApi } from "../../modules/dictionary/testDictionary";
+import { type DictionaryService, createDictionaryService } from "../../services/dictionaryService";
 
-const h = vi.hoisted(() => ({ service: null as ParserService | null }));
+const h = vi.hoisted(() => ({
+  service: null as ParserService | null,
+  dict: null as DictionaryService | null,
+  api: null as FakeApi | null,
+  free: null as number | null,
+}));
 vi.mock("../../services/parserService", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../services/parserService")>()),
   parserService: () => h.service,
+}));
+vi.mock("../../services/dictionaryService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/dictionaryService")>()),
+  dictionaryService: () => h.dict,
 }));
 
 afterEach(cleanup);
 beforeEach(async () => {
   await languageService().setLanguage("en");
+  h.api = fakeApi();
+  h.free = 10 * 1024 ** 3;
+  h.dict = createDictionaryService(createDictionaryModule({ api: h.api }), async () =>
+    h.free === null ? null : { quotaBytes: h.free, usageBytes: 0 },
+  );
+  h.service = mockService().service;
 });
 
 const card = (name: string): HTMLElement => screen.getByRole("listitem", { name });
@@ -116,5 +134,49 @@ describe("ModelsPage", () => {
     renderPage(<ModelsPage />, "/models");
     expect(screen.getByRole("alert").textContent).toMatch(/could not be downloaded/);
     expect(screen.queryByRole("list", { name: "Parser models" })).toBeNull();
+  });
+});
+
+describe("Dictionary offline (T72)", () => {
+  const box = (): HTMLElement => screen.getByRole("region", { name: "Dictionary offline" });
+
+  it("downloads the whole dictionary with its size, then offers to delete it (confirmed)", async () => {
+    renderPage(<ModelsPage />, "/models");
+    expect(await within(box()).findByText(/Not stored on this device/)).toBeTruthy();
+    fireEvent.click(within(box()).getByRole("button", { name: /Make dictionary available offline \(.+\)/ }));
+    expect(await within(box()).findByText(/Available offline/)).toBeTruthy();
+    expect(within(box()).queryByRole("button", { name: /Make dictionary available offline/ })).toBeNull();
+    fireEvent.click(within(box()).getByRole("button", { name: "Delete offline dictionary" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete the offline dictionary?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(await within(box()).findByText(/Not stored on this device/)).toBeTruthy();
+  });
+
+  it("shows partly stored data after lookups", async () => {
+    await h.dict?.lookupWord({ word: "run" });
+    renderPage(<ModelsPage />, "/models");
+    expect(await within(box()).findByText(/Partly stored/)).toBeTruthy();
+    expect(within(box()).getByRole("button", { name: "Delete offline dictionary" })).toBeTruthy();
+  });
+
+  it("blocks the download when it cannot fit and warns when storage is tight (T24)", async () => {
+    h.free = 10;
+    renderPage(<ModelsPage />, "/models");
+    expect(await within(box()).findByText(/Not enough storage/)).toBeTruthy();
+    const button = within(box()).getByRole("button", {
+      name: /Make dictionary available offline/,
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    cleanup();
+    h.free = 200 * 1024 ** 2; // fits, but less than the 256 MiB margin left
+    renderPage(<ModelsPage />, "/models");
+    expect(await within(box()).findByText(/Storage is tight/)).toBeTruthy();
+  });
+
+  it("explains a failed download", async () => {
+    (h.api as FakeApi).full = true;
+    renderPage(<ModelsPage />, "/models");
+    fireEvent.click(await within(box()).findByRole("button", { name: /Make dictionary available offline/ }));
+    expect((await within(box()).findByRole("alert")).textContent).toMatch(/not enough storage/);
   });
 });

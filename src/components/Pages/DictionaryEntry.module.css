@@ -1,0 +1,111 @@
+/*
+ * src/components/Pages/DictionaryEntry.module.css — styles for DictionaryEntry.tsx
+ *
+ * Description: entry card (full) or a compact block (word panel); parts of speech, Korean words,
+ *   numbered definitions with examples, Tatoeba examples, source notes.
+ * Dependencies: src/css/tokens.css. Used by: DictionaryEntry.tsx.
+ * Status: implemented (T53).
+ */
+
+.entry {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.compact {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.headword {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.compact .headword {
+  font-size: 1.05rem;
+}
+
+.pos {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.posName {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.korean,
+.examples ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.koWords {
+  font-weight: 700;
+}
+
+.senses {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.senseExample {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.examples li {
+  display: grid;
+  gap: 2px;
+  padding-block: var(--space-1);
+  border-top: 1px solid var(--color-border);
+}
+
+.more {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.more:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.source {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
