@@ -43,6 +43,11 @@ export type NestedLook = {
   shape: "boxes" | "brackets";
   /** Phrase and role labels always shown, or only while hovered or focused. */
   labels: "always" | "hover";
+  /**
+   * Where a phrase's label sits (T89): in a band at the top of the phrase ("top"; the band grows
+   * with nesting, the words stay on one line) or as a small tag before its words ("side").
+   */
+  labelPos: "top" | "side";
 };
 
 /** Roles labeled in every look: they tell the learner where the clause splits. */
@@ -62,6 +67,11 @@ type Line = { x1: number; y1: number; x2: number; y2: number; label: string; das
 type Arrow = { lines: Line[]; targets: Array<[number, number]> };
 
 type NodeProps = ReadingViewProps & { node: AnnotatedNode; look: NestedLook; targets: Array<[number, number]> };
+
+/** Nesting height of a node: 0 for a word, 1 for a phrase of words, 1 + the highest child otherwise (box padding; T88). */
+export function nestHeight(node: AnnotatedNode): number {
+  return node.kind === "word" ? 0 : 1 + Math.max(0, ...node.children.map(nestHeight));
+}
 
 function Node({ node, look, targets, ...props }: NodeProps): React.JSX.Element | null {
   const { t, formatNumber } = useI18n();
@@ -152,11 +162,12 @@ function Node({ node, look, targets, ...props }: NodeProps): React.JSX.Element |
         [label, node.unsure && t("output.unsureSpan"), attaches, disputed].filter(Boolean).join("; ") || undefined
       }
       className={cls.filter(Boolean).join(" ")}
+      style={{ "--nest": nestHeight(node) } as React.CSSProperties}
       {...attach}
       {...forkAttrs}
     >
       {shown && (
-        <span className={`${styles.label} ${pinned ? styles.pinned : ""}`} aria-hidden="true">
+        <span className={`${styles.label} ${pinned ? styles.pinned : ""}`} aria-hidden="true" title={label}>
           {shown}
           {!node.contiguous && ` · ${t("output.splitPhrase")}`}
         </span>
@@ -221,9 +232,18 @@ export function NestedReading({ look, ...props }: ReadingViewProps & { look: Nes
   };
   const clear = (): void => setArrow(null);
 
-  const cls = [styles.nested, styles[look.shape], styles[look.labels]].join(" ");
+  const cls = [styles.nested, styles[look.shape], styles[look.labels], styles[look.labelPos]].join(" ");
+  const nestMax = Math.max(0, ...(props.reading.nodes ?? []).map(nestHeight));
   return (
-    <div ref={view} className={cls} onMouseOver={point} onMouseLeave={clear} onFocus={point} onBlur={clear}>
+    <div
+      ref={view}
+      className={cls}
+      style={{ "--nest-max": nestMax } as React.CSSProperties}
+      onMouseOver={point}
+      onMouseLeave={clear}
+      onFocus={point}
+      onBlur={clear}
+    >
       {(props.reading.nodes ?? []).map((node, i) => (
         <Fragment key={node.id}>
           {i > 0 && " "}

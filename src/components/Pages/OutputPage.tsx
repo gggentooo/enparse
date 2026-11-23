@@ -69,10 +69,14 @@ export function OutputPage(): React.JSX.Element {
   const { t } = useI18n();
   const { annotation, notice } = useParser();
   const modelName = useModelName();
-  const [view, setView] = useState<"flat" | "nested">("flat");
-  const [look, setLook] = useState<NestedLook>({ shape: "brackets", labels: "hover" });
+  // Defaults (owner, T88): the structure view, labels on hover, phrases as blocks.
+  const [view, setView] = useState<"flat" | "nested">("nested");
+  const [look, setLook] = useState<NestedLook>({ shape: "boxes", labels: "hover", labelPos: "top" });
   const [selection, setSelection] = useState<Selection | null>(null);
   const viewName = useId();
+  const labelsName = useId();
+  const shapeName = useId();
+  const labelPosName = useId();
 
   if (!annotation) {
     return (
@@ -123,25 +127,50 @@ export function OutputPage(): React.JSX.Element {
           ))}
         </fieldset>
         {shownView === "nested" && (
-          <fieldset className={styles.views}>
-            <legend>{t("output.look")}</legend>
-            <label className={styles.viewChoice}>
-              <input
-                type="checkbox"
-                checked={look.labels === "hover"}
-                onChange={(e) => setLook({ ...look, labels: e.target.checked ? "hover" : "always" })}
-              />
-              {t("output.labelsOnHover")}
-            </label>
-            <label className={styles.viewChoice}>
-              <input
-                type="checkbox"
-                checked={look.shape === "brackets"}
-                onChange={(e) => setLook({ ...look, shape: e.target.checked ? "brackets" : "boxes" })}
-              />
-              {t("output.brackets")}
-            </label>
-          </fieldset>
+          <>
+            <fieldset className={styles.views}>
+              <legend>{t("output.labels")}</legend>
+              {(["hover", "always"] as const).map((v) => (
+                <label key={v} className={styles.viewChoice}>
+                  <input
+                    type="radio"
+                    name={labelsName}
+                    checked={look.labels === v}
+                    onChange={() => setLook({ ...look, labels: v })}
+                  />
+                  {t(v === "hover" ? "output.labels.hover" : "output.labels.always")}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className={styles.views}>
+              <legend>{t("output.phrases")}</legend>
+              {(["boxes", "brackets"] as const).map((v) => (
+                <label key={v} className={styles.viewChoice}>
+                  <input
+                    type="radio"
+                    name={shapeName}
+                    checked={look.shape === v}
+                    onChange={() => setLook({ ...look, shape: v })}
+                  />
+                  {t(v === "boxes" ? "output.phrases.boxes" : "output.phrases.brackets")}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className={styles.views}>
+              <legend>{t("output.labelPos")}</legend>
+              {(["top", "side"] as const).map((v) => (
+                <label key={v} className={styles.viewChoice}>
+                  <input
+                    type="radio"
+                    name={labelPosName}
+                    checked={look.labelPos === v}
+                    onChange={() => setLook({ ...look, labelPos: v })}
+                  />
+                  {t(v === "top" ? "output.labelPos.top" : "output.labelPos.side")}
+                </label>
+              ))}
+            </fieldset>
+          </>
         )}
         {!annotation.hasNested && <p className={styles.muted}>{t("output.nestedUnavailable")}</p>}
         <div className={styles.legend}>

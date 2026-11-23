@@ -1,11 +1,12 @@
 /*
  * src/components/Pages/NestedReading.module.css — styles for NestedReading.tsx
  *
- * Description: nested phrases, in one of two shapes (.boxes: rounded boxes; .brackets: inline phrases with a
- *   colored bracket at each end); a sentence never wraps: the view scrolls sideways (thin scrollbar under the
+ * Description: nested phrases on one text line, in one of two shapes (.boxes: inline boxes whose vertical
+ *   padding grows with nesting, T88; .brackets: a colored bracket at each end); a sentence never wraps: the view scrolls sideways (thin scrollbar under the
  *   arrow room), never vertically; labels inside the phrases, either always shown (.always) or only on
  *   hover/focus of the innermost phrase/word (.hover: floating above it); pinned labels (Subject, Predicate)
- *   always shown; the attachment arrow overlay under the sentence (T86) and its target word.
+ *   always shown; phrase labels in a band at the top of each phrase (.top, default) or as a tag before its
+ *   words (.side) (T89); the attachment arrow overlay under the sentence (T86) and its target word.
  * Dependencies: src/css/tokens.css. Used by: NestedReading.tsx.
  * Status: implemented (T57).
  */
@@ -24,6 +25,8 @@
   padding: 1.25rem 0 2.5rem;
   white-space: nowrap;
   scrollbar-width: thin;
+  /* Height of one label row in the "top" label position (T89). */
+  --label-row: 0.95rem;
 }
 
 /* Safari: a thin horizontal scrollbar (other browsers use scrollbar-width). */
@@ -75,31 +78,46 @@
   white-space: nowrap;
 }
 
-/* Shape: boxes */
-.boxes,
-.boxes .children {
-  align-items: flex-end;
-}
-
-.boxes .phrase {
-  padding: 2px var(--space-1) var(--space-1);
-  border: 2px var(--bracket-style) var(--phrase-color);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
-}
-
-/* Shape: brackets. Phrases are inline: the left bracket sits before a phrase's first word and the right
-   bracket after its last, with no vertical padding per level. */
-.brackets {
+/* Both shapes lay phrases out inline on one text line (T88): every word sits on the same baseline,
+   whatever its nesting depth; phrase borders and padding are drawn around the words without moving them. */
+.brackets,
+.boxes {
   display: block;
   white-space: nowrap;
   line-height: 2.3;
 }
 
-.brackets .children {
+.brackets .children,
+.boxes .children {
   display: inline;
 }
 
+.brackets .word,
+.boxes .word {
+  display: inline;
+}
+
+/* Shape: boxes. Inline boxes: vertical padding grows with the phrase's nesting height (--nest, set by
+   NestedReading.tsx: 1 for a phrase of words, 2 for a phrase holding one, …), so outer boxes enclose inner
+   ones; vertical padding of inline boxes does not change the line, so the text stays on one line. The view
+   reserves room above and below for the deepest box (--nest-max). */
+.boxes {
+  padding-top: calc(1.25rem + var(--nest-max, 0) * var(--nest-step));
+  padding-bottom: calc(2.5rem + var(--nest-max, 0) * var(--nest-step));
+  --nest-step: 5px;
+}
+
+.boxes .phrase {
+  display: inline;
+  padding: calc(var(--nest, 1) * var(--nest-step)) 3px;
+  border: 2px var(--bracket-style) var(--phrase-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
+  box-decoration-break: clone;
+}
+
+/* Shape: brackets. The left bracket sits before a phrase's first word and the right bracket after its
+   last, with no vertical padding per level. */
 .brackets .phrase {
   display: inline;
   padding: 2px 3px;
@@ -108,14 +126,12 @@
   border-radius: 5px;
 }
 
-.brackets .word {
-  display: inline;
-}
-
 /* Labels that stay in the layout (pinned, or the "always" look): a small raised tag, before a phrase's
    words and after a single word. */
 .brackets .label,
-.brackets .badge {
+.brackets .badge,
+.boxes .label,
+.boxes .badge {
   /* Raised by position, not by vertical-align: a raised inline box would push the whole line's words
      down inside a taller line box and skew the sentence upwards (T84). */
   position: relative;
@@ -130,11 +146,13 @@
   vertical-align: baseline;
 }
 
-.brackets .badge {
+.brackets .badge,
+.boxes .badge {
   margin: 0 0 0 2px;
 }
 
-.brackets .badge.uncertain {
+.brackets .badge.uncertain,
+.boxes .badge.uncertain {
   text-decoration: underline dashed;
 }
 
@@ -274,4 +292,44 @@
 .S {
   --phrase-color: var(--color-text-muted);
   --bracket-style: dashed;
+}
+
+/* Phrase labels on top (T89; default): each phrase gets a band at its top, one label row per nesting
+   level, so an outer phrase's label sits above its inner phrases' labels. The band is vertical padding of
+   an inline box, so the words stay on one line; the view reserves room for the deepest phrase. */
+.nested.top {
+  padding-top: calc(1.25rem + var(--nest-max, 0) * var(--label-row));
+}
+
+.top.boxes .phrase,
+.top.brackets .phrase {
+  padding-top: calc(var(--nest, 1) * var(--label-row) + 2px);
+}
+
+.nested.top .phrase > .label {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  bottom: auto;
+  left: 4px;
+  /* A label wider than its phrase is cut with "…" (shown in full while the phrase is hovered). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: var(--label-row);
+  vertical-align: baseline;
+}
+
+.nested.top .phrase:hover:not(:has(.phrase:hover)) > .label,
+.nested.top .phrase:focus-within:not(:has(.phrase:focus-within)) > .label {
+  right: auto;
+  z-index: 3;
+  overflow: visible;
+  background: var(--color-surface, Canvas);
 }

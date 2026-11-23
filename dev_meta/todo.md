@@ -73,6 +73,18 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Components/Pages] Output page layout: wider sentence column, bottom word panel, title wrap · T90 · Build
+
+- **Done:** 2026-11-23 (owner request). (1) The sentence column is at least 800px wide (was 648px, the remainder of the 60rem page beside the panel): the output page may grow to 800px + 18rem + gap, and the column is `minmax(800px, 1fr)`. (2) When the page is narrower than 800px beside the panel (container query on the page, 1048px), the layout is one column and the word panel is fixed to the bottom of the viewport whatever the scroll position (beside the sidebar; full width when the sidebar is a top bar), at most 40% of the viewport high with its own vertical scroll; the page keeps 40vh free below the sentences so the panel never hides the last one. (3) The panel title wraps after "Selected word:" (선택한 단어:) when the word is long, the word moves to the next line as a whole, and the Close button (닫기) never breaks. Checked in Chrome at 1500px (800px column, panel beside) and 1100px (panel at the bottom, stays while scrolling). Files: `OutputPage.module.css`, `WordDetails.tsx`, `WordDetails.module.css`.
+
+#### [Components/Pages] Structure view: phrase label position toggle · T89 · Build
+
+- **Done:** 2026-11-23 (owner request). A fourth single-choice group in the structure view, "Phrase Label Position" (구문 라벨 위치): **Top** (위; default) or **Side** (옆; the T88 rendering, a small tag before the phrase's words). Top: each phrase's label sits in a band at its top, one label row (0.95rem) per nesting level, so an outer phrase's label is above its inner phrases' labels; the band is vertical padding of the inline box, so the words of a sentence stay on one straight line (each sentence's height follows its deepest phrase). Works with blocks and brackets, and with labels always shown or on hover. A label wider than its phrase is cut with "…" and shown in full (with its tooltip) while the phrase is hovered or focused, so labels never overlap. Word role tags stay beside their words. Checked in Chrome in all combinations: one baseline per sentence, no clipping, no vertical scrollbar, no overlapping labels. Files: `NestedReading.tsx` (`NestedLook.labelPos`), `NestedReading.module.css`, `OutputPage.tsx`, i18n, `OutputPage.test.tsx`.
+
+#### [Components/Pages] Structure view: blocks on one line, new defaults, two look toggles · T88 · Build
+
+- **Done:** 2026-11-23 (owner request). (1) Blocks look: phrases are inline boxes on one text line, like the brackets look, so every word of a sentence sits on the same baseline whatever its nesting depth (before, each level's padding pushed inner words upwards). A box's vertical padding grows with its nesting height (`--nest`, set by `NestedReading.tsx` → `nestHeight`; 5 px per level), so outer boxes still enclose inner ones; the view reserves room for the deepest box (`--nest-max`). Labels shown in the layout are small raised tags, as in the brackets look. (2) Defaults: the output opens in the structure view (when the model has it), labels on hover, phrases as blocks. (3) The "Look" checkboxes are now two single-choice groups: "Labels: Show labels only on hover (default) / Always show labels" and "Phrases: Draw as blocks (default) / Draw as brackets" (Korean: 라벨: 가리킬 때만 표시 / 항상 표시; 구문: 블록으로 표시 / 괄호로 표시). The English flat-view option is renamed "Phrases (flat)" so it is not confused with the new "Phrases" group. Checked in Chrome: one baseline per sentence, no vertical scrollbar. Files: `NestedReading.tsx`, `NestedReading.module.css`, `OutputPage.tsx`, i18n, `OutputPage.test.tsx`.
+
 #### [Modules/output, Modules/dictionary, Components/Pages] Phrasal verbs in the word panel · T87 · Build
 
 - **Done:** 2026-11-23 (owner request; closes the gap noted in T53). (1) Marked by the parse: the annotator gives both words of a phrasal verb (relation `compound:prt`, e.g. "looked … up", "gave it up") `token.phrasal` (verb, particle, "look up", "looked up"); the word panel looks the phrasal verb up with "looked up" / "look up", and "More in the dictionary" opens it. (2) Not marked (UD analyses "ran out of milk" as a verb plus a preposition): a verb directly followed by a particle, or a particle right after a verb, is tried first as a phrasal verb (`DictionaryQuery.phrase`, match `phrase`; particles = the build's list, `PHRASAL_PARTICLES`); it is used only if it is a headword, and the panel then shows it together with the word's own entry. The parse is not changed. Checked in Chrome with both models: looked/up → look up, gave → give up, ran/out → run out (+ run / out), "looked at" → at. Files: `output/types.ts`, `output/annotator.ts`, `dictionary/dictionary.ts`, `dictionary/types.ts`, `WordDetails.tsx`, `OutputPage.tsx`, tests.
@@ -566,3 +578,15 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T09:30:00Z — Claude Opus 5.5, T87 added and done
 
 - Added: T87 (Done): phrasal verbs in the word panel (parse-marked `compound:prt`, and a verb + particle fallback when it is a dictionary headword).
+
+### 2026-11-23T10:00:00Z — Claude Opus 5.5, T88 added and done
+
+- Added: T88 (Done): blocks on one text line, structure view / hover labels / blocks by default, two single-choice look toggles.
+
+### 2026-11-23T10:30:00Z — Claude Opus 5.5, T89 added and done
+
+- Added: T89 (Done): phrase label position toggle (Top by default, Side), words still on one line.
+
+### 2026-11-23T11:00:00Z — Claude Opus 5.5, T90 added and done
+
+- Added: T90 (Done): 800px minimum sentence column, word panel fixed to the bottom of the viewport when it does not fit beside it (max 40vh, own scroll), selected-word title wraps after the colon.

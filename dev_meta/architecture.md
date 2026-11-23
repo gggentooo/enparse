@@ -436,7 +436,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
-      │       │   │   └── NestedReading.tsx (one box or bracket per phrase; labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
+      │       │   │   └── NestedReading.tsx (one inline box or bracket per phrase, all words on one text line (T88); defaults: structure view, labels on hover, blocks, labels on top; single-choice toggles for labels, phrase shape, and phrase label position (T89); labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
       │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary summary with "More in the dictionary": T25 popup, T53)
       │       ├── VocabPage.tsx (custom vocab lists; T48)
@@ -935,3 +935,15 @@ enparse/
 ### 2026-11-23T09:30:00Z — Claude Opus 5.5, Phrasal verbs in the word panel (T87)
 
 - Modified: annotation model → `AnnotatedToken.phrasal` (verb and particle from `compound:prt`); dictionary lookup → `DictionaryQuery.phrase` (verb + particle from neighbouring words, used only if it is a headword; `PHRASAL_PARTICLES`); `WordDetails` looks phrasal verbs up as a whole.
+
+### 2026-11-23T10:00:00Z — Claude Opus 5.5, Structure view blocks on one line and defaults (T88)
+
+- Modified: `NestedReading` blocks are inline boxes with nesting-dependent vertical padding (one baseline per sentence); `OutputPage` defaults to the structure view with hover labels and blocks; the look options are two radio groups (Labels, Phrases).
+
+### 2026-11-23T10:30:00Z — Claude Opus 5.5, Phrase label position (T89)
+
+- Modified: `NestedReading` → `NestedLook.labelPos` ("top": a label band per nesting level at the top of each phrase, words on one line; "side": the tag before the phrase's words); `OutputPage` adds the "Phrase Label Position" group (Top by default).
+
+### 2026-11-23T11:00:00Z — Claude Opus 5.5, Output page layout (T90)
+
+- Modified: `OutputPage` → sentence column at least 800px; below that (container query) the `WordDetails` panel is fixed to the bottom of the viewport, at most 40vh with its own scroll; the panel title wraps after the colon for long words.

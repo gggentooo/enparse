@@ -22,9 +22,25 @@
   gap: var(--space-2);
 }
 
+/* The title takes the free space and wraps; the Close button keeps its width and never breaks ("닫기"; T90). */
 .title {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: var(--font-size-md);
+}
+
+.head > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The selected word wraps as a whole after the colon ("선택한 단어:" / "Xylophone"); only a word longer than
+   the panel breaks inside. */
+.word {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .facts {

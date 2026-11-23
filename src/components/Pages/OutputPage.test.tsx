@@ -201,6 +201,7 @@ describe("OutputPage", () => {
 
   it("shows color-coded chunks with labels, the model, the removal notice, and ambiguity marks", () => {
     setup(true);
+    fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));
     expect(screen.getByText("Parsed with deberta_v3_xsmall (v1, WASM)")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe(
       "Some text was removed before parsing: 3 non-English characters.",
@@ -214,6 +215,7 @@ describe("OutputPage", () => {
 
   it("switches a sentence to another reading and back", () => {
     setup();
+    fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));
     const sentence = screen.getByRole("article", { name: "Sentence 1" });
     fireEvent.click(within(sentence).getByText("Other readings (1)"));
     fireEvent.click(within(sentence).getByRole("radio", { name: "Reading 2 (20%, word labels)" }));
@@ -273,17 +275,38 @@ describe("OutputPage", () => {
     expect(within(view).getByText("Complement").className).not.toMatch(/pinned/);
   });
 
-  it("toggles the nested look: labels on hover or always, brackets or boxes", () => {
+  it("opens in the structure view with labels on hover and blocks; single-choice toggles change the look (T88, T89)", () => {
     setup();
-    expect(screen.queryByRole("checkbox", { name: "Draw phrases as brackets" })).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
+    expect((screen.getByRole("radio", { name: "Structure" }) as HTMLInputElement).checked).toBe(true);
+    const labelGroup = screen.getByRole("group", { name: "Labels" });
+    const position = screen.getByRole("group", { name: "Phrase Label Position" });
+    const phrases = screen.getByRole("group", { name: "Phrases" });
+    const checked = (g: HTMLElement): string[] =>
+      within(g)
+        .getAllByRole("radio")
+        .filter((r) => (r as HTMLInputElement).checked)
+        .map((r) => r.closest("label")?.textContent ?? "");
+    expect(checked(labelGroup)).toEqual(["Show labels only on hover"]);
+    expect(checked(phrases)).toEqual(["Draw as blocks"]);
+    expect(checked(position)).toEqual(["Top"]);
     const nested = screen.getByRole("group", { name: /Predicate/ }).closest("div") as HTMLElement;
-    expect(nested.className).toMatch(/brackets/);
-    expect(nested.className).toMatch(/hover/);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show labels only on hover" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Draw phrases as brackets" }));
     expect(nested.className).toMatch(/boxes/);
+    expect(nested.className).toMatch(/hover/);
+    expect(nested.className).toMatch(/top/);
+    // Boxes: outer phrases get more vertical padding than inner ones; the view reserves room for the deepest.
+    expect(nested.style.getPropertyValue("--nest-max")).toBe("1");
+    fireEvent.click(within(labelGroup).getByRole("radio", { name: "Always show labels" }));
+    fireEvent.click(within(phrases).getByRole("radio", { name: "Draw as brackets" }));
+    expect(nested.className).toMatch(/brackets/);
     expect(nested.className).toMatch(/always/);
+    expect(checked(labelGroup)).toEqual(["Always show labels"]);
+    // Phrase label position (T89): top by default; side puts the label before the phrase's words.
+    fireEvent.click(within(position).getByRole("radio", { name: "Side" }));
+    expect(nested.className).toMatch(/side/);
+    expect(nested.className).not.toMatch(/\btop\b/);
+    // The toggles belong to the structure view only.
+    fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));
+    expect(screen.queryByRole("group", { name: "Labels" })).toBeNull();
   });
 
   it("shows a near-tie as equal readings: note, open list, letters, explanations, and a fork (T83)", () => {

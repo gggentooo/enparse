@@ -9,7 +9,9 @@
 .page {
   display: grid;
   gap: var(--space-3);
-  max-width: var(--content-max-width);
+  /* Room for the sentence column at its minimum (800px) beside the word panel at its widest (T90). */
+  max-width: calc(800px + 18rem + var(--space-4));
+  container: output / inline-size;
 }
 
 .meta,
@@ -101,9 +103,11 @@
   --swatch: var(--chunk-advp);
 }
 
+/* The sentence column is at least 800px wide (T90); below that the word panel moves under it (see the
+   container query below). */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+  grid-template-columns: minmax(800px, 1fr) minmax(14rem, 18rem);
   gap: var(--space-4);
   align-items: start;
 }
@@ -124,12 +128,41 @@
   display: grid;
 }
 
-@media (max-width: 40rem) {
+/* Too narrow for 800px of sentences beside the panel (800px + 14rem + 1.5rem gap = 1048px): one column; the
+   word panel is fixed to the bottom of the viewport (whatever the scroll position), at most 40% of the
+   viewport high with its own vertical scroll, and the page leaves that much room below the sentences so the
+   panel never hides the last one (T90). */
+@container output (max-width: 1047.98px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout:has(> aside) {
+    padding-bottom: 40vh;
   }
 
   .layout > aside {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: var(--sidebar-width);
+    z-index: 20;
+    max-height: 40vh;
+    overflow-y: auto;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    box-shadow: 0 -4px 12px rgb(0 0 0 / 15%);
+  }
+
+  .hintPanel {
     position: static;
+  }
+}
+
+/* Below this width the sidebar is a top bar: the panel spans the whole viewport. */
+@media (max-width: 40rem) {
+  .layout > aside {
+    left: 0;
   }
 }

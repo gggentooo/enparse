@@ -144,7 +144,11 @@ export function WordDetails({ token, upos, sentenceText, prev, next, onClose }: 
     <aside className={styles.details} aria-labelledby={ids.heading}>
       <div className={styles.head}>
         <h2 id={ids.heading} className={styles.title}>
-          {t("output.wordDetails")}: <span lang="en">{token.text}</span>
+          {t("output.wordDetails")}:{" "}
+          {/* One unit: a long word moves to its own line after the colon instead of squeezing the button. */}
+          <span lang="en" className={styles.word}>
+            {token.text}
+          </span>
         </h2>
         <Button variant="secondary" onClick={onClose}>
           {t("common.close")}
