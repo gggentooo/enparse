@@ -77,6 +77,9 @@ export function OutputPage(): React.JSX.Element {
   const labelsName = useId();
   const shapeName = useId();
   const labelPosName = useId();
+  // Where the word panel goes on wide screens (T91): beside the sentences, or at the bottom of the screen.
+  const [panelPos, setPanelPos] = useState<"side" | "bottom">("side");
+  const panelName = useId();
 
   if (!annotation) {
     return (
@@ -123,6 +126,16 @@ export function OutputPage(): React.JSX.Element {
                 onChange={() => setView(v)}
               />
               {t(v === "flat" ? "output.flat" : "output.nested")}
+            </label>
+          ))}
+        </fieldset>
+        {/* Only where the panel fits beside the sentences ("desktop"); hidden by a container query otherwise. */}
+        <fieldset className={`${styles.views} ${styles.panelToggle}`}>
+          <legend>{t("output.panelPos")}</legend>
+          {(["side", "bottom"] as const).map((v) => (
+            <label key={v} className={styles.viewChoice}>
+              <input type="radio" name={panelName} checked={panelPos === v} onChange={() => setPanelPos(v)} />
+              {t(v === "side" ? "output.panelPos.side" : "output.panelPos.bottom")}
             </label>
           ))}
         </fieldset>
@@ -186,7 +199,7 @@ export function OutputPage(): React.JSX.Element {
       </div>
       {hasAmbiguity && <p className={styles.muted}>{t("output.ambiguousHint")}</p>}
 
-      <div className={styles.layout}>
+      <div className={`${styles.layout} ${panelPos === "bottom" ? styles.panelBottom : ""}`}>
         <div className={styles.text}>
           {[...paragraphs.entries()].map(([p, sentences]) => (
             <div key={p} className={styles.paragraph}>

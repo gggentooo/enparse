@@ -38,31 +38,33 @@ describe("saved choice", () => {
   });
 });
 
-describe("recommendModel (owner rule, T22)", () => {
-  it("picks the highest chunk F1 within budget (DeBERTa today)", () => {
-    expect(recommendModel(catalog, [fit("deberta_v3_xsmall"), fit("modernbert_base")], 5)).toBe("deberta_v3_xsmall");
+describe("recommendModel (owner rule, T43: the default first, its backup otherwise)", () => {
+  it("recommends the default model (Large) when it runs well here", () => {
+    expect(recommendModel(catalog, [fit("deberta_v3_xsmall"), fit("modernbert_base")], 5)).toBe("modernbert_base");
   });
 
-  it("skips blocked models and models over budget", () => {
-    expect(recommendModel(catalog, [fit("deberta_v3_xsmall", { verdict: "blocked" }), fit("modernbert_base")], 5)).toBe(
-      "modernbert_base",
+  it("falls back to Compact when Large is blocked, too slow, or failed to load on this device", () => {
+    const compact = fit("deberta_v3_xsmall");
+    expect(recommendModel(catalog, [compact, fit("modernbert_base", { verdict: "blocked" })], 5)).toBe(
+      "deberta_v3_xsmall",
+    );
+    // No WebGPU on two cores: Large int8 takes 5.17 s.
+    expect(recommendModel(catalog, [compact, fit("modernbert_base", { expectedParseSeconds: 5.17 })], 5)).toBe(
+      "deberta_v3_xsmall",
+    );
+    expect(recommendModel(catalog, [compact, fit("modernbert_base")], 5, new Set(["modernbert_base"]))).toBe(
+      "deberta_v3_xsmall",
     );
     expect(recommendModel(catalog, [fit("deberta_v3_xsmall", { expectedParseSeconds: 6 })], 5)).toBeNull();
-  });
-
-  it("breaks chunk-F1 ties by the smaller download", () => {
-    const tie = parseCatalog(JSON.parse(JSON.stringify(fixture)));
-    for (const m of tie.models) m.metrics.chunk_f1 = 0.96;
-    expect(recommendModel(tie, [fit("modernbert_base"), fit("deberta_v3_xsmall")], 5)).toBe("deberta_v3_xsmall");
   });
 });
 
 describe("cardBadges", () => {
-  it("marks the most accurate model and the fastest on this device", () => {
+  it("marks the default model (the catalog's first) and the fastest on this device", () => {
     const b = cardBadges(catalog, [
       fit("deberta_v3_xsmall", { expectedParseSeconds: 0.42 }),
       fit("modernbert_base", { expectedParseSeconds: 0.28, variant: "fp16" }),
     ]);
-    expect(b).toEqual({ deberta_v3_xsmall: ["most-accurate"], modernbert_base: ["fastest-here"] });
+    expect(b).toEqual({ modernbert_base: ["default", "fastest-here"], deberta_v3_xsmall: [] });
   });
 });

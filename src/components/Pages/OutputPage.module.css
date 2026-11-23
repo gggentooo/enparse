@@ -9,8 +9,7 @@
 .page {
   display: grid;
   gap: var(--space-3);
-  /* Room for the sentence column at its minimum (800px) beside the word panel at its widest (T90). */
-  max-width: calc(800px + 18rem + var(--space-4));
+  /* The page takes the whole content width, so the sentences use all the room there is (T91). */
   container: output / inline-size;
 }
 
@@ -128,10 +127,37 @@
   display: grid;
 }
 
-/* Too narrow for 800px of sentences beside the panel (800px + 14rem + 1.5rem gap = 1048px): one column; the
-   word panel is fixed to the bottom of the viewport (whatever the scroll position), at most 40% of the
-   viewport high with its own vertical scroll, and the page leaves that much room below the sentences so the
-   panel never hides the last one (T90). */
+/* The word panel at the bottom of the screen: chosen by the user ("Bottom", T91), or forced when the page is
+   too narrow for 800px of sentences beside it (800px + 14rem + 1.5rem gap = 1048px; T90). One column; the panel
+   is fixed to the bottom of the viewport whatever the scroll position, at most 40% of the viewport high with its
+   own vertical scroll, and the page leaves that much room below the sentences so the panel never hides the
+   last one. The rules are the same in both places (a container query cannot share a selector list). */
+.panelBottom {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.panelBottom:has(> aside) {
+  padding-bottom: 40vh;
+}
+
+.panelBottom > aside {
+  position: fixed;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-width);
+  z-index: 20;
+  max-height: 40vh;
+  overflow-y: auto;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 15%);
+}
+
+.panelBottom > .hintPanel {
+  position: static;
+}
+
 @container output (max-width: 1047.98px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
@@ -157,6 +183,11 @@
 
   .hintPanel {
     position: static;
+  }
+
+  /* The panel cannot go beside the sentences here, so its position toggle is not offered (T91). */
+  .panelToggle {
+    display: none;
   }
 }
 

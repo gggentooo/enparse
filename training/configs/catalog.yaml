@@ -11,24 +11,30 @@
 # Phase: 11 — Packaging and release (texts may be edited at any time).
 #
 # Keys: one entry per configs/train_<key>.yaml.
-#   display_name — short name shown on the model card
-#   description  — one or two plain sentences (no numbers: measured values
-#                  are added automatically)
+#   display_name   — short name shown on the model card (same in every language)
+#   description    — one or two plain sentences in English (no numbers: measured
+#                    values are added automatically)
+#   description_ko — the same in Korean (the app shows the interface language's text)
+# Order: the order of the offered models is the app's preference order; the
+#   first offered model is the default (badge "Default", recommended unless it is
+#   blocked, too slow, or failed to load on the device; owner, 2026-11-23, T43).
 #
-# Status: proposed texts (English); interface language undecided
-#   (dev_meta/todo.md → [UI] interface language, [Training] catalog descriptions).
+# Status: names and descriptions of the offered models set by the owner (2026-11-23, T43);
+#   texts of models that are not offered are proposed.
 # =============================================================================
 
 models:
+  modernbert_base:
+    display_name: Large
+    description: Larger download. The default model, with high accuracy and speed.
+    description_ko: 다운로드 크기가 더 큽니다. 정확도와 속도가 높은 기본 모델입니다.
+  deberta_v3_xsmall:
+    display_name: Compact
+    description: Smaller download. Recommended when Large does not run well on your device (for example, without WebGPU).
+    description_ko: 다운로드 크기가 더 작습니다. 이 기기에서 Large가 잘 동작하지 않을 때(예: WebGPU를 지원하지 않는 경우) 추천합니다.
   distilbert_base_cased:
     display_name: Fast
     description: Smallest and quickest model. A good choice for older laptops and phones.
-  deberta_v3_xsmall:
-    display_name: Compact
-    description: Small download with strong accuracy for its size.
   bert_base_cased:
     display_name: Standard
     description: Larger model with balanced accuracy and speed on recent laptops.
-  modernbert_base:
-    display_name: Accurate
-    description: Largest download; aims for the best accuracy. Best with a recent laptop and WebGPU.

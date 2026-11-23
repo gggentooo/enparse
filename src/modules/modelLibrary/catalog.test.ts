@@ -17,7 +17,12 @@ const models = (c: Record<string, unknown>): Array<Record<string, unknown>> =>
 describe("parseCatalog", () => {
   it("accepts the fixture (two offered models)", () => {
     const c = parseCatalog(fixture);
-    expect(c.models.map((m) => m.id)).toEqual(["deberta_v3_xsmall", "modernbert_base"]);
+    // Catalog order is the preference order: the default (Large) first, its backup (Compact) next (T43).
+    expect(c.models.map((m) => [m.id, m.display_name])).toEqual([
+      ["modernbert_base", "Large"],
+      ["deberta_v3_xsmall", "Compact"],
+    ]);
+    expect(c.models.every((m) => m.description_ko)).toBe(true);
   });
 
   it("rejects another schema version, duplicate ids, and broken entries with every problem listed", () => {
@@ -59,7 +64,7 @@ describe("parseCatalog", () => {
 
 describe("variants, files, and requirements", () => {
   const c = parseCatalog(fixture);
-  const [deb] = c.models;
+  const deb = c.models.find((m) => m.id === "deberta_v3_xsmall");
 
   it("picks fp16 for WebGPU and int8 for WASM, falling back to int8", () => {
     expect(variantFor(deb!, "webgpu")).toBe("fp16");

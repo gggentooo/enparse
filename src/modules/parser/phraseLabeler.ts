@@ -271,7 +271,9 @@ export function labelPhrases(
     } else if (node.level === "complement") {
       labels = { ...none, role: shown("Complement", h), attachTo: lay.subject, attachFrom: lay.subject };
     } else if (node.level === "conjunct") {
-      labels = { ...none, coordinated: true };
+      // The first conjunct is a bracket of the coordination's head; a later one-word conjunct (T92)
+      // is the conjunct itself, with its attachment.
+      labels = parent?.head !== h ? dependent(h) : { ...none, coordinated: true };
     } else if (parent?.head !== h) labels = dependent(h);
     return {
       type: node.type,

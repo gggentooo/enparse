@@ -24,12 +24,14 @@ Tasks:
        `model_version` filled), onnx/model_quantized.onnx (int8) and
        onnx/model_fp16.onnx to public/models/<model-id>/ (ONNX via Git LFS).
     4. Write catalog.json (schema v1; architecture.md → Model library):
-       id, display_name, description, base_model, license, model_version,
+       id, display_name, description, description_ko, base_model, license, model_version,
        folder, labels, variants (file, bytes), shared_files, metrics,
        nested_view, performance (parse_5000_chars_s per WASM speed tier and
        WebGPU from data/bench/catalog_performance.json; owner, T65). No
        requirements (owner, T65: no per-model memory requirement). Validate
        before writing.
+    4b. Keep the model order of configs/catalog.yaml: it is the app's preference
+       order (the first offered model is the default; owner, T43).
     5. Check every labels.json passes validate_labels_json with no needed
        field null, and print SHA-256 checksums for MODEL_CARD.md.
 

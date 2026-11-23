@@ -12,12 +12,14 @@
  *   1. getSavedChoice() / saveChoice(id) / clearChoice(): persisted with
  *      core/storage (key namespaced, schema-versioned). A saved choice that
  *      is no longer in the catalog is cleared.
- *   2. recommendModel(catalog, fitness): ModelId | null — fitness is plain
- *      data per model from pre-flight (blocked / warn / ok, expected parse
- *      time on this device's backend). Rule (proposed; todo.md →
- *      [Modules/modelLibrary]): among models not blocked and without
- *      memory warnings, the highest chunk F1 whose expected parse time meets
- *      the 5 s budget; ties → smaller download.
+ *   2. recommendModel(catalog, fitness, budget, failed): ModelId | null —
+ *      fitness is plain data per model from pre-flight (blocked / warn / ok,
+ *      expected parse time on this device). Rule (owner, 2026-11-23; T43):
+ *      the first model in catalog order (the default, Large; then its
+ *      backup, Compact) that is not blocked, has a variant, meets the 5 s
+ *      budget on this device, and has not failed to load here.
+ *   2b. cardBadges(): "default" on the catalog's first model (replaces "most
+ *      accurate"; owner, T43), "fastest-here" by expected parse time.
  *   3. On later visits parserService auto-loads the saved choice only if it
  *      is fully cached (no download without the user).
  *   4. Unit tests in selection.test.ts.
@@ -26,14 +28,11 @@
  *   Internal: ./types.ts; core/storage.ts.
  *   Used by: ./index.ts.
  *
- * Open items (todo.md): model library (recommendation rule).
- *
- * Status: implemented (T37; rule confirmed by the owner, T22). Tests:
+ * Status: implemented (T37; rule T22, replaced by the default-first rule in T43). Tests:
  *   selection.test.ts.
  */
 
 import { type AppStorage, appStorage } from "../../core/storage";
-import { downloadBytes } from "./catalog";
 import type { CardBadge, Catalog, FitnessLike, ModelId } from "./types";
 
 /** Storage key of the user's model choice. */
@@ -62,36 +61,32 @@ export async function clearChoice(storage: AppStorage = appStorage()): Promise<v
 }
 
 /**
- * Recommended model (owner, T22): among models not blocked, the highest chunk F1 whose
- * expected parse time on this device (its backend and speed tier; T65) is within
- * `budgetSeconds` (unknown times count as within); ties → smaller download for the device's
- * variant. Memory only warns device-wide (owner, T65: no per-model memory requirement).
+ * Recommended model (owner, 2026-11-23; T43, replaces the T22 chunk-F1 rule): the first model in
+ * catalog order (the default first, then its backups) that is not blocked, has a variant for this
+ * device, parses 5,000 characters within `budgetSeconds` on it (its backend and speed tier, T65;
+ * unknown times count as within), and has not failed to load on this device (`failed`). Memory
+ * only warns device-wide (owner, T65).
  */
 export function recommendModel(
   catalog: Catalog,
   fitness: readonly FitnessLike[],
   budgetSeconds: number,
+  failed: ReadonlySet<ModelId> = new Set(),
 ): ModelId | null {
   const byId = new Map(fitness.map((f) => [f.id, f]));
-  const candidates = catalog.models.filter((m) => {
+  const pick = catalog.models.find((m) => {
     const f = byId.get(m.id);
-    if (!f || f.verdict === "blocked" || f.variant === null) return false;
+    if (!f || f.verdict === "blocked" || f.variant === null || failed.has(m.id)) return false;
     return f.expectedParseSeconds === null || f.expectedParseSeconds <= budgetSeconds;
   });
-  const size = (id: ModelId): number => {
-    const m = catalog.models.find((x) => x.id === id);
-    const v = byId.get(id)?.variant;
-    return m && v ? downloadBytes(m, v) : Infinity;
-  };
-  candidates.sort((a, b) => b.metrics.chunk_f1 - a.metrics.chunk_f1 || size(a.id) - size(b.id));
-  return candidates[0]?.id ?? null;
+  return pick?.id ?? null;
 }
 
-/** Card labels (T22): most accurate offered model; fastest on this device (expected parse time). */
+/** Card labels: the default model (the catalog's first; owner, T43); fastest on this device (expected parse time). */
 export function cardBadges(catalog: Catalog, fitness: readonly FitnessLike[]): Record<ModelId, CardBadge[]> {
   const out: Record<ModelId, CardBadge[]> = Object.fromEntries(catalog.models.map((m) => [m.id, []]));
-  const best = [...catalog.models].sort((a, b) => b.metrics.chunk_f1 - a.metrics.chunk_f1)[0];
-  if (best) out[best.id]?.push("most-accurate");
+  const first = catalog.models[0];
+  if (first) out[first.id]?.push("default");
   const timed = fitness.filter((f) => f.verdict !== "blocked" && f.expectedParseSeconds !== null);
   const fastest = [...timed].sort((a, b) => (a.expectedParseSeconds as number) - (b.expectedParseSeconds as number))[0];
   if (fastest && timed.length > 1) out[fastest.id]?.push("fastest-here");

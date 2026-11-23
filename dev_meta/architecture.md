@@ -106,7 +106,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 
 | Module | Decision |
 |--------|----------|
-| modelLibrary (T22) | Recommend, among models not blocked and without memory warnings, the highest chunk F1 that parses 5,000 characters within 5 s on this device; ties → smaller download (DeBERTa-v3-xsmall today). Model cards lead with a label ("가장 정확함 / Most accurate", "가장 빠름 / Fastest on this device") and keep numbers (accuracy, size, expected speed here) behind a "details" toggle. |
+| modelLibrary (T22; rule replaced in T43) | **Recommendation (owner, 2026-11-23; T43):** catalog order is the preference order; recommend the first model that is not blocked, has a variant, parses 5,000 characters within 5 s on this device, and has not failed to load here — Large (ModernBERT) by default, Compact (DeBERTa-v3-xsmall) as its backup. Card badges: "Default" on the catalog's first model (replaces "Most accurate"), "Fastest on this device". Names and descriptions in English and Korean (`catalog.json` → `description`, `description_ko`). Former rule (T22): the highest chunk F1 within budget. Model cards lead with a label ("가장 정확함 / Most accurate", "가장 빠름 / Fastest on this device") and keep numbers (accuracy, size, expected speed here) behind a "details" toggle. |
 | modelLibrary (T23) | `catalog.json` gains the nested-view metrics (UAS without punctuation, multi-word bracket F1, shown-bracket precision and coverage, role precision) and makes `variants.int8` / `variants.fp16` each optional. No multi-file ONNX. |
 | preflight (T24) | All proposed checks plus WebGPU `shader-f16`. Low memory → warn. Storage: block a download that cannot fit the quota, warn when tight, call `storage.persist()` after the first download. No `shader-f16` → int8 on WASM. Integrity failure → delete, re-download once, then fail. Diagnostics always reachable from a header status badge. |
 | dictionary (T25) | Definitions: Open English WordNet (CC BY 4.0); Korean translations: Wiktionary translation sections via kaikki.org extracts (CC BY-SA); examples: Tatoeba English–Korean pairs (CC BY 2.0 FR); ~10–20k headwords from a learner list (NGSL) plus frequent EWT words; phrasal verbs only; all senses, the predicted part of speech first; click/tap a word → popup → "more" opens `DictionaryPage`. Licenses to be re-checked before release. Served same-origin from R2. |
@@ -227,7 +227,7 @@ The app ships up to four models (one per base model) and the user chooses which 
 
 | Field | Meaning |
 |-------|---------|
-| `id`, `display_name`, `description` | Model id (`train_<id>.yaml` key) and texts from `training/configs/catalog.yaml` |
+| `id`, `display_name`, `description`, `description_ko` | Model id (`train_<id>.yaml` key) and texts from `training/configs/catalog.yaml` (English, and Korean shown when the interface is Korean; T43). Model order = `catalog.yaml` order = preference order (the first is the default) |
 | `base_model`, `license`, `model_version` | Base model id and license; release version |
 | `folder`, `labels` | Path of the model folder and its `labels.json` |
 | `variants` | `int8` and `fp16`, each optional (T23): ONNX file and size in bytes |
@@ -947,3 +947,19 @@ enparse/
 ### 2026-11-23T11:00:00Z — Claude Opus 5.5, Output page layout (T90)
 
 - Modified: `OutputPage` → sentence column at least 800px; below that (container query) the `WordDetails` panel is fixed to the bottom of the viewport, at most 40vh with its own scroll; the panel title wraps after the colon for long words.
+
+### 2026-11-23T11:30:00Z — Claude Opus 5.5, Word panel position (T91)
+
+- Modified: `OutputPage` → full content width; "Word Panel Position" toggle (side by default, bottom = the fixed bottom panel of T90), shown only where the panel fits beside the sentences.
+
+### 2026-11-23T12:00:00Z — Claude Opus 5.5, Model names, default model, recommendation (T43)
+
+- Modified: *Module decisions* → modelLibrary: Large (default) / Compact (backup); recommendation by catalog order with fallback when the default is blocked, too slow, or failed to load; "Default" badge; `description_ko` in `catalog.json`.
+
+### 2026-11-23T13:00:00Z — Claude Opus 5.5, Every conjunct bracketed (T92)
+
+- Modified: *Nested phrases* → coordination: every conjunct, including a one-word one, is its own bracket (`[[as water vapor] or [ice]]`); `treeDecoder.ts` → `buildPhrases`, `phraseLabeler.ts` (a later one-word conjunct carries its attachment).
+
+### 2026-11-23T13:30:00Z — Claude Opus 5.5, Shared preposition before a coordination (T93)
+
+- Modified: *Nested phrases* → a preposition before a coordination of nouns covers the coordination (`[as [[water vapor] or [ice]]]`) unless a later conjunct has its own preposition or is not a noun (`treeDecoder.ts` → `buildPhrases`).

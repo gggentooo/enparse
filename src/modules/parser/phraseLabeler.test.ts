@@ -227,7 +227,7 @@ describe("labelPhrases", () => {
     );
   });
 
-  it("coordinates predicates and lists: one-word conjuncts stay plain, later words are shared", () => {
+  it("coordinates predicates and lists: every conjunct is a bracket, later words are shared (T92)", () => {
     const verbs: Sent = {
       words: "He often sings and dances well".split(" "),
       heads: [3, 3, 0, 5, 3, 3],
@@ -235,7 +235,7 @@ describe("labelPhrases", () => {
       upos: "PRON ADV VERB CCONJ VERB ADV".split(" "),
     };
     expect(show(label(verbs), verbs.words)).toBe(
-      "[NP:Subject He] [VP:Predicate [VP& often:Modifier sings&] and dances& well:Modifier]",
+      "[NP:Subject He] [VP:Predicate [VP& often:Modifier sings&] and [VP& dances] well:Modifier]",
     );
     const list: Sent = {
       words: "She bought apples , pears and oranges".split(" "),
@@ -244,7 +244,7 @@ describe("labelPhrases", () => {
       upos: "PRON VERB NOUN PUNCT NOUN CCONJ NOUN".split(" "),
     };
     expect(show(label(list), list.words)).toBe(
-      "[NP:Subject She] [VP:Predicate bought [NP:Object apples& , pears& and oranges&]]",
+      "[NP:Subject She] [VP:Predicate bought [NP:Object [NP& apples&] , [NP& pears] and [NP& oranges]]]",
     );
   });
 

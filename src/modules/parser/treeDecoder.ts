@@ -67,6 +67,8 @@
  *     clause bracket (owner, 2026-11-23, T82): its subject bracket and its
  *     predicate bracket are top-level items, always present even for one
  *     word (`pinned`), beside its other words.
+ *   - A preposition before a coordination of nouns covers the coordination
+ *     (T93): [as [[water vapor] or [ice]]], when no later conjunct has its own.
  *   - conjunct: coordination is shown side by side, [[A] and [B]] (T82): the
  *     head's dependents before the first conjunct belong to the first
  *     conjunct, which gets its own bracket (level "conjunct") if it has any;
@@ -743,20 +745,47 @@ export function buildPhrases(
       return makeNode(type, h, level, [...children, ...own]);
     };
     /**
-     * One level of this head: `core` with dependents `ds`. Coordination ("A and B"): the
-     * dependents before the first conjunct belong to the first conjunct, which gets its own
-     * bracket beside the other conjuncts; later dependents are shared by the coordination.
+     * One level of this head: `core` with dependents `ds`. Coordination ("A and B"): every
+     * conjunct is its own bracket, also a one-word one (owner, T92): the dependents before the
+     * first conjunct belong to the first conjunct; later dependents are shared by the
+     * coordination; conjunctions and commas stay between the brackets.
      */
     const group = (type: (ds: readonly number[]) => PhraseType, level: PhraseLevel, core: Item, ds: number[]): Item => {
       if (ds.length === 0) return core;
       const conjuncts = ds.filter(isConj);
       if (conjuncts.length === 0) return layer(type(ds), level, [core, ...items(ds)]);
       const start = Math.min(...conjuncts.map(firstOf));
-      const mine = ds.filter((d) => !isConj(d) && d < start);
+      const before = ds.filter((d) => !isConj(d) && d < start);
       const shared = ds.filter((d) => !isConj(d) && d > start);
-      const first = mine.length > 0 ? layer(type(mine), "conjunct", [core, ...items(mine)]) : core;
-      return layer(type(ds), level, [first, ...items(conjuncts), ...items(shared)]);
+      // A preposition before a coordination of nouns covers the whole coordination (owner, T93):
+      // "as water vapor or ice" → [as [[water vapor] or [ice]]]. UD attaches it to the first
+      // conjunct only; it is shared when the head and every later conjunct are nouns and no later
+      // conjunct has its own preposition ("in A or on B" keeps each one with its conjunct).
+      const prepositions: number[] = [];
+      for (const d of before) {
+        if (relations[d] === "case") prepositions.push(d);
+        else break;
+      }
+      const sharable =
+        prepositions.length > 0 &&
+        NOMINAL_UPOS.has(upos[h] ?? "") &&
+        conjuncts.every(
+          (c) =>
+            NOMINAL_UPOS.has(upos[c] ?? "") && !(layouts[c] as HeadLayout).real.some((x) => relations[x] === "case"),
+        );
+      const mine = sharable ? before.filter((d) => !prepositions.includes(d)) : before;
+      const first = mine.length > 0 || "word" in core ? layer(type(mine), "conjunct", [core, ...items(mine)]) : core;
+      if (!sharable) return layer(type(ds), level, [first, ...conjunctItems(conjuncts), ...items(shared)]);
+      const coordination = layer(type([]), "phrase", [first, ...conjunctItems(conjuncts)]);
+      return layer(type(ds), level, [...items(prepositions), coordination, ...items(shared)]);
     };
+    /** Items of the other conjuncts, a one-word conjunct wrapped in its own bracket (T92). */
+    const conjunctItems = (ds: readonly number[]): Item[] =>
+      ds.flatMap((d) =>
+        project(d, false).map((item) =>
+          "word" in item && item.word === d ? makeNode(baseType(upos[d] ?? ""), d, "conjunct", [item]) : item,
+        ),
+      );
 
     const core = group(nominal, "complement", { word: h }, lay.complement);
     const verbal = (ds: readonly number[]): PhraseType => (lay.cop !== null ? "VP" : nominal(ds));

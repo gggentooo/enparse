@@ -57,7 +57,10 @@ export type VariantName = "int8" | "fp16";
 export type CatalogEntry = {
   id: ModelId;
   display_name: string;
+  /** English description. */
   description: string;
+  /** Korean description (shown when the interface is Korean; T43). */
+  description_ko?: string;
   base_model: string;
   license: string;
   model_version: string;
@@ -114,7 +117,8 @@ export type FitnessLike = {
 };
 
 /** Labels for model cards (T22); the UI phrases them. */
-export type CardBadge = "most-accurate" | "fastest-here";
+/** Card labels: the catalog's default model (owner, T43; replaces "most accurate"), the fastest on this device. */
+export type CardBadge = "default" | "fastest-here";
 
 export class CatalogLoadError extends Error {
   constructor(message: string) {

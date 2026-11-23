@@ -280,9 +280,12 @@ describe("chooseModel", () => {
     t.worker.loadFailures.push(new ParserLoadError("out-of-memory", "oom"));
     await expect(t.service.retryLoad()).rejects.toBeInstanceOf(ParserLoadError);
     expect(t.service.getSnapshot().status).toMatchObject({ state: "failed", reason: "out-of-memory", modelId: A.id });
+    // The default model failed on this device: its backup is recommended instead (T43).
+    expect(t.service.getSnapshot().library.recommendedId).toBe(B.id);
 
     await t.service.retryLoad();
     expect(t.service.getSnapshot().status).toMatchObject({ state: "ready", modelId: A.id });
+    expect(t.service.getSnapshot().library.recommendedId).toBe(A.id);
   });
 
   it("cancelling the chosen model's download returns to the loaded model", async () => {

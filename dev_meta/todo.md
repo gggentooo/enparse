@@ -41,12 +41,6 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Stage 0 — Ready now
 
-#### [Training] Model display names and descriptions · T43 · Decision
-
-- **Files:** `training/configs/catalog.yaml`, `src/components/Pages/ModelsPage.tsx`
-- **Task:** Final display names and description texts (currently **(proposed)** English drafts), in the interface language.
-- **Needs:** T18, T22
-
 #### [Project] Plan the beta feedback feature · T44 · Decision
 
 - **Files:** `dev_meta/architecture.md`, `dev_meta/plan-training.md` (Phase 12), `dev_meta/dev_agent_questions.md` (2026-11-18 feedback entry)
@@ -59,10 +53,6 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
 - **Needs:** T13, T48, T53, T56, T57
 
----
-
-## Stage 1
-
 #### [Training] Phase 11 packaging and release · T66 · Build
 
 - **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
@@ -72,6 +62,22 @@ This guide applies to all contributors (human and AI) editing this file.
 ---
 
 ## Done
+
+#### [Modules/parser] Shared preposition before a coordination · T93 · Build
+
+- **Done:** 2026-11-23 (owner request; corrects the owner's T92 example). A preposition before a coordination of nouns covers the whole coordination: "Water in these disks could be found as water vapor or ice." → `[Water [in these disks]] [could be found [as [[water vapor] or [ice]]]]` (what water could be found as is "water vapor or ice"); likewise `[lived [in [[the house] and [the garden]]]]`. UD attaches the preposition to the first conjunct, so `treeDecoder.ts` → `buildPhrases` regroups for display: the leading `case` dependents of the coordination's head form the outer bracket with an inner bracket around the conjuncts, when the head and every later conjunct are nouns and no later conjunct has its own preposition (`[put it [[in the box] or [on the shelf]]]` and `[came [[with friends] or [alone]]]` keep the preposition with the first conjunct). Every conjunct stays bracketed (T92). Re-measured on the stored predictions: multi-word bracket F1 89.04 (DeBERTa-v3-xsmall) / 89.14 (ModernBERT), still above the 88 target; Phase 8 refit leaves the thresholds unchanged (brackets 0.85 / 0.80, roles 0.3 / 0.4; test shown precision 95.72% / 95.64%). Catalog fixture metrics updated. Checked in Chrome with both models on the three sentences. Recorded in `plan-training.md` → *Nested phrase structure* and `architecture.md`.
+
+#### [Modules/parser] Bracket every conjunct of a coordination · T92 · Build
+
+- **Done:** 2026-11-23 (owner request). Every conjunct of a coordination is its own bracket, one-word conjuncts included, with conjunctions and commas between the brackets (replaces the T82 rule "one-word conjuncts stay plain words"): `[Water [in these disks]] [could be found [[as water vapor] or [ice]]]`, `[She] [bought [[apples] , [pears] and [oranges]]]`, `[He] [[sings] and [dances]]`. `treeDecoder.ts` → `buildPhrases` wraps a one-word first conjunct (the coordination's head) and every one-word later conjunct in a `conjunct` bracket; `phraseLabeler.ts` gives a later one-word conjunct bracket its attachment and the coordinated mark. Multi-word bracket F1 on the stored test predictions unchanged (DeBERTa 89.16, ModernBERT 89.19; one-word brackets are not scored or gated, so the Phase 8 thresholds stand). Checked in Chrome with both models on the owner's sentence and a three-item list. Recorded in `plan-training.md` → *Coordination* and `architecture.md`.
+
+#### [Training] Model display names and descriptions · T43 · Decision
+
+- **Done:** 2026-11-23 (owner). Names: **Large** (ModernBERT; was "Accurate") and **Compact** (DeBERTa-v3-xsmall), the same in Korean. Large is the default model, chosen by the owner from complex test sentences (e.g. nested parentheticals and subordinate clauses), and Compact is offered as its backup when Large does not run well on the device. Descriptions (English / Korean, in `training/configs/catalog.yaml` → `description`, `description_ko`; catalog.json gains the optional `description_ko`, shown when the interface is Korean): Large — "Larger download. The default model, with high accuracy and speed." / "다운로드 크기가 더 큽니다. 정확도와 속도가 높은 기본 모델입니다."; Compact — "Smaller download. Recommended when Large does not run well on your device (for example, without WebGPU)." / "다운로드 크기가 더 작습니다. 이 기기에서 Large가 잘 동작하지 않을 때(예: WebGPU를 지원하지 않는 경우) 추천합니다." Catalog order is the preference order (Large first). Recommendation (replaces the T22 chunk-F1 rule): the first model in catalog order that is not blocked, has a variant, parses within 5 s on this device, and has not failed to load here (parserService tracks failed loads; network failures do not count). Card badge "Most accurate" replaced by "Default" / "기본 모델" on the catalog's first model (owner: the test scores, shown on the card, rank Compact slightly higher). Built in `modelLibrary` (`selection.ts`, `types.ts`, `catalog.ts`), `parserService.ts`, `ModelCard.tsx`, i18n, the catalog fixture, tests.
+
+#### [Components/Pages] Word panel position toggle and full-width output · T91 · Build
+
+- **Done:** 2026-11-23 (owner request). (1) A single-choice group "단어창 위치" (Word Panel Position): 옆 (Side; default) / 아래 (Bottom). Bottom puts the word panel at the bottom of the screen (fixed, at most 40vh, own scroll; the T90 behaviour) even when it would fit beside the sentences, so the sentences get the whole width. The group is shown only in the desktop layout (hidden by the same container query that forces the bottom panel below 1048px). (2) The output page has no maximum width any more: the sentences, or the sentences and the panel, fill the content area to its right edge. Checked in Chrome at 1600px (side: sentences 1032px + panel; bottom: sentences 1344px) and 1100px (panel forced to the bottom, toggle hidden). Files: `OutputPage.tsx`, `OutputPage.module.css`, i18n, `OutputPage.test.tsx`.
 
 #### [Components/Pages] Output page layout: wider sentence column, bottom word panel, title wrap · T90 · Build
 
@@ -590,3 +596,24 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T11:00:00Z — Claude Opus 5.5, T90 added and done
 
 - Added: T90 (Done): 800px minimum sentence column, word panel fixed to the bottom of the viewport when it does not fit beside it (max 40vh, own scroll), selected-word title wraps after the colon.
+
+### 2026-11-23T11:30:00Z — Claude Opus 5.5, T91 added and done
+
+- Added: T91 (Done): word panel position toggle (side / bottom, desktop only); the output page fills the content width.
+
+### 2026-11-23T12:00:00Z — Claude Opus 5.5, T43 decided and built
+
+- Modified: T43 moved to *Done* (owner): Large (default) and Compact (backup), Korean and English descriptions, default-first recommendation, "Default" badge instead of "Most accurate".
+- Modified: stages: T66 waits only on done tasks and moves to Stage 0.
+
+### 2026-11-23T12:30:00Z — Claude Opus 5.5, T92 added
+
+- Added: T92 (Stage 0): bracket every conjunct of a coordination, including one-word conjuncts (owner request; replaces the T82 one-word rule).
+
+### 2026-11-23T13:00:00Z — Claude Opus 5.5, T92 done
+
+- Modified: T92 moved to *Done*.
+
+### 2026-11-23T13:30:00Z — Claude Opus 5.5, T93 added and done
+
+- Added: T93 (Done): a shared preposition covers the coordination it precedes.

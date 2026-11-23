@@ -309,6 +309,21 @@ describe("OutputPage", () => {
     expect(screen.queryByRole("group", { name: "Labels" })).toBeNull();
   });
 
+  it("moves the word panel to the bottom of the screen on request (T91)", () => {
+    setup();
+    const group = screen.getByRole("group", { name: "Word Panel Position" });
+    expect((within(group).getByRole("radio", { name: "Side" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(word("look"));
+    const panel = screen.getByRole("complementary", { name: "Selected word: look" });
+    const layout = panel.parentElement as HTMLElement;
+    expect(layout.className).not.toMatch(/panelBottom/);
+    fireEvent.click(within(group).getByRole("radio", { name: "Bottom" }));
+    expect(layout.className).toMatch(/panelBottom/);
+    // The toggle is offered in both views.
+    fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));
+    expect(screen.getByRole("group", { name: "Word Panel Position" })).toBeTruthy();
+  });
+
   it("shows a near-tie as equal readings: note, open list, letters, explanations, and a fork (T83)", () => {
     const [sentence] = result.sentences;
     if (!sentence) throw new Error("fixture");

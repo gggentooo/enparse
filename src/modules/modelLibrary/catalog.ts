@@ -66,6 +66,7 @@ export function entryProblems(e: unknown): string[] {
   const m = e.metrics;
   if (!isObj(m) || !["upos", "chunk_f1", "uas", "las"].every((k) => isNum(m[k]))) p.push("metrics invalid");
   if (typeof e.nested_view !== "boolean") p.push("nested_view missing");
+  if (e.description_ko !== undefined && !isStr(e.description_ko)) p.push("description_ko invalid");
   return p;
 }
 

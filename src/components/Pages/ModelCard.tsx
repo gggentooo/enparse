@@ -46,7 +46,7 @@ export function ModelCard({
   onCancel,
   onDelete,
 }: ModelCardProps): React.JSX.Element {
-  const { t, formatBytes, formatNumber } = useI18n();
+  const { t, lang, formatBytes, formatNumber } = useI18n();
   const [confirm, setConfirm] = useState(false);
   const headingId = useId();
   const { entry, state, fitness } = model;
@@ -72,9 +72,15 @@ export function ModelCard({
           ))}
         </ul>
       </div>
-      <p className={styles.description} lang="en">
-        {entry.description}
-      </p>
+      {lang === "ko" && entry.description_ko ? (
+        <p className={styles.description} lang="ko">
+          {entry.description_ko}
+        </p>
+      ) : (
+        <p className={styles.description} lang="en">
+          {entry.description}
+        </p>
+      )}
 
       {fitness && fitness.verdict !== "ok" && (
         <div className={blocked ? styles.blocked : styles.warn}>

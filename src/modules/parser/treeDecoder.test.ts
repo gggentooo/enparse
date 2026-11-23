@@ -194,13 +194,60 @@ describe("buildPhrases", () => {
     const items = buildPhrases([2, 0, 4, 2, 7, 7, 4], upos, rel);
     expect(bracketString(items, words)).toBe("[She] [likes [[red apples] and [green pears]]]");
     expect(levels(items)).toEqual(["phrase:0-0", "predicate:1-6", "phrase:2-6", "conjunct:2-3", "phrase:5-6"]);
-    // One-word conjuncts stay plain words; a sentence-initial conjunction stays outside.
+    // One-word conjuncts are brackets too (T92); a sentence-initial conjunction stays outside.
     const short = buildPhrases(
       [3, 3, 0, 5, 3],
       ["CCONJ", "PRON", "VERB", "CCONJ", "VERB"],
       ["cc", "nsubj", "root", "cc", "conj"],
     );
-    expect(bracketString(short, ["And", "he", "sings", "and", "dances"])).toBe("And [he] [sings and dances]");
+    expect(bracketString(short, ["And", "he", "sings", "and", "dances"])).toBe("And [he] [[sings] and [dances]]");
+  });
+
+  it("brackets every conjunct, and a shared preposition covers the coordination (owner's sentence, T92, T93)", () => {
+    const words = "Water in these disks could be found as water vapor or ice .".split(" ");
+    const upos = "NOUN ADP DET NOUN AUX AUX VERB ADP NOUN NOUN CCONJ NOUN PUNCT".split(" ");
+    const rel = "nsubj case det nmod aux aux root case compound obl cc conj punct".split(" ");
+    const items = buildPhrases([7, 4, 4, 1, 7, 7, 0, 10, 10, 7, 12, 10, 7], upos, rel);
+    expect(bracketString(items, words)).toBe(
+      "[Water [in these disks]] [could be found [as [[water vapor] or [ice]]]] .",
+    );
+    // A list of one-word items: every item is a bracket, commas and the conjunction between them.
+    const list = buildPhrases(
+      [2, 0, 2, 5, 3, 7, 3],
+      "PRON VERB NOUN PUNCT NOUN CCONJ NOUN".split(" "),
+      "nsubj root obj punct conj cc conj".split(" "),
+    );
+    expect(bracketString(list, "She bought apples , pears and oranges".split(" "))).toBe(
+      "[She] [bought [[apples] , [pears] and [oranges]]]",
+    );
+  });
+
+  it("keeps a preposition with its own conjunct when another conjunct has its own or is not a noun (T93)", () => {
+    // in the box or on the shelf: each conjunct has its own preposition.
+    const own = buildPhrases(
+      [0, 1, 5, 5, 1, 9, 9, 9, 5],
+      "VERB PRON ADP DET NOUN CCONJ ADP DET NOUN".split(" "),
+      "root obj case det obl cc case det conj".split(" "),
+    );
+    expect(bracketString(own, "put it in the box or on the shelf".split(" "))).toBe(
+      "[put it [[in the box] or [on the shelf]]]",
+    );
+    // with friends or alone: "alone" is not a noun, so "with" stays with "friends".
+    const words = "came with friends or alone".split(" ");
+    const items = buildPhrases(
+      [0, 3, 1, 5, 3],
+      "VERB ADP NOUN CCONJ ADV".split(" "),
+      "root case obl cc conj".split(" "),
+    );
+    expect(bracketString(items, words)).toBe("[came [[with friends] or [alone]]]");
+    // in the house and the garden: shared.
+    const words2 = "lived in the house and the garden".split(" ");
+    const items2 = buildPhrases(
+      [0, 4, 4, 1, 7, 7, 4],
+      "VERB ADP DET NOUN CCONJ DET NOUN".split(" "),
+      "root case det obl cc det conj".split(" "),
+    );
+    expect(bracketString(items2, words2)).toBe("[lived [in [[the house] and [the garden]]]]");
   });
 
   it("gives a clause coordinated with the main clause its own subject and predicate brackets", () => {

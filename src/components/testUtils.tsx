@@ -16,7 +16,8 @@ import type { ModelFitness } from "../modules/preflight";
 import type { LibrarySnapshot } from "../services/parserService";
 
 export const catalog = parseCatalog(fixture);
-export const [DEBERTA, MODERNBERT] = catalog.models as [
+/** The fixture's models in catalog order: Large (ModernBERT, the default) first, then Compact (DeBERTa; T43). */
+export const [MODERNBERT, DEBERTA] = catalog.models as [
   (typeof catalog.models)[number],
   (typeof catalog.models)[number],
 ];
@@ -30,19 +31,19 @@ export const fit = (id: string, over: Partial<ModelFitness> = {}): ModelFitness 
   ...over,
 });
 
-/** Library with both fixture models (not downloaded, DeBERTa recommended) and optional overrides. */
+/** Library with both fixture models (not downloaded, Large recommended) and optional overrides. */
 export function fixtureLibrary(over: Partial<LibrarySnapshot> = {}): LibrarySnapshot {
   const states: Record<string, ModelState> = {
     [DEBERTA.id]: { state: "not-downloaded" },
     [MODERNBERT.id]: { state: "not-downloaded" },
   };
-  const badges: Record<string, CardBadge[]> = { [DEBERTA.id]: ["most-accurate", "fastest-here"], [MODERNBERT.id]: [] };
+  const badges: Record<string, CardBadge[]> = { [MODERNBERT.id]: ["default"], [DEBERTA.id]: ["fastest-here"] };
   return {
     catalog,
     states,
     fitness: [fit(DEBERTA.id), fit(MODERNBERT.id, { expectedParseSeconds: 1.5 })],
     badges,
-    recommendedId: DEBERTA.id,
+    recommendedId: MODERNBERT.id,
     downloadBytes: { [DEBERTA.id]: 90_000_000, [MODERNBERT.id]: 150_000_000 },
     activeId: null,
     ...over,

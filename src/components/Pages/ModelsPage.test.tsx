@@ -54,15 +54,33 @@ describe("ModelsPage", () => {
       within(list)
         .getAllByRole("heading", { level: 2 })
         .map((e) => e.textContent),
-    ).toEqual([DEBERTA.display_name, MODERNBERT.display_name]);
-    const first = card(DEBERTA.display_name);
-    for (const label of ["Recommended for this device", "Most accurate", "Fastest on this device"]) {
+    ).toEqual(["Large", "Compact"]);
+    const first = card("Large");
+    for (const label of ["Recommended for this device", "Default"]) {
       expect(within(first).getByText(label)).toBeTruthy();
     }
-    expect(within(first).getByText("Not downloaded · 90 MB")).toBeTruthy();
-    expect(within(first).getByText("97%")).toBeTruthy(); // chunk F1 0.9701
-    expect(within(first).getByText("0.4 s")).toBeTruthy();
-    expect(within(first).getByText(DEBERTA.base_model)).toBeTruthy();
+    expect(within(first).getByText(/^Larger download\. The default model/)).toBeTruthy();
+    expect(within(first).getByText(MODERNBERT.base_model)).toBeTruthy();
+    const compact = card("Compact");
+    expect(within(compact).getByText("Fastest on this device")).toBeTruthy();
+    expect(within(compact).getByText("Not downloaded · 90 MB")).toBeTruthy();
+    expect(within(compact).getByText("97%")).toBeTruthy(); // chunk F1 0.9701
+    expect(within(compact).getByText("0.4 s")).toBeTruthy();
+  });
+
+  it("shows the description in the interface language (Korean)", async () => {
+    await languageService().setLanguage("ko");
+    const m = mockService();
+    m.update({ library: fixtureLibrary() });
+    h.service = m.service;
+    renderPage(<ModelsPage />, "/models");
+    const compact = card("Compact");
+    expect(
+      within(compact)
+        .getByText(/Large가 잘 동작하지 않을 때/)
+        .getAttribute("lang"),
+    ).toBe("ko");
+    expect(within(card("Large")).getByText("기본 모델")).toBeTruthy();
   });
 
   it("uses or only downloads a model", () => {

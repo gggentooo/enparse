@@ -13,7 +13,7 @@ import type { Messages } from "./en";
 
 export const ko: Messages = {
   "app.name": "Enparse",
-  "app.tagline": "학습자를 위한 영어 문장 구조 분석",
+  "app.tagline": "브라우저 기반 영어 구문 분석 툴",
   "app.errorTitle": "문제가 발생했습니다",
   "app.errorBody": "이 페이지를 표시할 수 없습니다. 입력 페이지로 돌아가 다시 시도해 주세요.",
   "app.errorLink": "입력 페이지로 이동",
@@ -97,7 +97,7 @@ export const ko: Messages = {
 
   "about.title": "정보 및 라이선스",
   "about.intro":
-    "Enparse는 모든 처리를 브라우저 안에서 합니다. 아래의 분석 모델, 학습 데이터, 단어 목록, 라이브러리는 각각의 라이선스에 따라 사용됩니다.",
+    "Enparse는 모든 처리를 브라우저 안에서 합니다. (모델 및 사전 다운로드 후에는 오프라인 사용 가능함) 아래의 분석 모델, 학습 데이터, 단어 목록, 라이브러리는 각각의 라이선스에 따라 사용됩니다.",
   "about.appTitle": "Enparse",
   "about.appLicense":
     "이 앱의 코드는 PolyForm Noncommercial License 1.0.0에 따라 제공됩니다. 비상업적 목적으로 사용·수정·배포할 수 있으며, 아래 고지를 유지해야 합니다.",
@@ -214,7 +214,7 @@ export const ko: Messages = {
   "models.listLabel": "분석 모델",
   "models.catalogError": "모델 목록을 불러오지 못했습니다.",
   "models.recommended": "이 기기에 추천",
-  "models.badge.most-accurate": "가장 정확함",
+  "models.badge.default": "기본 모델",
   "models.badge.fastest-here": "이 기기에서 가장 빠름",
   "models.active": "사용 중",
   "models.state.notDownloaded": "다운로드 안 됨 · {size}",
@@ -305,6 +305,9 @@ export const ko: Messages = {
   "output.labelPos": "구문 라벨 위치",
   "output.labelPos.top": "위",
   "output.labelPos.side": "옆",
+  "output.panelPos": "단어창 위치",
+  "output.panelPos.side": "옆",
+  "output.panelPos.bottom": "아래",
   "output.nestedUnavailable": "이 모델은 구조 보기를 제공하지 않습니다.",
   "output.legend": "구 색상",
   "output.removed": "분석 전에 일부 텍스트를 제거했습니다: {details}.",

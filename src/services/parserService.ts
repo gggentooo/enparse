@@ -18,7 +18,10 @@
  *      a. status `checking`: modules/preflight runDeviceChecks(); verdict
  *         `blocked` → status `failed: unsupported` (nothing is downloaded).
  *      b. modules/modelLibrary loadCatalog() + getModelStates();
- *         preflight assessModels() → fitness per model; recommendModel();
+ *         preflight assessModels() → fitness per model; recommendModel()
+ *         (the default model first, its backup when the default is blocked,
+ *         too slow, or has failed to load on this device; recomputed after a
+ *         failed or successful load; T43);
  *         cardBadges(). A catalog that cannot load → `failed: network`.
  *      c. If the saved choice is fully cached: load it (step 2b). Otherwise
  *         status `no-model` (waiting for the user; nothing downloaded).
@@ -301,7 +304,18 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
     for (const l of listeners) l();
   };
   const setLibrary = (patch: Partial<LibrarySnapshot>): void => set({ library: { ...snapshot.library, ...patch } });
-  const setStatus = (status: ModelStatus): void => set({ status });
+  /** Models that failed to load on this device (not for network reasons): the recommendation skips them (T43). */
+  const failedHere = new Set<ModelId>();
+  const setStatus = (status: ModelStatus): void => {
+    if (status.state === "failed" && status.modelId && status.reason !== "network") failedHere.add(status.modelId);
+    if (status.state === "ready") failedHere.delete(status.modelId);
+    set({ status });
+    const catalog = snapshot.library.catalog;
+    if (catalog && (status.state === "failed" || status.state === "ready")) {
+      const recommendedId = recommendModel(catalog, snapshot.library.fitness, PARSE_BUDGET_SECONDS, failedHere);
+      if (recommendedId !== snapshot.library.recommendedId) setLibrary({ recommendedId });
+    }
+  };
 
   const catalogEntry = (id: ModelId): CatalogEntry | undefined =>
     snapshot.library.catalog?.models.find((m) => m.id === id);

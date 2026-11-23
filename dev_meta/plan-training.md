@@ -90,7 +90,8 @@ The app shows two views of each sentence:
      - **Clause:** a head with a subject (`nsubj`, `csubj`, incl. `:pass`) gives a clause bracket holding the subject and the predicate bracket: `[[Mackerel] [is [a common name …]]]`. The predicate bracket holds the head and its other dependents on the head's side of the subject. Dependents on the other side of the subject (fronted adverbials, the auxiliary of a question, `mark`) and clause-level right dependents (`parataxis`, and `conj` whose conjunct has its own subject) stay in the clause bracket, outside the predicate. A one-word predicate is not bracketed.
      - **Copula:** with a `cop` dependent before the head, the head and its dependents after the copula (and after any auxiliary or subject before the head) form the complement bracket inside the predicate: `[are [from the Scombridae family]]`. Clause-level right dependents (`advcl`, `parataxis`, clausal `conj`) stay outside the complement. A one-word complement is not bracketed (`[is happy]`).
      - **Main clause (owner, 2026-11-23; T82):** the sentence's main clause, and clauses coordinated with it, get no clause bracket: the subject bracket and the predicate bracket are the outermost brackets (`[Mackerel] [typically have …]`), always shown even for one word. Below the bracket threshold they are drawn dashed instead of being removed (Phase 8 task 5). Embedded clauses keep their bracket.
-     - **Coordination (owner, 2026-11-23; T82):** conjuncts are shown side by side, `[[red apples] and [green pears]]`. The head's dependents before the first conjunct belong to the first conjunct, which gets its own bracket; each later conjunct is its own bracket with its conjunction and punctuation outside it; the head's later dependents are shared. One-word conjuncts stay plain words (`[apples, pears and oranges]`). The outer bracket carries the shared role. This regroups the model's attachments without changing any.
+     - **Coordination (owner, 2026-11-23; T82):** conjuncts are shown side by side, `[[red apples] and [green pears]]`. The head's dependents before the first conjunct belong to the first conjunct, which gets its own bracket; each later conjunct is its own bracket with its conjunction and punctuation outside it; the head's later dependents are shared. Every conjunct is its own bracket, one-word ones too (owner, T92): `[[as water vapor] or [ice]]`, `[[apples] , [pears] and [oranges]]`. The outer bracket carries the shared role. This regroups the model's attachments without changing any.
+     - **Shared preposition (owner, 2026-11-23; T93):** a preposition before a coordination of nouns covers the whole coordination: `[as [[water vapor] or [ice]]]`, `[in [[the house] and [the garden]]]` (UD attaches it to the first conjunct). It stays with the first conjunct when a later conjunct has its own preposition (`[[in the box] or [on the shelf]]`) or is not a noun (`[[with friends] or [alone]]`). Display rule over the predicted tree; attachments are not changed.
      - **Near-ties (owner, 2026-11-23; T83):** when the top reading's share is below 60% (`output/types.ts` → `NEAR_TIE_SHARE`), the app presents the readings as equals: a note on the sentence, the readings list open and lettered A, B, …, the disputed phrase marked with a dashed arrow to each candidate and its share, and a fixed-template sentence per reading saying what it means (which word the phrase goes with; which part of speech a word is).
      - **Prepositions** (`case`) are words of their noun's phrase, so the phrase attaches as a unit: `[given [to …]]`.
      - Each bracket records its level (`phrase`, `complement`, `predicate`, `clause`, `conjunct`) for labeling.
@@ -671,9 +672,9 @@ Runs for every candidate (`configs/train_<model>.yaml`), unattended: `sh scripts
 | Model | UPOS | Chunk F1 | UAS excl. punct | Multi-word bracket F1 | Offered | Nested view |
 |---|---|---|---|---|---|---|
 | DistilBERT | 96.82 | 95.59 | 92.22 | 84.13 | no (UPOS) | no |
-| DeBERTa-v3-xsmall | 97.65 | 97.01 | 94.54 | 89.16 | yes | met (Phase 8) |
+| DeBERTa-v3-xsmall | 97.65 | 97.01 | 94.54 | 89.04 | yes | met (Phase 8) |
 | BERT | 96.995 | 96.13 | 93.80 | 86.89 | no (UPOS; strict ≥ 97) | no |
-| ModernBERT | 97.40 | 96.47 | 94.38 | 89.19 | yes | met (Phase 8) |
+| ModernBERT | 97.40 | 96.47 | 94.38 | 89.14 | yes | met (Phase 8) |
 
 Bracket F1 is measured on the phrase-per-head brackets since 2026-11-23 (T75, T77; re-scored from the stored predictions, no retraining). Under the earlier head-outward brackets it was 84.97 / 89.75 / 87.82 / 89.71; with phrase-per-head brackets before the main-clause and coordination rules (T82) it was 85.52 / 89.85 / 87.91 / 89.98.
 
@@ -1048,3 +1049,12 @@ Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm lo
 ### 2026-11-23T07:00:00Z — Claude Opus 5.5, Pre-flight thresholds (T65)
 
 - Modified: Phase 10 task 5 and outcome → owner thresholds (T65): no per-model memory requirement; parse times per WASM speed tier for `catalog.json`; single-threaded WASM warns; storage margin 256 MiB; WebGPU storage-binding limit 128 MiB.
+
+### 2026-11-23T13:00:00Z — Claude Opus 5.5, Every conjunct bracketed (T92)
+
+- Modified: *Decoding* step 3 → *Coordination*: one-word conjuncts are brackets too (owner); multi-word bracket F1 unchanged (DeBERTa 89.16, ModernBERT 89.19; one-word brackets are not scored or gated).
+
+### 2026-11-23T13:30:00Z — Claude Opus 5.5, Shared preposition before a coordination (T93)
+
+- Added: *Decoding* step 3 → shared preposition (owner).
+- Modified: biaffine outcome → multi-word bracket F1 on the new brackets: DeBERTa 89.04, ModernBERT 89.14 (still ≥ 88); Phase 8 thresholds refitted and unchanged (0.85 / 0.80; roles 0.3 / 0.4).

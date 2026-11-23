@@ -9,9 +9,9 @@ Thresholds: offered if test UPOS ≥ 97.00 and chunk F1 ≥ 94.00 and both basel
 | Model | Seed run | UPOS | Chunk F1 | Tree UAS | Tree LAS | UAS excl. punct | Nested F1 | Multi-word F1 | Repaired | Offered | Nested view |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | distilbert_base_cased | `lr0.0001_w1_s42_bf` | 96.82 | 95.59 | 92.19 | 89.73 | 92.36 | 85.67 | 84.94 | 8.77 | **no** | no |
-| deberta_v3_xsmall | `lr0.0003_w2_s42_bf` | 97.65 | 97.01 | 94.38 | 92.55 | 94.54 | 89.71 | 89.16 | 5.44 | yes | pending Phase 8 |
+| deberta_v3_xsmall | `lr0.0003_w2_s42_bf` | 97.65 | 97.01 | 94.38 | 92.55 | 94.54 | 89.57 | 89.04 | 5.44 | yes | pending Phase 8 |
 | bert_base_cased | `lr0.0001_w1_s42_bfaug` | 97.00 | 96.13 | 93.68 | 91.59 | 93.86 | 88.17 | 87.53 | 8.82 | **no** | no |
-| modernbert_base | `lr0.0002_w1_s42_bfaug` | 97.40 | 96.47 | 94.29 | 92.44 | 94.38 | 89.73 | 89.19 | 5.35 | yes | pending Phase 8 |
+| modernbert_base | `lr0.0002_w1_s42_bfaug` | 97.40 | 96.47 | 94.29 | 92.44 | 94.38 | 89.67 | 89.14 | 5.35 | yes | pending Phase 8 |
 
 ## distilbert_base_cased (`distilbert-base-cased`)
 
@@ -67,9 +67,9 @@ Augmentation experiment (dev selection score, first seed): 94.57 without, 94.35 
 | Seeds (test) | UPOS | Chunk F1 | Tree UAS | Tree LAS | UAS excl. punct | Nested F1 | Multi-word F1 |
 |---|---|---|---|---|---|---|---|
 | `lr0.0003_w2_s13_bf` | 97.50 | 96.90 | 94.31 | 92.47 | 94.41 | 89.66 | 89.10 |
-| `lr0.0003_w2_s42_bf` | 97.65 | 97.01 | 94.38 | 92.55 | 94.54 | 89.71 | 89.16 |
+| `lr0.0003_w2_s42_bf` | 97.65 | 97.01 | 94.38 | 92.55 | 94.54 | 89.57 | 89.04 |
 | `lr0.0003_w2_s2026_bf` | 97.48 | 96.52 | 93.87 | 91.74 | 94.05 | 88.73 | 88.09 |
-| mean ± sd | 97.54 ± 0.09 | 96.81 ± 0.26 | 94.18 ± 0.28 | 92.25 ± 0.45 | 94.33 ± 0.25 | 89.37 ± 0.55 | 88.78 ± 0.60 |
+| mean ± sd | 97.54 ± 0.09 | 96.81 ± 0.26 | 94.18 ± 0.28 | 92.25 ± 0.45 | 94.33 ± 0.25 | 89.32 ± 0.51 | 88.74 ± 0.56 |
 
 Training time of the seed runs: 53 min.
 
@@ -127,8 +127,8 @@ Augmentation experiment (dev selection score, first seed): 94.07 without, 94.13 
 | Seeds (test) | UPOS | Chunk F1 | Tree UAS | Tree LAS | UAS excl. punct | Nested F1 | Multi-word F1 |
 |---|---|---|---|---|---|---|---|
 | `lr0.0002_w1_s13_bfaug` | 97.47 | 96.44 | 94.05 | 91.99 | 94.19 | 89.73 | 89.20 |
-| `lr0.0002_w1_s42_bfaug` | 97.40 | 96.47 | 94.29 | 92.44 | 94.38 | 89.73 | 89.19 |
+| `lr0.0002_w1_s42_bfaug` | 97.40 | 96.47 | 94.29 | 92.44 | 94.38 | 89.67 | 89.14 |
 | `lr0.0002_w1_s2026_bfaug` | 97.37 | 96.32 | 93.99 | 92.05 | 94.17 | 89.31 | 88.73 |
-| mean ± sd | 97.41 ± 0.05 | 96.41 ± 0.08 | 94.11 ± 0.16 | 92.16 ± 0.24 | 94.25 ± 0.12 | 89.59 ± 0.24 | 89.04 ± 0.27 |
+| mean ± sd | 97.41 ± 0.05 | 96.41 ± 0.08 | 94.11 ± 0.16 | 92.16 ± 0.24 | 94.25 ± 0.12 | 89.57 ± 0.23 | 89.02 ± 0.26 |
 
 Training time of the seed runs: 82 min.
