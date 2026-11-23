@@ -206,7 +206,7 @@ raw text
 
 ### Model library
 
-The app ships up to four models (one per base model) and the user chooses which to use (owner decision, 2026-11-18). Only models that meet the acceptance thresholds are offered (`plan-training.md` → Phase 7).
+Release 1.1.0 (T98) offers three models in preference order: Large, Compact, and **Lite** — Compact with a pruned vocabulary for phones and low-memory devices (`plan-training.md` → Phase 11; 58 MB int8). A model's `model_version` may differ from the release version (unchanged models keep theirs). The app ships up to four models (one per base model) and the user chooses which to use (owner decision, 2026-11-18). Only models that meet the acceptance thresholds are offered (`plan-training.md` → Phase 7).
 
 **Layout**
 
@@ -284,6 +284,7 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 | `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`, `storage` when a download does not fit, T52; and `crashed`, T96) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
 
 - **Crash guard (T96):** the model id is kept in storage (`modelLibrary/loading`) while the worker loads it and removed when the load ends. If it is still there at the next start, the page died during the load (a phone ending the tab for memory), so the saved choice is not loaded again by itself: the status is `failed` with reason `crashed`, the model is no longer recommended, and the user may retry or choose another model.
+- **Low-memory loading (T98):** for a small model (Lite) on a memory-limited phone or tablet (`preflight` → `lowMemoryLoad`) the variant is int8 and `parserService` sets `ModelRef.lowMemory`; `transformerBackend.ts` then loads with one WASM thread and ONNX Runtime's graph optimization disabled (`LOW_MEMORY_SESSION_OPTIONS`), and on such a device the model stage skips hashing the cached files for every model (sizes are still checked; files were verified at download). Larger models load the usual way there (fp16 on WebGPU when usable). Measured in Chrome on WASM with an emulated phone, worker memory after loading: Compact 460 MB → 349 MB without graph optimization (same parse speed; one thread and arena settings changed nothing measurable in Chrome, one thread is kept for iOS); Lite with these options 237 MB.
 - **One handler per worker (T97):** `parser.worker.ts` → `registerWorker` marks the worker scope and registers its message handler once. In the production build the Transformers.js chunk imports helpers back from the worker's entry file, and Safari evaluates that entry module again; a second, model-less handler used to answer every parse with `ParserNotReadyError`.
 - **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v2, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
 - Parse requests are refused unless the status is `ready`: `parserService.parseText()` rejects with `ParserNotReadyError` without contacting the worker, and the worker also rejects parse messages before `ready`.
@@ -335,7 +336,7 @@ ready
 | Model | `wink-versions` | `labels.json` → `versions.wink` vs the app's pinned versions | Warn |
 | Model | `storage-quota`, `model-size` | `navigator.storage.estimate()` vs `labels.json` → `files` sizes | Warn |
 | Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256), before every load; skipped while `files` is `null`. Downloads are verified by the model library as they arrive. | Mismatch: delete and offer a re-download; then fail |
-| Fitness (per model) | `mobile-memory` | Phone or tablet (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS, Android) that does not report ≥ 8 GB (`navigator.deviceMemory`; iOS never reports it). Such a device uses int8 on WASM only (never fp16/WebGPU). A model whose int8 file is over 128 MiB (`MOBILE_MAX_MODEL_BYTES`; Large) is blocked; a smaller one (Compact) warns. Owner request, T96 (an iPhone 12 mini's tab is ended for memory while a model loads). | Fail (large model) / Warn |
+| Fitness (per model) | `mobile-memory` | Phone or tablet (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS, Android) that does not report ≥ 8 GB (`navigator.deviceMemory`; iOS never reports it). A model whose int8 download is over 64 MiB (`MOBILE_MAX_MODEL_BYTES`; Large, Compact) warns: the tab may be ended for memory while it loads (an iPhone 12 mini), though newer phones run it (an iPhone 16 Pro runs Large). Nothing is blocked for being on a phone (owner, 2026-11-23: block only when a check shows the device cannot run the model); the crash guard stops a reload loop. A smaller model (Lite) passes, is recommended there (`selection.ts` prefers a model without this warning), and loads the low-memory way. T96, T98. | Warn |
 | Fitness (per model) | `model-variant`, `model-storage`, `parse-time` | Download size vs free quota (does not fit → fail; less than `STORAGE_MARGIN_BYTES` = 256 MiB left → warn), and the Phase 10 parse time for this device: fp16 on WebGPU, else the WASM speed tier — one thread without cross-origin isolation, two cores if `hardwareConcurrency` ≤ 2, else many threads (owner, T65) | Warn (shown on the model card); blocked models cannot be chosen |
 
 - Memory cannot be measured reliably in browsers, so low memory only warns; the real test is the model load and self-test (out-of-memory → `failed: out-of-memory`).
@@ -980,3 +981,12 @@ enparse/
 ### 2026-11-23T16:30:00Z — Claude Fable 5.2, Mobile guard and Safari worker fix
 
 - Added: *Pre-flight checks* → `mobile-memory`; *Model readiness* → crash guard and the `crashed` reason (T96), one message handler per worker (T97).
+
+### 2026-11-23T19:00:00Z — Claude Fable 5.2, Low-memory loading and the Lite model (T98)
+
+- Added: *Model readiness* → low-memory loading; *Model library* → Lite model, per-model versions.
+- Modified: *Pre-flight checks* → `mobile-memory` limit 64 MiB (Compact blocked on phones; Lite recommended).
+
+### 2026-11-23T20:00:00Z — Claude Fable 5.2, Phones: warn instead of block
+
+- Modified: *Pre-flight checks* → `mobile-memory` only warns for larger models (owner); *Model readiness* → low-memory loading applies to the small model.

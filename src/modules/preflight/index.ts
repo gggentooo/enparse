@@ -26,6 +26,7 @@
  */
 
 export { assessModels, combine, runDeviceChecks, runModelChecks } from "./preflight";
+export { lowMemoryLoad, memoryLimited } from "./checks";
 export type { EnvironmentApi } from "./preflight";
 export {
   APP_WINK_VERSIONS,

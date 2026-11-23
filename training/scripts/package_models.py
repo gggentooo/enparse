@@ -28,7 +28,8 @@ Steps:
     3. Copy the shipped files (labels.json → files: config and tokenizer files,
        onnx/model_quantized.onnx (int8), onnx/model_fp16.onnx) to
        public/models/<id>/ (unchanged files are not copied again) and write
-       labels.json with model_version (catalog.yaml → release.version) and
+       labels.json with model_version (catalog.yaml → the model's `version`, else
+       release.version) and
        files (sizes and SHA-256 of the copied files). Every labels.json must
        pass validate_labels_json with no needed field null.
     4. Write public/models/catalog.json (schema v1; architecture.md → Model
@@ -269,7 +270,8 @@ def render_report(
         "",
         f"# Release record — model-v{version}",
         "",
-        f"- Model version: `{version}` (every packaged `labels.json` and `catalog.json` entry)",
+        "- Model versions: per model below (`labels.json` and `catalog.json`; a model whose files "
+        "did not change keeps its earlier version)",
         f"- Git tag (owner creates it when the release is committed): `model-v{version}`",
         f"- Packaged: {generated_at}",
         f"- Repository commit at packaging: `{git_commit()}`",
@@ -278,14 +280,16 @@ def render_report(
         "",
         "## Offered models (preference order)",
         "",
-        "| Model | Display name | Run | Seed | Config | Base model | Data | Nested view |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Model | Display name | Version | Run | Seed | Config | Base model | Data "
+        "| Nested view |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
-            f"| `{r['id']}` | {r['display_name']} | `{r['run']}` | {r['seed']} "
-            f"| `configs/train_{r['id']}.yaml` "
-            f"(SHA-256 `{r['config_sha'][:12]}`) | `{r['base_model']}` | UD {r['ud']} | "
+            f"| `{r['id']}` | {r['display_name']} | {r['version']} | `{r['run']}` | {r['seed']} "
+            f"| `{r['config']}` (SHA-256 `{r['config_sha'][:12]}`)"
+            f"{'; ' + r['derived'] + ' (`configs/prune.yaml`)' if r['derived'] else ''} "
+            f"| `{r['base_model']}` | UD {r['ud']} | "
             f"{'yes' if r['nested_view'] else 'no'} |"
         )
     if skipped:
@@ -304,7 +308,7 @@ def package(out_dir: Path, check_only: bool = False) -> int:
     rules = load_yaml("eval.yaml")["acceptance"]
     data_cfg = load_yaml("data.yaml")
     release = catalog_cfg["release"]
-    version = str(release["version"])
+    release_version = str(release["version"])
     performance = load_json(PERFORMANCE) if PERFORMANCE.exists() else {}
     eval_dir = TRAINING_DIR / data_cfg["paths"]["eval"]
     onnx_dir = TRAINING_DIR / data_cfg["paths"]["onnx"]
@@ -338,6 +342,8 @@ def package(out_dir: Path, check_only: bool = False) -> int:
                 f"`{model_id}` (`{run}`): no export in {export.relative_to(TRAINING_DIR)}"
             )
             continue
+        version = str(texts.get("version") or release_version)
+        derived = phase7.get("derived_from")
         for key in ("base_model_url", "base_model_license", "description_ko"):
             if not texts.get(key):
                 problems.append(f"{model_id}: configs/catalog.yaml has no {key}")
@@ -395,16 +401,24 @@ def package(out_dir: Path, check_only: bool = False) -> int:
         for key in ("description_ko", "base_model_url", "base_model_license"):
             if not entry[key]:
                 del entry[key]  # optional in catalog.json; an empty string is invalid
-        if model_id in performance:
-            entry["performance"] = {"parse_5000_chars_s": performance[model_id]}
+        # A derived model (prune_vocab.py) runs the same network: until it is benchmarked itself,
+        # it carries its source model's Phase 10 timings.
+        timing = performance.get(model_id) or (
+            performance.get(derived["model"]) if derived else None
+        )
+        if timing:
+            entry["performance"] = {"parse_5000_chars_s": timing}
         entries.append(entry)
-        train_cfg = CONFIG_DIR / f"train_{model_id}.yaml"
+        train_cfg = CONFIG_DIR / f"train_{derived['model'] if derived else model_id}.yaml"
         rows.append(
             {
                 "id": model_id,
                 "display_name": texts["display_name"],
+                "version": version,
+                "derived": f"pruned vocabulary of `{derived['model']}`" if derived else "",
                 "run": run,
                 "seed": phase7["seeds"].get(run, {}).get("seed", "?"),
+                "config": f"configs/{train_cfg.name}",
                 "config_sha": sha256(train_cfg) if train_cfg.exists() else "missing",
                 "base_model": phase7["base_model"],
                 "ud": f"{export_labels['versions']['data']['ud_release']} "
@@ -449,7 +463,7 @@ def package(out_dir: Path, check_only: bool = False) -> int:
         (INTEGRATION_DIR / f"{r['id']}.json").write_text(
             json.dumps(r["reference"], ensure_ascii=False) + "\n", "utf8"
         )
-    REPORT.write_text(render_report(version, generated_at, rows, skipped) + "\n", "utf8")
+    REPORT.write_text(render_report(release_version, generated_at, rows, skipped) + "\n", "utf8")
     print(
         f"wrote {catalog_path.relative_to(REPO_DIR)} ({', '.join(e['id'] for e in entries)}), "
         f"{REPORT.relative_to(REPO_DIR)}, {INTEGRATION_DIR.relative_to(REPO_DIR)}/"

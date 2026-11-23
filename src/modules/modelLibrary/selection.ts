@@ -82,6 +82,9 @@ export async function interruptedLoad(storage: AppStorage = appStorage()): Promi
   return typeof v === "string" ? v : null;
 }
 
+/** Pre-flight check id of the phone-and-tablet memory warning (preflight → mobile-memory; T98). */
+const MEMORY_WARNING = "mobile-memory";
+
 /**
  * Recommended model (owner, 2026-11-23; T43, replaces the T22 chunk-F1 rule): the first model in
  * catalog order (the default first, then its backups) that is not blocked, has a variant for this
@@ -96,11 +99,14 @@ export function recommendModel(
   failed: ReadonlySet<ModelId> = new Set(),
 ): ModelId | null {
   const byId = new Map(fitness.map((f) => [f.id, f]));
-  const pick = catalog.models.find((m) => {
+  const fits = (m: Catalog["models"][number], allowMemoryWarning: boolean): boolean => {
     const f = byId.get(m.id);
     if (!f || f.verdict === "blocked" || f.variant === null || failed.has(m.id)) return false;
+    if (!allowMemoryWarning && f.reasons.some((r) => r.id === MEMORY_WARNING && r.status === "warn")) return false;
     return f.expectedParseSeconds === null || f.expectedParseSeconds <= budgetSeconds;
-  });
+  };
+  // On a phone or tablet, a model without the memory warning (Lite) comes first (T98).
+  const pick = catalog.models.find((m) => fits(m, false)) ?? catalog.models.find((m) => fits(m, true));
   return pick?.id ?? null;
 }
 

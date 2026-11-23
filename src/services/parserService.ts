@@ -121,6 +121,7 @@ import {
   type PreflightReport,
   assessModels,
   runDeviceChecks,
+  lowMemoryLoad,
   runModelChecks,
 } from "../modules/preflight";
 
@@ -429,7 +430,14 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
       await fetchModel(entry, variant, seq);
       assertCurrent(seq);
     }
-    const ref: ModelRef = { id: entry.id, folder: entry.folder, variant, nestedView: entry.nested_view };
+    const ref: ModelRef = {
+      id: entry.id,
+      folder: entry.folder,
+      variant,
+      nestedView: entry.nested_view,
+      // Lite on a phone or tablet: one WASM thread and low-memory session options (T98).
+      ...(lowMemoryLoad(requirementsOf(entry), device.probe) ? { lowMemory: true } : {}),
+    };
     const client = ensureWorker();
     setLibrary({ activeId: null });
     // Crash guard (T96): if the page dies inside this load (a phone killing the tab for memory),

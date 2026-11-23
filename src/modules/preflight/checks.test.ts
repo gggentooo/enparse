@@ -23,6 +23,7 @@ import {
   checkWinkVersions,
   chooseVariant,
   expectedParseSeconds,
+  lowMemoryLoad,
   memoryLimited,
   wasmTier,
   webGpuUsable,
@@ -89,19 +90,32 @@ describe("model fitness", () => {
     expect(checkModelStorage(DEBERTA, probe()).status).toBe("pass");
   });
 
-  it("on a phone or tablet uses int8 on WASM, blocks a large model, and warns for a small one (T96)", () => {
+  it("on a phone or tablet only warns for larger models and loads a small one the low-memory way (T96, T98)", () => {
     const iphone = probe({ mobile: true, deviceMemoryGb: null });
+    const lite = {
+      id: "lite",
+      variants: { int8: { bytes: 57.5e6 }, fp16: { bytes: 79e6 } },
+      parseSeconds: { wasm: 0.4, wasm_1thread: 1.2, webgpu: 0.5 },
+    };
     expect(memoryLimited(iphone)).toBe(true);
-    expect(webGpuUsable(iphone)).toBe(false);
-    expect(checkWebGpu(iphone)).toMatchObject({ status: "pass", detail: "mobile-use-wasm" });
-    expect(chooseVariant(MODERNBERT, iphone)).toBe("int8");
-    expect(checkMobileMemory(MODERNBERT, iphone)).toMatchObject({ status: "fail", detail: "too-large-for-mobile" });
+    // Nothing is blocked for being on a phone (an iPhone 16 Pro runs Large): larger models warn and
+    // load the usual way (fp16 on WebGPU here).
+    expect(webGpuUsable(iphone)).toBe(true);
+    expect(checkMobileMemory(MODERNBERT, iphone)).toMatchObject({ status: "warn", detail: "may-not-fit" });
     expect(checkMobileMemory(DEBERTA, iphone)).toMatchObject({ status: "warn", detail: "may-not-fit" });
+    expect(lowMemoryLoad(MODERNBERT, iphone)).toBe(false);
+    expect(chooseVariant(MODERNBERT, iphone)).toBe("fp16");
+    // A small model (Lite) passes and loads as int8 on one WASM thread.
+    expect(checkMobileMemory(lite, iphone).status).toBe("pass");
+    expect(lowMemoryLoad(lite, iphone)).toBe(true);
+    expect(chooseVariant(lite, iphone)).toBe("int8");
+    expect(expectedParseSeconds(lite, iphone)).toBe(1.2);
     // A computer, or a mobile device that reports ample memory, is not limited.
     expect(checkMobileMemory(MODERNBERT, probe()).status).toBe("pass");
+    expect(lowMemoryLoad(lite, probe())).toBe(false);
+    expect(chooseVariant(lite, probe())).toBe("fp16");
     const bigTablet = probe({ mobile: true, deviceMemoryGb: 8 });
     expect(memoryLimited(bigTablet)).toBe(false);
-    expect(webGpuUsable(bigTablet)).toBe(true);
     expect(checkMobileMemory(MODERNBERT, bigTablet).status).toBe("pass");
     expect(memoryLimited(probe({ mobile: true, deviceMemoryGb: 4 }))).toBe(true);
   });

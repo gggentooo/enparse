@@ -65,6 +65,7 @@ import {
   checkModelVariant,
   checkModuleWorkers,
   checkMobileMemory,
+  memoryLimited,
   checkParseTime,
   checkStorageQuota,
   checkWasm,
@@ -182,12 +183,19 @@ export async function runModelChecks(
     const sizes = await env.listCached(urls);
     const cached = Object.fromEntries(paths.map((p, i) => [p, sizes[urls[i] as string] ?? null]));
     checks.push(checkModelSize(manifest, device.probe, cached), checkFilesCached(manifest, cached));
-    const present = urls.filter((u) => sizes[u] !== null && sizes[u] !== undefined);
-    const digests = await env.digestCachedFiles(present);
-    const byPath = Object.fromEntries(paths.map((p, i) => [p, digests[urls[i] as string] ?? null]));
-    checks.push(checkFilesIntegrity(manifest, byPath));
-    corrupt = corruptFiles(manifest, byPath);
-    if (corrupt.length) await env.deleteCachedFiles(corrupt.map((p) => base + p));
+    if (memoryLimited(device.probe)) {
+      // Phones and tablets (T98): hashing reads each whole file into the page's memory just before
+      // the worker loads the model. The files were verified when they were downloaded, and their
+      // sizes are checked above, so the hash is skipped here.
+      checks.push({ id: "files-integrity", stage: "model", status: "skip", detail: "low-memory-device" });
+    } else {
+      const present = urls.filter((u) => sizes[u] !== null && sizes[u] !== undefined);
+      const digests = await env.digestCachedFiles(present);
+      const byPath = Object.fromEntries(paths.map((p, i) => [p, digests[urls[i] as string] ?? null]));
+      checks.push(checkFilesIntegrity(manifest, byPath));
+      corrupt = corruptFiles(manifest, byPath);
+      if (corrupt.length) await env.deleteCachedFiles(corrupt.map((p) => base + p));
+    }
   }
   return { report: report(checks, startedAt, device.probe), manifest, corrupt };
 }

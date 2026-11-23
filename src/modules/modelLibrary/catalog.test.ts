@@ -62,7 +62,8 @@ describe("parseCatalog", () => {
 
   it.skipIf(!existsSync(PACKAGED))("accepts the packaged public/models/catalog.json (T66)", () => {
     const c = parseCatalog(JSON.parse(readFileSync(PACKAGED, "utf8")));
-    expect(c.models.map((m) => m.id)).toEqual(fixture.models.map((m) => m.id));
+    // Large and Compact first (the fixture's models), then models added by later releases (Lite, T98).
+    expect(c.models.slice(0, 2).map((m) => m.id)).toEqual(fixture.models.map((m) => m.id));
     expect(c.models.every((m) => m.base_model_license && m.base_model_url)).toBe(true);
   });
 

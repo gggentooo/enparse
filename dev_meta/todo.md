@@ -63,6 +63,15 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Training] Low-memory loading and the Lite model · T98 · Build
+
+- **Done:** 2026-11-23 (owner request: even Compact did not load on an iPhone 12 mini). Not yet confirmed on the phone.
+  - **Low-memory loading (phones and tablets):** `ModelRef.lowMemory` → one WASM thread and ONNX Runtime graph optimization disabled (`transformerBackend.ts` → `LOW_MEMORY_SESSION_OPTIONS`); the model stage skips hashing cached files there. Chrome, WASM, emulated phone, worker memory after loading Compact: 460 MB → 349 MB (graph optimization; the other settings changed nothing measurable).
+  - **Lite model (release model-v1.1.0):** `training/scripts/prune_vocab.py` + `configs/prune.yaml` prune Compact's vocabulary to the 43,863 word pieces English uses (of 128,000) and drop the other embedding rows — no retraining; the normal pipeline then evaluates, calibrates, exports, and packages `deberta_v3_xsmall_lite`. Files 57.5 MB int8 / 79.3 MB fp16 (Compact 90 / 144). Test: UPOS 97.06, chunk F1 96.67, UAS excl. punct 94.14, bracket F1 88.30, shown precision 95.58% — offered, nested view met (UPOS narrowly; Compact 97.65 / 97.01 / 94.54 / 89.04). Lite with low-memory loading: 237 MB after loading in the emulated phone.
+  - **App (owner, 2026-11-23: Large runs on an iPhone 16 Pro, so a model is blocked only when a check shows the device cannot run it):** on phones and tablets nothing is blocked for being mobile. Lite (int8 download ≤ `MOBILE_MAX_MODEL_BYTES`, 64 MiB) is recommended and loads the low-memory way; Large and Compact show the memory warning and load the usual way (WebGPU when usable). The crash guard (T96) covers a phone that cannot hold them. Desktop is unchanged (Lite is a third option). Lite's name, descriptions, and the versions (release 1.1.0; Large and Compact stay 1.0.0) are approved by the owner. `package_models.py`: per-model `version` (Large and Compact stay 1.0.0 and byte-identical: only Lite's 7 files and `catalog.json` are uploaded), derived models use their source's timings.
+  - Tests: `test_prune_vocab.py`, `packagedModels.test.ts` and `e2e/release.spec.ts` (now three models), preflight, backend, and service tests. Recorded in `plan-training.md` → Phase 11, `architecture.md`, `MODEL_CARD.md`, `reports/prune.md`, `reports/release.md`.
+  - Open: fine-tuning the pruned model to recover accuracy; benchmarking Lite itself; the download still holds the whole file in page memory before storing it (a streaming download would lower the peak further).
+
 #### [Modules/parser] Safari: "The parser model is not ready" in the production build · T97 · Build
 
 - **Done:** 2026-11-23 (owner report from the deployed site; Safari only). Cause: the production build's Transformers.js chunk imports two shared helpers back from the worker's entry file (`import … from "./parser.worker-<hash>.js"`); Safari evaluates a worker's entry module a second time when it is imported (Chrome reuses the running module), so a second message handler without a model answered every parse with `ParserNotReadyError`, ahead of the real result. The dev server does not bundle, so it never happened locally. Fix: `parser.worker.ts` → `registerWorker` marks the worker scope and registers the handler once. Reproduced and confirmed fixed in Safari 27 on the production build served locally (each parse now gets one answer). Test: `parser.worker.test.ts`. The entry module is still evaluated twice in Safari (harmless; a thin entry file would avoid it). Recorded in `architecture.md` → *Model readiness*.
@@ -71,7 +80,7 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - **Done:** 2026-11-23 (owner request: an iPhone 12 mini reloaded the page with "a problem occurred" whenever a downloaded model loaded, which made the site unusable).
   - **Crash guard (any device):** the model id is stored while the worker loads it (`modelLibrary/selection.ts` → `markLoading`, `clearLoading`, `interruptedLoad`). If the mark is still there at the next start, the saved model is not loaded again by itself: status `failed` with the new reason `crashed`, a message that points to a smaller model, and the model drops out of the recommendation. Retry still works.
-  - **Phones and tablets:** new probe `mobile` (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS including desktop mode, Android). A mobile device that does not report ≥ 8 GB of memory uses int8 on WASM only; the new fitness check `mobile-memory` blocks a model whose int8 file is over 128 MiB (Large) and warns for smaller ones (Compact). Thresholds in `preflight/requirements.ts` (**proposed**; owner may change them).
+  - **Phones and tablets:** new probe `mobile` (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS including desktop mode, Android) and the fitness check `mobile-memory` for mobile devices that do not report ≥ 8 GB of memory. First version: int8 on WASM only, large models blocked. Changed in T98 (owner): nothing is blocked for being mobile; larger models warn, Lite is recommended.
   - Checked with an emulated iPhone 12 mini in Chrome (Large "not supported on this device", Compact recommended with the warning). Not yet checked on the real phone: whether Compact int8 fits in its memory is unknown; if it does not, the crash guard stops the reload loop. Tests: `checks.test.ts`, `environment.test.ts`, `parserService.test.ts`. Recorded in `architecture.md` → *Pre-flight checks*, *Model readiness*.
 
 #### [Training] Phase 11 packaging and release · T66 · Build
@@ -671,3 +680,11 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T16:30:00Z — Claude Fable 5.2, T96 and T97 added and done
 
 - Added: T96 (Done): mobile guard (crash guard and phone/tablet rule). T97 (Done): Safari's duplicate worker handler in the production build.
+
+### 2026-11-23T19:00:00Z — Claude Fable 5.2, T98 added and done
+
+- Added: T98 (Done): low-memory loading on phones and the Lite model (pruned vocabulary; release model-v1.1.0).
+
+### 2026-11-23T20:00:00Z — Claude Fable 5.2, T98: phones no longer block models; Lite texts approved
+
+- Modified: T98 and T96 (Done): larger models only warn on phones and tablets and load the usual way (owner: Large runs on an iPhone 16 Pro); Lite's name, descriptions, and the versioning approved by the owner.

@@ -401,8 +401,21 @@ export interface ModelSession {
 export interface TransformersRuntime {
   loadLabels(folder: string): Promise<unknown>;
   loadTokenizer(folder: string): Promise<TokenizerLike>;
-  loadModel(folder: string, variant: ModelRef["variant"], device: ComputeBackend): Promise<ModelSession>;
+  loadModel(
+    folder: string,
+    variant: ModelRef["variant"],
+    device: ComputeBackend,
+    lowMemory?: boolean,
+  ): Promise<ModelSession>;
 }
+
+/**
+ * ONNX Runtime session options for memory-limited devices (ModelRef.lowMemory; T98). Graph
+ * optimization at load copies the weights while it rewrites the graph: without it the worker held
+ * 349 MB instead of 460 MB after loading Compact int8 on WASM (Chrome, emulated phone), at the
+ * same parse speed. Disabling the CPU memory arena and memory patterns changed nothing.
+ */
+export const LOW_MEMORY_SESSION_OPTIONS = { graphOptimizationLevel: "disabled" } as const;
 
 /**
  * Options of the default runtime. Tests in Node pass a file-path base URL, the CPU device,
@@ -446,11 +459,16 @@ export function transformersRuntime(options: RuntimeOptions = {}): TransformersR
       const tok = await t.AutoTokenizer.from_pretrained(folder);
       return { encode: (text, opts) => tok.encode(text, opts) };
     },
-    async loadModel(folder, variant, device) {
+    async loadModel(folder, variant, device, lowMemory = false) {
       const t = await lib();
+      // One WASM thread on memory-limited devices: no thread pool and no shared memory growth (T98).
+      // Takes effect when ONNX Runtime's WASM starts, i.e. for the first model loaded in this worker.
+      const wasm = t.env.backends.onnx.wasm;
+      if (lowMemory && wasm) wasm.numThreads = 1;
       const model = await t.AutoModelForTokenClassification.from_pretrained(folder, {
         dtype: variant === "fp16" ? "fp16" : "q8",
         device: options.device ?? device,
+        ...(lowMemory ? { session_options: { ...LOW_MEMORY_SESSION_OPTIONS } } : {}),
       });
       return {
         async run(ids) {
@@ -543,7 +561,7 @@ export function createTransformerBackend(runtime: TransformersRuntime = transfor
         const labels = raw as LabelConfig;
         const tok = await runtime.loadTokenizer(model.folder);
         onProgress({ phase: "initialize", progress: 0.3 });
-        session = await runtime.loadModel(model.folder, model.variant, backend);
+        session = await runtime.loadModel(model.folder, model.variant, backend, model.lowMemory === true);
         onProgress({ phase: "initialize", progress: 0.9 });
         const candidate = { labels, tok, session, special: specialIds(tok), backend };
         await selfTest(candidate);

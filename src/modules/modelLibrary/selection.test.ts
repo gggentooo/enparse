@@ -39,6 +39,19 @@ describe("saved choice", () => {
 });
 
 describe("recommendModel (owner rule, T43: the default first, its backup otherwise)", () => {
+  it("on a phone or tablet prefers a model without the memory warning, else the first that fits (T98)", () => {
+    const warn = { verdict: "warn" as const, reasons: [{ id: "mobile-memory", status: "warn" }] };
+    const three = {
+      ...catalog,
+      models: [...catalog.models, { ...catalog.models[1]!, id: "lite", folder: "lite" }],
+    };
+    const fitness = [fit("modernbert_base", warn), fit("deberta_v3_xsmall", warn), fit("lite")];
+    expect(recommendModel(three, fitness, 5)).toBe("lite");
+    // Without such a model (or when it failed here), the usual order applies: nothing is excluded.
+    expect(recommendModel(three, fitness, 5, new Set(["lite"]))).toBe("modernbert_base");
+    expect(recommendModel(catalog, fitness.slice(0, 2), 5)).toBe("modernbert_base");
+  });
+
   it("recommends the default model (Large) when it runs well here", () => {
     expect(recommendModel(catalog, [fit("deberta_v3_xsmall"), fit("modernbert_base")], 5)).toBe("modernbert_base");
   });

@@ -63,7 +63,7 @@ function fakeWorker() {
   let parseGate: Promise<void> = Promise.resolve();
   const client: ParserClient = {
     async load(model: ModelRef) {
-      calls.push(`load:${model.id}:${model.variant}`);
+      calls.push(`load:${model.id}:${model.variant}${model.lowMemory ? ":low-memory" : ""}`);
       emit({ state: "loading", modelId: model.id, phase: "initialize", progress: 0.5 });
       const failure = loadFailures.shift();
       if (failure) {
@@ -100,7 +100,10 @@ function fakeWorker() {
 }
 
 /** Mocked modules with an in-memory model cache and saved choice. */
-function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: string[]; loading?: string } = {}) {
+function setup(
+  opts: { device?: DeviceAssessment; saved?: string; cached?: string[]; loading?: string; catalog?: Catalog } = {},
+) {
+  const models = opts.catalog ?? catalog;
   const worker = fakeWorker();
   const cached = new Set(opts.cached ?? []);
   let saved: string | null = opts.saved ?? null;
@@ -110,8 +113,8 @@ function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: strin
   const modelChecks: Array<{ verdict: PreflightReport["verdict"]; corrupt: string[] }> = [];
   const deps = {
     runDeviceChecks: vi.fn<ParserServiceDeps["runDeviceChecks"]>(async () => opts.device ?? device()),
-    loadCatalog: vi.fn<ParserServiceDeps["loadCatalog"]>(async () => catalog),
-    assessModels: vi.fn<ParserServiceDeps["assessModels"]>(() => catalog.models.map((m) => fit(m.id))),
+    loadCatalog: vi.fn<ParserServiceDeps["loadCatalog"]>(async () => models),
+    assessModels: vi.fn<ParserServiceDeps["assessModels"]>(() => models.models.map((m) => fit(m.id))),
     getModelStates: vi.fn<ParserServiceDeps["getModelStates"]>(async (c: Catalog) => {
       const out: Record<string, ModelState> = {};
       for (const m of c.models) {
@@ -231,6 +234,32 @@ describe("start", () => {
     expect(t.service.getSnapshot().library.recommendedId).toBe(B.id);
     await t.service.retryLoad();
     expect(t.service.getSnapshot().status).toMatchObject({ state: "ready", modelId: A.id });
+  });
+
+  it("on a phone or tablet loads a small model the low-memory way and larger models as usual (T98)", async () => {
+    const phone: DeviceAssessment = {
+      report: report("ok"),
+      probe: { persisted: false, mobile: true, deviceMemoryGb: null } as EnvironmentProbe,
+    };
+    // Compact (90 MB int8) is over the low-memory limit: the usual load.
+    const big = setup({ device: phone, saved: B.id, cached: [B.id] });
+    await big.service.start();
+    expect(big.worker.calls).toEqual([`load:${B.id}:int8`]);
+    // A Lite-sized model (58 MB int8): the low-memory load.
+    const lite: CatalogEntry = {
+      ...B,
+      id: "lite",
+      folder: "lite",
+      variants: { int8: { ...B.variants.int8!, bytes: 50e6 } }, // plus the shared files: under the 64 MiB limit
+    };
+    const small = setup({
+      device: phone,
+      saved: lite.id,
+      cached: [lite.id],
+      catalog: { ...catalog, models: [A, B, lite] },
+    });
+    await small.service.start();
+    expect(small.worker.calls).toEqual(["load:lite:int8:low-memory"]);
   });
 
   it("does not auto-download a saved choice that is not cached", async () => {

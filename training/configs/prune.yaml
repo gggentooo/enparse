@@ -1,0 +1,61 @@
+# =============================================================================
+# training/configs/prune.yaml — vocabulary pruning for the Lite model (T98)
+# =============================================================================
+#
+# Description:
+#   Settings of scripts/prune_vocab.py. The DeBERTa-v3-xsmall tokenizer has
+#   128,000 word pieces and their embedding table is more than half of the
+#   int8 model file (49 of 89 MB). The Lite model keeps only the pieces that
+#   English text actually uses; every other weight is identical to the source
+#   model. Words whose usual piece was dropped are split into smaller kept
+#   pieces (single characters are always kept), so nothing becomes unknown
+#   except characters the source tokenizer does not know either.
+#
+# Honest evaluation: the kept set is counted WITHOUT the EWT dev and test
+#   splits, so dev/test metrics of the Lite model show the real cost of pruning.
+#
+# Keys:
+#   source.model / source.run   — run to prune (default run: the selected run of
+#                                 data/eval/<model>/phase7_biaffine.json)
+#   output.model                — key of the pruned model (checkpoint, dataset, eval, onnx folders)
+#   corpora                     — text counted for piece frequencies; kinds:
+#                                 tatoeba (id<TAB>lang<TAB>text, bz2), wordnet (WN-LMF XML, gz),
+#                                 aligned (js/align_tokens.mjs output), csv (first column words)
+#   min_count                   — keep a piece seen at least this many times in the corpora
+#   keep_all_from               — corpora whose pieces are kept at any count
+#   keep_max_chars              — always keep pieces of at most this many characters
+#                                 (without the word-start mark): the fallback for unseen words
+#   keep_short_ranges           — ... but only for characters in these code-point ranges
+#                                 (Latin letters, general punctuation, currency); single
+#                                 characters of other scripts become the unknown token
+#
+# Status: set for release 1.1.0 (T98, 2026-11-23).
+# =============================================================================
+
+source:
+  model: deberta_v3_xsmall
+  run: null                 # null = selected run of the biaffine stage
+
+output:
+  model: deberta_v3_xsmall_lite
+
+corpora:
+  tatoeba_en:
+    kind: tatoeba
+    path: data/raw/dictionary/eng_sentences.tsv.bz2
+  wordnet:
+    kind: wordnet
+    path: data/raw/dictionary/english-wordnet-2025.xml.gz
+  ewt_train:
+    kind: aligned
+    path: data/processed/aligned/train.jsonl
+  ngsl:
+    kind: csv
+    path: data/raw/ngsl/NGSL_12_lemmatized_for_research.csv
+
+min_count: 10
+keep_all_from: [ewt_train, ngsl]
+keep_max_chars: 1
+keep_short_ranges:
+  - [0x0000, 0x024F]    # Basic Latin … Latin Extended-B
+  - [0x2000, 0x20CF]    # general punctuation, super/subscripts, currency symbols

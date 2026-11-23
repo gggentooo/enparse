@@ -30,10 +30,10 @@ Storage: *.onnx files here are tracked with Git LFS (root .gitattributes).
 Open items (todo.md): model library (hosting and storage limits
   for several models).
 
-Status: release model-v1.0.0 packaged (T66): modernbert_base (Large), deberta_v3_xsmall
-  (Compact). Served from R2 in production (PUBLISHING.md).
+Status: release model-v1.1.0 packaged (T66, T98): modernbert_base (Large), deberta_v3_xsmall
+  (Compact), deberta_v3_xsmall_lite (Lite). Served from R2 in production (PUBLISHING.md).
 -->
 
 # Shipped models
 
-Release model-v1.0.0: Large (`modernbert_base`) and Compact (`deberta_v3_xsmall`). Checksums: [`training/reports/release.md`](../../training/reports/release.md). See [`training/MODEL_CARD.md`](../../training/MODEL_CARD.md).
+Release model-v1.1.0: Large (`modernbert_base`), Compact (`deberta_v3_xsmall`), and Lite (`deberta_v3_xsmall_lite`, Compact with a pruned vocabulary for phones; T98). Checksums: [`training/reports/release.md`](../../training/reports/release.md). See [`training/MODEL_CARD.md`](../../training/MODEL_CARD.md).

@@ -22,6 +22,7 @@ import {
   type TokenizerLike,
   type TransformersRuntime,
   type WindowOutput,
+  LOW_MEMORY_SESSION_OPTIONS,
   createTransformerBackend,
   decodeWindows,
   loadFailureReason,
@@ -260,6 +261,20 @@ describe("createTransformerBackend", () => {
     expect(session.runs.length).toBe(2); // both sentences packed into one window
     await b.unload();
     expect(b.isReady()).toBe(false);
+  });
+
+  it("asks the runtime for the low-memory load only for a low-memory model reference (T98)", async () => {
+    const asked: boolean[] = [];
+    const runtime = fakeRuntime({
+      loadModel: async (_folder, _variant, _device, lowMemory) => {
+        asked.push(lowMemory === true);
+        return fakeSession();
+      },
+    });
+    await createTransformerBackend(runtime).load(model, () => {});
+    await createTransformerBackend(runtime).load({ ...model, lowMemory: true }, () => {});
+    expect(asked).toEqual([false, true]);
+    expect(LOW_MEMORY_SESSION_OPTIONS).toEqual({ graphOptimizationLevel: "disabled" });
   });
 
   it("rejects an invalid labels.json as invalid-model and a wrong output width in the self-test", async () => {

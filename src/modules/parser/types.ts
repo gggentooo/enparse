@@ -376,6 +376,11 @@ export type ModelRef = {
   variant: "int8" | "fp16";
   /** Whether the model ships the nested view (catalog.json → nested_view). */
   nestedView: boolean;
+  /**
+   * Load with as little memory as possible (phones and tablets; T98): one WASM thread and the
+   * low-memory session options of transformerBackend.ts. Slower, same outputs.
+   */
+  lowMemory?: boolean;
 };
 
 // -- backend contract (T35; implemented by transformerBackend.ts, T63) ---------------------

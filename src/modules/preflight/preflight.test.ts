@@ -66,6 +66,23 @@ describe("runners", () => {
     expect(clean.report.checks.find((c) => c.id === "files-cached")?.detail).toBe("not-cached");
   });
 
+  it("model stage on a phone or tablet: checks sizes but does not hash the cached files (T98)", async () => {
+    const phone = await runDeviceChecks(
+      env({ probeEnvironment: async () => probe({ mobile: true, deviceMemoryGb: null }) }),
+    );
+    const digest = vi.fn<EnvironmentApi["digestCachedFiles"]>(async (urls) =>
+      Object.fromEntries(urls.map((u) => [u, null])),
+    );
+    const r = await runModelChecks("/models/m/", phone, env({ digestCachedFiles: digest }));
+    expect(digest).not.toHaveBeenCalled();
+    expect(r.report.checks.find((c) => c.id === "files-integrity")).toMatchObject({
+      status: "skip",
+      detail: "low-memory-device",
+    });
+    expect(r.report.checks.some((c) => c.id === "files-cached")).toBe(true);
+    expect(r.corrupt).toEqual([]);
+  });
+
   it("model stage: an unreadable labels.json fails without throwing", async () => {
     const device = await runDeviceChecks(env());
     const r = await runModelChecks(

@@ -83,17 +83,22 @@ export function memoryLimited(probe: EnvironmentProbe): boolean {
 }
 
 /**
- * WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough storage buffer
- * bindings. Never on a memory-limited phone or tablet: int8 on WASM needs less memory (T96).
+ * The low-memory way of loading (T98): on a memory-limited phone or tablet, a model small enough
+ * for it (int8 download, tokenizer files included, at most MOBILE_MAX_MODEL_BYTES: Lite) is
+ * loaded as int8 on one WASM thread without graph optimization. Larger models load the usual
+ * way: some phones run them (an iPhone 16 Pro runs Large; owner, 2026-11-23) and browsers do not
+ * say how much memory a phone has.
  */
+export function lowMemoryLoad(model: ModelRequirements, probe: EnvironmentProbe): boolean {
+  const bytes = model.variants.int8?.bytes;
+  return memoryLimited(probe) && bytes !== undefined && bytes <= MOBILE_MAX_MODEL_BYTES;
+}
+
+/** WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough storage buffer bindings. */
 export function webGpuUsable(probe: EnvironmentProbe): boolean {
   const g = probe.webgpu;
   return (
-    !memoryLimited(probe) &&
-    g !== "unknown" &&
-    g !== null &&
-    g.shaderF16 &&
-    g.maxStorageBufferBindingSize >= MIN_WEBGPU_STORAGE_BINDING_BYTES
+    g !== "unknown" && g !== null && g.shaderF16 && g.maxStorageBufferBindingSize >= MIN_WEBGPU_STORAGE_BINDING_BYTES
   );
 }
 
@@ -118,7 +123,6 @@ export function checkWebGpu(p: EnvironmentProbe): CheckResult {
   const g = p.webgpu;
   if (g === "unknown") return result("webgpu", "device", "skip", "not-measurable");
   if (g === null) return result("webgpu", "device", "pass", "unavailable-use-wasm", { measured: false });
-  if (memoryLimited(p)) return result("webgpu", "device", "pass", "mobile-use-wasm", { measured: false });
   if (!g.shaderF16) return result("webgpu", "device", "pass", "no-shader-f16-use-wasm", { measured: false });
   if (g.maxStorageBufferBindingSize < MIN_WEBGPU_STORAGE_BINDING_BYTES) {
     return result("webgpu", "device", "pass", "small-buffers-use-wasm", {
@@ -153,8 +157,9 @@ export function checkMemoryHint(p: EnvironmentProbe, minGb: number): CheckResult
 
 // -- per-model fitness ---------------------------------------------------------------------
 
-/** Variant for this device: fp16 on usable WebGPU (if shipped), else int8. */
+/** Variant for this device: fp16 on usable WebGPU (if shipped), else int8; int8 for a low-memory load (T98). */
 export function chooseVariant(model: ModelRequirements, p: EnvironmentProbe): "int8" | "fp16" | null {
+  if (lowMemoryLoad(model, p)) return "int8";
   if (webGpuUsable(p) && model.variants.fp16) return "fp16";
   if (model.variants.int8) return "int8";
   return null;
@@ -199,7 +204,8 @@ export function expectedParseSeconds(model: ModelRequirements, p: EnvironmentPro
   if (v === null) return null;
   const t = model.parseSeconds;
   if (v === "fp16") return t?.webgpu ?? null;
-  return t?.[wasmTier(p)] ?? t?.wasm ?? null;
+  // A low-memory load runs on one WASM thread (T98).
+  return t?.[lowMemoryLoad(model, p) ? "wasm_1thread" : wasmTier(p)] ?? t?.wasm ?? null;
 }
 
 export function checkParseTime(model: ModelRequirements, p: EnvironmentProbe): CheckResult {
@@ -212,16 +218,16 @@ export function checkParseTime(model: ModelRequirements, p: EnvironmentProbe): C
 }
 
 /**
- * Phones and tablets (T96): a model whose int8 file is over MOBILE_MAX_MODEL_BYTES is blocked
- * (the tab would be ended for memory while it loads); a smaller one warns.
+ * Phones and tablets (T96, T98): a model whose int8 file is over MOBILE_MAX_MODEL_BYTES warns —
+ * the tab may be ended for memory while it loads (an iPhone 12 mini), though newer phones run it
+ * (an iPhone 16 Pro runs Large). Nothing is blocked for being on a phone: browsers do not report a
+ * phone's memory, and the crash guard (parserService) stops a reload loop. Smaller models (Lite) pass.
  */
 export function checkMobileMemory(model: ModelRequirements, p: EnvironmentProbe): CheckResult {
   if (!memoryLimited(p)) return result("mobile-memory", "model", "pass", "ok");
   const bytes = model.variants.int8?.bytes ?? null;
   const extra = { measured: bytes, required: MOBILE_MAX_MODEL_BYTES };
-  if (bytes === null || bytes > MOBILE_MAX_MODEL_BYTES) {
-    return result("mobile-memory", "model", "fail", "too-large-for-mobile", extra);
-  }
+  if (bytes !== null && bytes <= MOBILE_MAX_MODEL_BYTES) return result("mobile-memory", "model", "pass", "ok", extra);
   return result("mobile-memory", "model", "warn", "may-not-fit", extra);
 }
 

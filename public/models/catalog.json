@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-23T06:08:59Z",
+  "generated_at": "2026-11-23T09:15:42Z",
   "models": [
     {
       "id": "modernbert_base",
@@ -146,6 +146,79 @@
           "shown_precision": 0.9572,
           "shown_coverage": 0.666,
           "role_precision": 0.9573
+        }
+      },
+      "nested_view": true,
+      "performance": {
+        "parse_5000_chars_s": {
+          "wasm": 0.423,
+          "wasm_2core": 1.342,
+          "wasm_1thread": 1.223,
+          "webgpu": 0.515
+        }
+      }
+    },
+    {
+      "id": "deberta_v3_xsmall_lite",
+      "display_name": "Lite",
+      "description": "Smallest download, for phones, tablets, and devices with little memory. Slightly less accurate than Compact.",
+      "description_ko": "다운로드 크기가 가장 작습니다. 휴대폰·태블릿처럼 메모리가 적은 기기용입니다. Compact보다 정확도가 조금 낮습니다.",
+      "base_model": "microsoft/deberta-v3-xsmall",
+      "base_model_url": "https://huggingface.co/microsoft/deberta-v3-xsmall",
+      "base_model_license": "MIT",
+      "license": "CC BY-SA 4.0",
+      "model_version": "1.1.0",
+      "folder": "deberta_v3_xsmall_lite",
+      "labels": {
+        "file": "labels.json",
+        "bytes": 4464,
+        "sha256": "c550f593f9a0f6508eef9a8fcc110b6428e4451bf8b04c7f27143851036fab8c"
+      },
+      "variants": {
+        "int8": {
+          "file": "onnx/model_quantized.onnx",
+          "bytes": 57508102,
+          "sha256": "f3c6bc7c68aa20088cd522cf247f50aa929e40be6fe0a45d5060f34328d9fc46"
+        },
+        "fp16": {
+          "file": "onnx/model_fp16.onnx",
+          "bytes": 79336510,
+          "sha256": "c033599de42510265bf84c17c2fbfc05b96dee021ca2c32a5a4390f0eb897d2b"
+        }
+      },
+      "shared_files": [
+        {
+          "file": "config.json",
+          "bytes": 6077,
+          "sha256": "01c345af3a623ed93194324af624b4c6a5a81f5151ab1eced7367491d6bd1706"
+        },
+        {
+          "file": "special_tokens_map.json",
+          "bytes": 970,
+          "sha256": "b2f1b2f15f29a6b6d9d6ea4eca1675d2c231a71477f151d48f79cc83a625ba21"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 3206294,
+          "sha256": "c000e112f3da6d68c1fcf902f3ad7ddf2070521040a354f406c7819d4cfea494"
+        },
+        {
+          "file": "tokenizer_config.json",
+          "bytes": 1318,
+          "sha256": "70ce8a0c217eb34028b390ef5b1d9ec1712941e10da13913fb73f94cefabac03"
+        }
+      ],
+      "metrics": {
+        "upos": 0.9706,
+        "chunk_f1": 0.9667,
+        "uas": 0.9385,
+        "las": 0.9191,
+        "nested": {
+          "uas_no_punct": 0.9414,
+          "bracket_f1": 0.883,
+          "shown_precision": 0.9558,
+          "shown_coverage": 0.6552,
+          "role_precision": 0.9591
         }
       },
       "nested_view": true,
