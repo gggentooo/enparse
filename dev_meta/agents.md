@@ -180,7 +180,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 
 ## Testing guide
 
-**Tooling:** Vitest 5.1.0 for unit tests; React Testing Library 16 + jsdom for components (opt in per file with `// @vitest-environment jsdom`); Playwright for end-to-end browser tests (all approved; T13).
+**Tooling:** Vitest 5.1.0 for unit tests; React Testing Library 16 + jsdom for components (opt in per file with `// @vitest-environment jsdom`); Playwright for end-to-end browser tests (all approved; T13). **End-to-end tests (T62; owner, 2026-11-23):** `e2e/*.spec.ts`, run in the system Chrome (`channel: "chrome"`; no browser download). CI has no model files, so `npm run test:e2e` starts `vite --mode e2e`, where `vite.e2e.ts` swaps the parser worker's model backend for `e2e/fakeBackend.ts` (a deterministic word-list tagger with the `ParserBackend` contract) and serves a small e2e catalog and the test dictionary; everything else is the real app. `npm run test:e2e:models` runs the same tests against the trained models and the built dictionary (local only). The stand-ins never enter production builds. **Release checks (T66):** `src/modules/parser/packagedModels.test.ts` runs every packaged model in Node against its Phase 9 outputs (skipped without packaged files), and `npm run test:e2e:release` runs `e2e/release.spec.ts` (and the main flow) against the production build behind the real Pages Functions; run both before uploading a release.
 
 - **Modules:** unit tests for every public function, including edge cases (empty input, max length, non-Latin text).
 - **Services:** test composition and subscription behavior with mocked modules.
@@ -205,7 +205,7 @@ Tooling decisions: T13 (owner, 2026-11-21).
 | Frontend | React 19.3.1, react-dom 19.3.1, react-router 8.5.2, `@vitejs/plugin-react` 6.3.0 | Approved (2026-11-21, T13) |
 | Component / end-to-end tests | React Testing Library 16.3.3 + jsdom 31.0.1; Playwright 1.65.1; fake-indexeddb 6.2.8 (IndexedDB in unit tests) | Approved (2026-11-21, T13; fake-indexeddb with T29) |
 | Lint / format | oxlint 1.94.0 (`.oxlintrc.json`: correctness errors, react hooks, no `any`, no default exports) + Prettier 3.10.1 (`printWidth` 120) | Approved (2026-11-21, T13; ESLint not used: typescript-eslint supports TypeScript < 6.1 only) |
-| CI | GitHub Actions (`.github/workflows/ci.yml`: typecheck, lint, test, build; checkout without LFS) | Approved (2026-11-21, T13) |
+| CI | GitHub Actions (`.github/workflows/ci.yml`: typecheck, lint, test, build, end-to-end tests with the fake model backend in the runner's Chrome; checkout without LFS) | Approved (2026-11-21, T13; e2e step T62) |
 
 | Command | Purpose | Status |
 |---------|---------|--------|
@@ -216,7 +216,11 @@ Tooling decisions: T13 (owner, 2026-11-21).
 | `npm test` | Unit tests (`vitest run`) | Available |
 | `npm run lint` | oxlint + Prettier check (`src/`, `functions/`, `vite.config.ts`, `vite.localModels.ts`) | Available |
 | `npm run format` | Prettier write | Available |
-| `npm run test:e2e` | Playwright tests | Added with the first tests (T62) |
+| `npm run test:e2e` | End-to-end tests (Playwright, system Chrome) against `vite --mode e2e`: fake model backend, e2e catalog, test dictionary (`vite.e2e.ts`); run in CI | Available |
+| `npm run test:e2e:models` | The same end-to-end tests against the trained models and the built dictionary on this machine (`vite --mode local-models`); not in CI | Available |
+| `npm run test:e2e:release` | End-to-end tests against the production build with the packaged models (`vite preview --mode release`; release check before uploading, T66); not in CI | Available |
+| `npm run preview:release` | Build, then preview the site as deployed: `/models` and `/dict` through the Pages Functions from the release files (`vite.release.ts`) | Available |
+| `npm run r2 -- list \| upload <bucket> \| verify <site>` | Release files in R2 (`scripts/r2.ts`; see [`PUBLISHING.md`](PUBLISHING.md)) | Available |
 
 ### Training code (`training/`)
 
@@ -344,3 +348,13 @@ Tooling decisions: T13 (owner, 2026-11-21).
 
 - Added: *Tooling and commands* → `npm run dev:models` (trained models served locally by `vite.localModels.ts`).
 - Modified: `npm run lint` covers `vite.localModels.ts`.
+
+### 2026-11-23T14:00:00Z — Claude Opus 5.5, End-to-end tests and CI (T62)
+
+- Added: *Testing guide* → end-to-end tests (fake model backend in CI, real models locally, system Chrome).
+- Modified: *Tooling and commands* → `npm run test:e2e`, `npm run test:e2e:models` available; CI runs the end-to-end tests.
+
+### 2026-11-23T14:30:00Z — Claude Opus 5.5, Release checks and publishing commands
+
+- Added: *Testing guide* → release checks (packaged-model integration test, `test:e2e:release`).
+- Added: *Tooling and commands* → `test:e2e:release`, `preview:release`, `r2`; `PUBLISHING.md`.

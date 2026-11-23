@@ -47,21 +47,51 @@ This guide applies to all contributors (human and AI) editing this file.
 - **Task:** Decide whether and when to plan the feedback module, export format, annotation guidelines, and `ingest_feedback.py` described in the Q&A (sections a–d are not in the plan).
 - **Needs:** T14
 
-#### [Project] End-to-end tests and CI · T62 · Build
+#### [Modules/parser] ONNX Runtime Web files for offline use · T94 · Build
 
-- **Files:** `package.json` (`test:e2e`), Playwright config, CI config
-- **Task:** Paste text → see chunks → look up a word → add to vocab → export; run lint, typecheck, unit, and e2e tests in CI.
-- **Needs:** T13, T48, T53, T56, T57
+- **Files:** `src/modules/parser/transformerBackend.ts`, `src/modules/modelLibrary/downloads.ts`, `src/pwa/sw.ts`
+- **Task:** The worker loads `/models/_ort/ort-wasm-simd-threaded.asyncify.{mjs,wasm}` (26.9 MB) from the network on every model load; only the browser's HTTP cache (one day) keeps it, so a fully downloaded model may not load offline after that. Check offline loading in Chrome and Safari; if it fails, store both files in Cache Storage with the model download (verified like model files) and make the backend read them from there. Found in T66 (the build no longer ships its own copy: over Pages' 25 MiB limit).
+- **Needs:** —
 
-#### [Training] Phase 11 packaging and release · T66 · Build
+#### [Modules/modelLibrary] Update path when a release changes model files · T95 · Build
 
-- **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
-- **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
-- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65, T78
+- **Files:** `src/modules/modelLibrary/downloads.ts`, `src/modules/preflight/checks.ts`, `src/services/parserService.ts`
+- **Task:** A visitor who downloaded model-v1.0.0 keeps its files in Cache Storage after a new release changes them at the same URLs. The library decides "downloaded" from file sizes only. Check what happens (old model keeps loading, integrity failure, or re-download), then make it explicit: compare the cached `labels.json` → `model_version` with the catalog and offer an update on the model card. Until then, `PUBLISHING.md` → *Update* tells colleagues to delete and re-download. Found in T66.
+- **Needs:** —
 
 ---
 
 ## Done
+
+#### [Training] Phase 11 packaging and release · T66 · Build
+
+- **Done:** 2026-11-23. Release **model-v1.0.0** (`training/configs/catalog.yaml` → `release.version`; the owner creates the git tag when committing).
+  - **Packaging:** `training/scripts/package_models.py` offers the models that meet `eval.yaml` → `acceptance`. That is Large (ModernBERT) and Compact (DeBERTa-v3-xsmall), in catalog order. DistilBERT (UPOS 96.82) and BERT (96.995) are reported as not offered.
+    - Copies the shipped files to `public/models/<id>/` (unchanged files are skipped).
+    - Writes `labels.json` with `model_version` 1.0.0 and the files' sizes and SHA-256 (validated, no needed field null).
+    - Writes `catalog.json` (schema v1, measured metrics, Phase 10 speed tiers, new optional `base_model_url` and `base_model_license`).
+    - Writes the release record `training/reports/release.md` (runs, seeds, config hashes, data version, checksums) and the per-model integration references (`training/data/release/integration/`).
+    - `--check` compares `public/models/` with the exports. Tests: `training/tests/test_package_models.py`.
+  - **Model card:** `training/MODEL_CARD.md` completed (summary, base models and licenses, metrics, calibration, export and parity, performance, known weaknesses, intended use, reproducibility).
+  - **Integration tests:**
+    - `src/modules/parser/packagedModels.test.ts`, per packaged model in Node: files vs catalog and `labels.json`; Phase 9 int8 outputs reproduced exactly on 20 test sentences; a `ParseResult` with `model_version`, wink offsets, valid trees, and phrases.
+    - `e2e/release.spec.ts` (`npm run test:e2e:release`): the production build behind the real Pages Functions with the release files (`vite.release.ts`). Each model downloads, verifies, loads (WebGPU here), and parses, and switching models replaces the loaded one.
+    - All pass.
+  - **About page:** model credits come from the catalog (static list until it loads); `TODO(T66)` removed.
+  - **Deployment:**
+    - `scripts/r2.ts` (`npm run r2 -- list | upload <bucket> | verify <site>`) maps the release files to R2 keys and uploads with Wrangler via npx (not a dependency).
+    - `PUBLISHING.md`: step-by-step publishing for the closed preview (R2, Pages Direct Upload, `MODELS` binding, verification, Cloudflare Access with email codes, sharing, updates, costs, Git LFS and tag).
+  - **Fixes found on the way:**
+    - The build shipped ONNX Runtime's 26.9 MB `.wasm` (over Pages' 25 MiB limit, and precached by the service worker). `skipModelFiles` now drops it, and the build fails on any file over 25 MiB.
+    - Model files are downloaded with `cache: "no-store"`.
+    - The Function makes `labels.json` revalidate like `catalog.json`.
+    - The manifest is fetched with credentials (Access).
+    - The Korean description in `catalog.yaml` was invalid YAML; it is now quoted.
+  - **Follow-ups:** T94, T95. Recorded in `architecture.md` → *Deployment*, `plan-training.md` → Phase 11.
+
+#### [Project] End-to-end tests and CI · T62 · Build
+
+- **Done:** 2026-11-23 (owner decisions the same day: a fake model in CI plus the real models locally; the system Chrome). `e2e/app.spec.ts` covers the main flow: choose a model (download, integrity and model checks, load) → paste and parse → structure view (subject and predicate) → phrase view (NP / VP chunks) → select a word (part of speech, dictionary summary with 달리다 for "runs" → run) → add it to a new list → the dictionary page ("runs" → base form: run) → the vocabulary page → export JSON (file name and content checked). `npm run test:e2e` starts `vite --mode e2e`: `vite.e2e.ts` resolves the parser worker's `./transformerBackend` to `e2e/fakeBackend.ts` (a deterministic word-list tagger with the `ParserBackend` contract; the decoder, labeler, annotator, services, and UI are the real ones), serves an e2e catalog with one small model (real sizes and SHA-256) and the unit tests' dictionary; never in builds. `npm run test:e2e:models` runs the same test against the real Compact model and the built dictionary (`vite --mode local-models`; local only). `playwright.config.ts`: system Chrome (`channel: "chrome"`), one worker, traces kept on failure. CI (`.github/workflows/ci.yml`) runs `npm run test:e2e` after the build and uploads traces on failure. Both targets pass on this machine (1.9 s fake, 3.9 s real). Recorded in `agents.md` → *Testing guide* and *Tooling and commands*, README, `architecture.md`.
 
 #### [Modules/parser] Shared preposition before a coordination · T93 · Build
 
@@ -617,3 +647,12 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T13:30:00Z — Claude Opus 5.5, T93 added and done
 
 - Added: T93 (Done): a shared preposition covers the coordination it precedes.
+
+### 2026-11-23T14:00:00Z — Claude Opus 5.5, T62 done
+
+- Modified: T62 moved to *Done* (end-to-end tests with a fake model backend in CI and the real models locally).
+
+### 2026-11-23T14:30:00Z — Claude Opus 5.5, T66 done; T94, T95 added
+
+- Modified: T66 moved to *Done* (release model-v1.0.0 packaged, integration tests, deployment tooling, `PUBLISHING.md`).
+- Added: T94 (ONNX Runtime Web files for offline use), T95 (update path when a release changes model files), both Stage 0.

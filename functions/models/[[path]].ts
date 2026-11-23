@@ -51,6 +51,12 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 /** Seconds a client may reuse a file without revalidating (catalog.json always revalidates). */
 export const MODEL_FILE_MAX_AGE = 86_400;
 
+/**
+ * catalog.json and every labels.json always revalidate (ETag → 304): a new release changes them at
+ * the same URL, and the worker reads labels.json over the network (T66).
+ */
+export const revalidates = (key: string): boolean => key === "catalog.json" || key.endsWith("/labels.json");
+
 /** R2 key for the request path, or null if it is not a safe relative path. */
 export function keyOf(path: string | string[] | undefined): string | null {
   const parts = (Array.isArray(path) ? path : (path ?? "").split("/")).filter((p) => p !== "");
@@ -84,7 +90,7 @@ function headersFor(key: string, obj: R2ObjectLike): Headers {
   h.set("Content-Type", CONTENT_TYPES[ext] ?? "application/octet-stream");
   h.set("ETag", obj.httpEtag);
   h.set("Accept-Ranges", "bytes");
-  h.set("Cache-Control", key === "catalog.json" ? "no-cache" : `public, max-age=${MODEL_FILE_MAX_AGE}`);
+  h.set("Cache-Control", revalidates(key) ? "no-cache" : `public, max-age=${MODEL_FILE_MAX_AGE}`);
   h.set("X-Content-Type-Options", "nosniff");
   return h;
 }

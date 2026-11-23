@@ -306,7 +306,8 @@ export async function listCached(
 /**
  * Download one model file into the model cache: stream with byte progress, then check size and
  * SHA-256 against `expected` before storing (under its absolute same-origin URL, where
- * Transformers.js finds it). Nothing is stored if a check fails. Abortable with `signal`.
+ * Transformers.js finds it). Nothing is stored if a check fails. Abortable with `signal`. Bypasses
+ * the HTTP cache (`cache: "no-store"`).
  */
 export async function downloadToCache(
   url: string,
@@ -317,7 +318,10 @@ export async function downloadToCache(
 ): Promise<FileDigest> {
   const abs = sameOriginUrl(url);
   const cache = await modelCache(abs, cacheName);
-  const res = await fetch(abs, signal ? { signal } : {});
+  // no-store: the verified copy lives in Cache Storage, so the HTTP cache would only duplicate it on
+  // disk, and a stale copy from an earlier release (same URL, max-age of a day) would fail the
+  // SHA-256 check on every retry (T66).
+  const res = await fetch(abs, { cache: "no-store", ...(signal ? { signal } : {}) });
   if (!res.ok || !res.body) throw new AssetError("http", abs, `HTTP ${res.status} for ${abs}`);
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];

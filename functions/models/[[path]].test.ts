@@ -7,7 +7,11 @@
 import { describe, expect, it } from "vitest";
 import { type R2BucketLike, keyOf, onRequest, parseRange } from "./[[path]]";
 
-const FILES: Record<string, string> = { "catalog.json": '{"models":[]}', "m/onnx/model_fp16.onnx": "0123456789" };
+const FILES: Record<string, string> = {
+  "catalog.json": '{"models":[]}',
+  "m/labels.json": '{"model_version":"1.0.0"}',
+  "m/onnx/model_fp16.onnx": "0123456789",
+};
 
 const bucket: R2BucketLike = {
   async head(key) {
@@ -58,6 +62,7 @@ describe("onRequest", () => {
     const c = await call("catalog.json");
     expect(c.headers.get("Content-Type")).toMatch(/application\/json/);
     expect(c.headers.get("Cache-Control")).toBe("no-cache");
+    expect((await call("m/labels.json")).headers.get("Cache-Control")).toBe("no-cache"); // T66
   });
 
   it("serves byte ranges (206) and rejects unsatisfiable ones (416)", async () => {

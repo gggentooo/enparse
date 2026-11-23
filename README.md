@@ -12,7 +12,7 @@ Tasks:
 Dependencies:
   dev_meta/agents.md, dev_meta/architecture.md, training/README.md.
 
-Status: setup and available commands written (2026-11-18); local model testing (2026-11-21).
+Status: setup and available commands written (2026-11-18); local model testing (2026-11-21); end-to-end tests (2026-11-23, T62).
 -->
 
 # Enparse
@@ -72,7 +72,15 @@ Notes:
 | `npm test` | Unit tests (`vitest run`) | Available |
 | `npm run lint` | oxlint + Prettier check | Available |
 | `npm run format` | Prettier write | Available |
-| `npm run test:e2e` | Playwright tests | Added with the first tests (T62) |
+| `npm run test:e2e` | End-to-end tests (Playwright, system Chrome) against `vite --mode e2e`: fake model backend, e2e catalog, test dictionary (`vite.e2e.ts`); run in CI | Available |
+| `npm run test:e2e:models` | The same end-to-end tests against the trained models and the built dictionary on this machine (`vite --mode local-models`); not in CI | Available |
+| `npm run test:e2e:release` | End-to-end tests against the production build with the packaged models (`vite preview --mode release`; release check before uploading, T66); not in CI | Available |
+| `npm run preview:release` | Build, then preview the site as deployed: `/models` and `/dict` through the Pages Functions from the release files (`vite.release.ts`) | Available |
+| `npm run r2 -- list \| upload <bucket> \| verify <site>` | Release files in R2 (`scripts/r2.ts`; see [`PUBLISHING.md`](PUBLISHING.md)) | Available |
+
+## Publishing
+
+The app is hosted on Cloudflare Pages, with the model files and dictionary in R2 and Cloudflare Access for a closed preview. Step-by-step instructions are in [`PUBLISHING.md`](PUBLISHING.md): package and check a release, upload, deploy, restrict access, share, and update.
 
 ## License
 

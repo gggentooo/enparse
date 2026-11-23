@@ -26,7 +26,9 @@ Status: implemented (T39). lang="ko" is the default UI language (T18); services/
     <!-- Placeholder icons until the visual design (T20); PWA manifest (T69). -->
     <link rel="icon" type="image/png" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <link rel="manifest" href="./manifest.webmanifest" />
+    <!-- use-credentials: browsers fetch the manifest without cookies otherwise, which fails behind
+         Cloudflare Access (closed preview, T66). -->
+    <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials" />
     <meta name="theme-color" content="#0a58ca" />
   </head>
   <body>

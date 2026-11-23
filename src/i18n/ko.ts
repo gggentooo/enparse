@@ -121,6 +121,8 @@ export const ko: Messages = {
     "answerdotai/ModernBERT-base(Apache 2.0)를 바탕으로 학습한 모델입니다. 학습된 모델 파일: CC BY-SA 4.0.",
   "about.license.mitTrained": "MIT(기반 모델) · CC BY-SA 4.0(학습된 모델)",
   "about.license.apacheTrained": "Apache 2.0(기반 모델) · CC BY-SA 4.0(학습된 모델)",
+  "about.model.catalog": "{name} 모델. 기반 모델: {base}({baseLicense}). 학습된 모델 파일: {license}.",
+  "about.license.catalog": "{baseLicense}(기반 모델) · {license}(학습된 모델)",
   "about.wordList.ngsl":
     "New General Service List by Browne, C., Culligan, B., and Phillips, J. 단어 구성 요소 분석의 기본 단어 목록으로 사용합니다(소문자 변환, 중복 제거).",
   "about.lib.transformers": "분석 모델을 실행합니다.",

@@ -67,6 +67,10 @@ export function entryProblems(e: unknown): string[] {
   if (!isObj(m) || !["upos", "chunk_f1", "uas", "las"].every((k) => isNum(m[k]))) p.push("metrics invalid");
   if (typeof e.nested_view !== "boolean") p.push("nested_view missing");
   if (e.description_ko !== undefined && !isStr(e.description_ko)) p.push("description_ko invalid");
+  if (e.base_model_license !== undefined && !isStr(e.base_model_license)) p.push("base_model_license invalid");
+  // Rendered as a link on the About page: https only (T66).
+  if (e.base_model_url !== undefined && !(isStr(e.base_model_url) && /^https:\/\//.test(e.base_model_url)))
+    p.push("base_model_url invalid");
   return p;
 }
 

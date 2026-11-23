@@ -22,7 +22,8 @@
  *
  * Hosting (owner, 2026-11-21; T12): Cloudflare Pages + R2. Model files are
  *   served from R2 at /models/* by functions/models/[[path]].ts, so the build
- *   leaves public/models/ out of dist/ (skipModelFiles);
+ *   leaves public/models/ and the bundled ONNX Runtime .wasm out of dist/
+ *   (skipModelFiles; every file must stay under Pages' 25 MiB limit);
  *   COOP/COEP come from public/_headers.
  *
  * PWA (owner, T15/T69): pwaServiceWorker builds src/pwa/sw.ts into dist/sw.js
@@ -32,12 +33,17 @@
  */
 
 import { createHash } from "node:crypto";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { build, type Plugin } from "vite";
 import { defineConfig } from "vitest/config";
+import { e2eStandIns } from "./vite.e2e.ts";
+import { releasePreview } from "./vite.release.ts";
 import { localModels } from "./vite.localModels.ts";
+
+/** Cloudflare Pages' per-file limit (25 MiB); larger files go to R2. */
+const PAGES_MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 /** Production response headers (public/_headers): cross-origin isolation for multi-threaded WASM. */
 const ISOLATION_HEADERS = {
@@ -45,13 +51,28 @@ const ISOLATION_HEADERS = {
   "Cross-Origin-Embedder-Policy": "require-corp",
 };
 
-/** Leave public/models/ out of dist/: model files are served from R2 by functions/models/ (T12). */
+/**
+ * Leave public/models/ out of dist/: model files are served from R2 by functions/models/ (T12).
+ * Also drop the ONNX Runtime Web .wasm that Vite copies from onnxruntime-web's fallback URL: the app
+ * loads it from /models/_ort/ (transformerBackend.ts → wasmPaths; R2), and at 26.9 MB it is over
+ * Cloudflare Pages' 25 MiB per-file limit and would be precached by the service worker (T66).
+ */
 function skipModelFiles(): Plugin {
   return {
     name: "enparse-skip-model-files",
     apply: "build",
     async closeBundle() {
-      await rm(resolve(import.meta.dirname, "dist", "models"), { recursive: true, force: true });
+      const dist = resolve(import.meta.dirname, "dist");
+      await rm(join(dist, "models"), { recursive: true, force: true });
+      const assets = join(dist, "assets");
+      for (const f of await readdir(assets).catch(() => [] as string[])) {
+        if (/^ort-wasm-.*\.wasm$/.test(f)) await rm(join(assets, f), { force: true });
+      }
+      const tooLarge = [];
+      for (const f of await shellFiles(dist)) {
+        if ((await stat(join(dist, f))).size > PAGES_MAX_FILE_BYTES) tooLarge.push(f);
+      }
+      if (tooLarge.length) throw new Error(`over Cloudflare Pages' 25 MiB file limit: ${tooLarge.join(", ")}`);
     },
   };
 }
@@ -111,7 +132,16 @@ export default defineConfig(({ mode }) => ({
   root: "src",
   publicDir: "../public",
   base: "./",
-  plugins: [react(), skipModelFiles(), pwaServiceWorker(), ...(mode === "local-models" ? [localModels()] : [])],
+  plugins: [
+    react(),
+    skipModelFiles(),
+    pwaServiceWorker(),
+    ...(mode === "local-models" ? [localModels()] : []),
+    // End-to-end tests without model files (T62): fake backend, e2e catalog, test dictionary.
+    ...(mode === "e2e" ? [e2eStandIns()] : []),
+    // Preview of the deployed site (T66): /models and /dict through the Pages Functions, R2 from disk.
+    ...(mode === "release" ? [releasePreview()] : []),
+  ],
   build: { outDir: "../dist", emptyOutDir: true },
   worker: { format: "es" },
   // Pre-bundle the worker's dependencies at server start: found later (first model load), they make

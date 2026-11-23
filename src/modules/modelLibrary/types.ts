@@ -62,6 +62,10 @@ export type CatalogEntry = {
   /** Korean description (shown when the interface is Korean; T43). */
   description_ko?: string;
   base_model: string;
+  /** Base model's page and license (About page; T66). */
+  base_model_url?: string;
+  base_model_license?: string;
+  /** License of the trained model files. */
   license: string;
   model_version: string;
   /** Folder under /models/ (e.g. "deberta_v3_xsmall"). */

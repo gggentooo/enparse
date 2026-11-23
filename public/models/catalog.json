@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-23T06:08:59Z",
+  "models": [
+    {
+      "id": "modernbert_base",
+      "display_name": "Large",
+      "description": "Larger download. The default model, with high accuracy and speed.",
+      "description_ko": "다운로드 크기가 더 큽니다. 정확도와 속도가 높은 기본 모델입니다.",
+      "base_model": "answerdotai/ModernBERT-base",
+      "base_model_url": "https://huggingface.co/answerdotai/ModernBERT-base",
+      "base_model_license": "Apache 2.0",
+      "license": "CC BY-SA 4.0",
+      "model_version": "1.0.0",
+      "folder": "modernbert_base",
+      "labels": {
+        "file": "labels.json",
+        "bytes": 4466,
+        "sha256": "dc548d9774e13660dfc0c44a57679a033736e067a8d9b3a320651ef15b8f1a0f"
+      },
+      "variants": {
+        "int8": {
+          "file": "onnx/model_quantized.onnx",
+          "bytes": 155570891,
+          "sha256": "cf12b3a4216aaee8516c34d0e453d8afaf246972f9992c45840ffb9dbb88edd9"
+        },
+        "fp16": {
+          "file": "onnx/model_fp16.onnx",
+          "bytes": 302208615,
+          "sha256": "0db4a0adf1db134ad3c36187bde3cb5f362553d82857228f9f87fc3da32d2c77"
+        }
+      },
+      "shared_files": [
+        {
+          "file": "config.json",
+          "bytes": 6463,
+          "sha256": "5178840009fece44cc6d3b8d0aadcd9ed3b2a7a3b8b6808718611a5e209f0b16"
+        },
+        {
+          "file": "special_tokens_map.json",
+          "bytes": 694,
+          "sha256": "ea97ecdbcc73713039d8d64dbb05e3689495c96657fbd9a18f5bed381be81049"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 3583227,
+          "sha256": "bc2788d5ddc9e2ced5d7a6aa695b30bb0c56751e60fd65ac595b16b9f0784812"
+        },
+        {
+          "file": "tokenizer_config.json",
+          "bytes": 20868,
+          "sha256": "9461a659e1103fb18ddc5fd0696137b0ff9891b15c8e9c79ef069d294846c278"
+        }
+      ],
+      "metrics": {
+        "upos": 0.974,
+        "chunk_f1": 0.9647,
+        "uas": 0.9415,
+        "las": 0.9231,
+        "nested": {
+          "uas_no_punct": 0.9438,
+          "bracket_f1": 0.8914,
+          "shown_precision": 0.9564,
+          "shown_coverage": 0.6796,
+          "role_precision": 0.9587
+        }
+      },
+      "nested_view": true,
+      "performance": {
+        "parse_5000_chars_s": {
+          "wasm": 1.483,
+          "wasm_2core": 5.166,
+          "wasm_1thread": 4.913,
+          "webgpu": 0.275
+        }
+      }
+    },
+    {
+      "id": "deberta_v3_xsmall",
+      "display_name": "Compact",
+      "description": "Smaller download. Recommended when Large does not run well on your device (for example, without WebGPU).",
+      "description_ko": "다운로드 크기가 더 작습니다. 이 기기에서 Large가 잘 동작하지 않을 때(예: WebGPU를 지원하지 않는 경우) 추천합니다.",
+      "base_model": "microsoft/deberta-v3-xsmall",
+      "base_model_url": "https://huggingface.co/microsoft/deberta-v3-xsmall",
+      "base_model_license": "MIT",
+      "license": "CC BY-SA 4.0",
+      "model_version": "1.0.0",
+      "folder": "deberta_v3_xsmall",
+      "labels": {
+        "file": "labels.json",
+        "bytes": 4714,
+        "sha256": "1c78c3d2fae9a76af5349a84f99ae6c3feb9ba3922c9ec5e0e7d050a9996ba61"
+      },
+      "variants": {
+        "int8": {
+          "file": "onnx/model_quantized.onnx",
+          "bytes": 89854726,
+          "sha256": "986df865cb436bd77c02f0f3d5dbe5383bac13c8d4892866e8b6467671a7a027"
+        },
+        "fp16": {
+          "file": "onnx/model_fp16.onnx",
+          "bytes": 144029758,
+          "sha256": "e0b9b7461991eb2ca439d460e3fe42a3cba7877d543cd61583efa55f0bbb5ac0"
+        }
+      },
+      "shared_files": [
+        {
+          "file": "added_tokens.json",
+          "bytes": 23,
+          "sha256": "dc046d04c9b0ada7ae6f1dc89c465801799acdf0c9a6aab8c15a1b2d5ca4e91f"
+        },
+        {
+          "file": "config.json",
+          "bytes": 6078,
+          "sha256": "4858fde99198df5f22d58501c2c0654ce9d2914ee28a3abb5225f05b8a3a0eeb"
+        },
+        {
+          "file": "special_tokens_map.json",
+          "bytes": 970,
+          "sha256": "b2f1b2f15f29a6b6d9d6ea4eca1675d2c231a71477f151d48f79cc83a625ba21"
+        },
+        {
+          "file": "spm.model",
+          "bytes": 2464616,
+          "sha256": "c679fbf93643d19aab7ee10c0b99e460bdbc02fedf34b92b05af343b4af586fd"
+        },
+        {
+          "file": "tokenizer.json",
+          "bytes": 8648864,
+          "sha256": "4b4f60231058db4b5794e7b124bb7945bc8ade6719282de4d2e0372ee527b929"
+        },
+        {
+          "file": "tokenizer_config.json",
+          "bytes": 1315,
+          "sha256": "e6c4c771911c211618a2d46488dc7e9e499f051773cd4ff4faeca6fe55fdf569"
+        }
+      ],
+      "metrics": {
+        "upos": 0.9765,
+        "chunk_f1": 0.9701,
+        "uas": 0.9427,
+        "las": 0.9245,
+        "nested": {
+          "uas_no_punct": 0.9454,
+          "bracket_f1": 0.8904,
+          "shown_precision": 0.9572,
+          "shown_coverage": 0.666,
+          "role_precision": 0.9573
+        }
+      },
+      "nested_view": true,
+      "performance": {
+        "parse_5000_chars_s": {
+          "wasm": 0.423,
+          "wasm_2core": 1.342,
+          "wasm_1thread": 1.223,
+          "webgpu": 0.515
+        }
+      }
+    }
+  ]
+}

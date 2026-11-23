@@ -13,7 +13,9 @@
  *   4. Include "vite/client" types (CSS Modules, worker imports).
  *   4b. "allowImportingTsExtensions": vite.config.ts imports vite.localModels.ts with
  *      its extension (Vite's native config loader needs it; no emit, so allowed).
- *   5. "include": ["src", "functions", "vite.config.ts", "vite.localModels.ts"]
+ *   5. "include": ["src", "functions", "vite.config.ts", "vite.localModels.ts", "vite.e2e.ts",
+ *      "vite.release.ts", "playwright.config.ts", "e2e", "scripts"] (e2e: Playwright tests and
+ *      the fake backend, T62; vite.release.ts and scripts/r2.ts: release preview and R2 upload, T66)
  *      (functions/: Cloudflare Pages Function for /models/*; T12;
  *      vite.localModels.ts: local model route for `npm run dev:models`).
  *
@@ -55,7 +57,12 @@
     "src",
     "functions",
     "vite.config.ts",
-    "vite.localModels.ts"
+    "vite.localModels.ts",
+    "vite.e2e.ts",
+    "vite.release.ts",
+    "playwright.config.ts",
+    "e2e",
+    "scripts"
   ]
 }
 

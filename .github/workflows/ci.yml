@@ -3,10 +3,13 @@
 # =============================================================================
 #
 # Description:
-#   Typecheck, lint (oxlint + Prettier), unit tests, and production build for
-#   the client-side app. Checks out without Git LFS (owner, T13) so CI does not
-#   use LFS bandwidth; tests that need model files skip when they are absent.
-#   Training code (Python, training/js) is not run here.
+#   Typecheck, lint (oxlint + Prettier), unit tests, production build, and
+#   end-to-end tests (T62) for the client-side app. Checks out without Git LFS
+#   (owner, T13) so CI does not use LFS bandwidth; tests that need model files
+#   skip when they are absent. The end-to-end tests run against `vite --mode e2e`
+#   (fake model backend, e2e catalog, test dictionary; vite.e2e.ts) in the
+#   runner's preinstalled Google Chrome (owner, 2026-11-23). Training code
+#   (Python, training/js) is not run here.
 #
 # Dependencies: GitHub Actions; Node.js (LTS); package-lock.json.
 # =============================================================================
@@ -33,3 +36,10 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

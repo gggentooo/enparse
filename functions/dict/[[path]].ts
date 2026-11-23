@@ -18,7 +18,7 @@
  * Status: implemented (T70). Tests: [[path]].test.ts (fake bucket).
  */
 
-import { type R2BucketLike, type R2ObjectLike, keyOf, parseRange } from "../models/[[path]]";
+import { type R2BucketLike, type R2ObjectLike, keyOf, parseRange } from "../models/[[path]].ts";
 
 export type Env = { MODELS: R2BucketLike };
 

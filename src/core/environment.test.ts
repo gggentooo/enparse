@@ -133,13 +133,18 @@ describe("model cache", () => {
   it("downloads with progress, verifies, and stores under the absolute URL in the Transformers.js cache", async () => {
     const { stores, caches } = fakeCaches();
     vi.stubGlobal("caches", caches);
-    vi.stubGlobal("fetch", async () => new Response(body, { headers: { "Content-Type": "application/octet-stream" } }));
+    const inits: (RequestInit | undefined)[] = [];
+    vi.stubGlobal("fetch", async (_u: unknown, init?: RequestInit) => {
+      inits.push(init);
+      return new Response(body, { headers: { "Content-Type": "application/octet-stream" } });
+    });
     const progress: number[] = [];
     const d = await downloadToCache(url, { bytes: body.length, sha256: await hex(body) }, (loaded) =>
       progress.push(loaded),
     );
     expect(d).toEqual({ bytes: 1000, sha256: await hex(body) });
     expect(progress.at(-1)).toBe(1000);
+    expect(inits[0]?.cache).toBe("no-store"); // never a stale HTTP-cache copy of an earlier release (T66)
     expect([...(stores.get(MODEL_CACHE_NAME)?.keys() ?? [])]).toEqual([abs]);
     expect(await listCached([url, "/models/m/other.json"])).toEqual({ [url]: 1000, "/models/m/other.json": null });
     expect(await digestCachedFiles([url])).toEqual({ [url]: { bytes: 1000, sha256: await hex(body) } });

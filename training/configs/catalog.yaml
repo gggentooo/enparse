@@ -15,23 +15,36 @@
 #   description    — one or two plain sentences in English (no numbers: measured
 #                    values are added automatically)
 #   description_ko — the same in Korean (the app shows the interface language's text)
+#   base_model_url, base_model_license — the base model's page and license (shown on the
+#                    About page; T66). The trained model files are CC BY-SA 4.0 (MODEL_CARD.md).
+# release (T66): version — the release's model_version (every packaged model's labels.json and
+#   catalog entry) and its git tag `model-v<version>`; bump it on every re-package that
+#   changes model files (scripts/package_models.py).
 # Order: the order of the offered models is the app's preference order; the
 #   first offered model is the default (badge "Default", recommended unless it is
 #   blocked, too slow, or failed to load on the device; owner, 2026-11-23, T43).
 #
-# Status: names and descriptions of the offered models set by the owner (2026-11-23, T43);
+# Status: release 1.0.0 (T66, 2026-11-23); names and descriptions of the offered models set by the owner (2026-11-23, T43);
 #   texts of models that are not offered are proposed.
 # =============================================================================
+
+release:
+  version: "1.0.0"
+  license: CC BY-SA 4.0       # trained model files (MODEL_CARD.md → Training data and licenses)
 
 models:
   modernbert_base:
     display_name: Large
     description: Larger download. The default model, with high accuracy and speed.
     description_ko: 다운로드 크기가 더 큽니다. 정확도와 속도가 높은 기본 모델입니다.
+    base_model_url: https://huggingface.co/answerdotai/ModernBERT-base
+    base_model_license: Apache 2.0
   deberta_v3_xsmall:
     display_name: Compact
     description: Smaller download. Recommended when Large does not run well on your device (for example, without WebGPU).
-    description_ko: 다운로드 크기가 더 작습니다. 이 기기에서 Large가 잘 동작하지 않을 때(예: WebGPU를 지원하지 않는 경우) 추천합니다.
+    description_ko: "다운로드 크기가 더 작습니다. 이 기기에서 Large가 잘 동작하지 않을 때(예: WebGPU를 지원하지 않는 경우) 추천합니다."
+    base_model_url: https://huggingface.co/microsoft/deberta-v3-xsmall
+    base_model_license: MIT
   distilbert_base_cased:
     display_name: Fast
     description: Smallest and quickest model. A good choice for older laptops and phones.

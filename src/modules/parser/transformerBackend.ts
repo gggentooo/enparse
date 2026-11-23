@@ -39,7 +39,8 @@
  *   readiness → Pre-flight checks). This backend still validates the full
  *   labels.json against LabelConfig.
  *   9. Tests: decoding with fixed logits; integration test on 20 fixed
- *      sentences vs Phase 9 outputs (plan-training.md Phase 11).
+ *      sentences vs Phase 9 outputs per packaged model (plan-training.md
+ *      Phase 11; packagedModels.test.ts, T66).
  *
  * Dependencies:
  *   External: @huggingface/transformers (Transformers.js).

@@ -9,7 +9,8 @@
     "Tasks:",
     "  1. Scripts (agents.md -> Tooling and commands): dev, dev:models (trained",
     "     models served locally; vite.localModels.ts), build, typecheck, lint,",
-    "     format, test; test:e2e is added with the first Playwright tests (T62).",
+    "     format, test, test:e2e (Playwright, fake model backend; CI) and",
+    "     test:e2e:models (the real models and dictionary on this machine) (T62).",
     "  2. Pin exact versions in the lockfile.",
     "  3. Keep wink-nlp and @huggingface/transformers versions identical to",
     "     training/js/package.json.",
@@ -23,12 +24,12 @@
     "  Dev (approved 2026-11-21, T13): @vitejs/plugin-react 6.3.0, @types/react 19.3.0,",
     "           @types/react-dom 19.3.0, oxlint 1.94.0, prettier 3.10.1,",
     "           @testing-library/react 16.3.3, @testing-library/dom 10.4.2, jsdom 31.0.1,",
-    "           @playwright/test 1.65.1 (browsers installed with `npx playwright install` when T62 starts).",
+    "           @playwright/test 1.65.1 (uses the system Chrome, channel \"chrome\"; no browser download; T62).",
     "  Dev (approved 2026-11-21, T29): fake-indexeddb 6.2.8 (IndexedDB in unit tests).",
     "  Optional later (not approved): jszip, csv-*.",
     "  System:  Node.js 20+.",
     "",
-    "Status: T13 tooling installed; scripts: dev, dev:models, build, typecheck, lint, format, test."
+    "Status: T13 tooling installed; scripts: dev, dev:models, build, typecheck, lint, format, test, test:e2e, test:e2e:models."
   ],
   "name": "enparse",
   "private": true,
@@ -38,10 +39,15 @@
     "dev": "vite",
     "dev:models": "vite --mode local-models",
     "build": "vite build",
+    "preview:release": "vite build && vite preview --mode release",
+    "r2": "node scripts/r2.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint -c .oxlintrc.json src functions vite.config.ts vite.localModels.ts && prettier --check \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts vite.localModels.ts",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" vite.config.ts vite.localModels.ts",
-    "test": "vitest run"
+    "lint": "oxlint -c .oxlintrc.json src functions e2e vite.config.ts vite.localModels.ts vite.e2e.ts vite.release.ts scripts playwright.config.ts && prettier --check \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" \"e2e/**/*.ts\" \"scripts/**/*.ts\" vite.config.ts vite.localModels.ts vite.e2e.ts vite.release.ts playwright.config.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"functions/**/*.ts\" \"e2e/**/*.ts\" \"scripts/**/*.ts\" vite.config.ts vite.localModels.ts vite.e2e.ts vite.release.ts playwright.config.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:models": "E2E_TARGET=models playwright test",
+    "test:e2e:release": "E2E_TARGET=release playwright test"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

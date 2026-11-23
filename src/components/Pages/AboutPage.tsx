@@ -18,19 +18,19 @@
  *   2. user-facing text via useI18n() catalog keys (T68).
  *
  * Dependencies:
- *   External: react. Internal: ./AboutPage.module.css.
+ *   External: react. Internal: hooks/useI18n, hooks/useModelLibrary (catalog credits), ./AboutPage.module.css.
  *   Used by: src/routes.tsx (#/about), Layout/Sidebar.tsx link.
  *
- * Status: implemented (T50). Models are listed from a static list: catalog.json
- *   carries only the trained models' license, not the base models' (MIT,
- *   Apache 2.0), so it cannot replace these credits yet (TODO(T66): add base
- *   license to the catalog in Phase 11 packaging, then read it here);
- *   app license: PolyForm Noncommercial 1.0.0 (owner, T16); dictionary sources
+ * Status: implemented (T50). Models are credited from catalog.json (display
+ *   name, base model, its page and license, trained-model license; T66), or
+ *   from the static list below until the catalog has loaded (first visit
+ *   offline, or a catalog without base-model licenses); app license: PolyForm Noncommercial 1.0.0 (owner, T16); dictionary sources
  *   are credited from the dictionary build (T70; data CC BY-SA 4.0).
  *   Tests: AboutPage.test.tsx (the attribution must match training/MODEL_CARD.md).
  */
 
 import { useI18n } from "../../hooks/useI18n";
+import { type LibraryModel, useModelLibrary } from "../../hooks/useModelLibrary";
 import type { MessageKey } from "../../i18n/i18n";
 import styles from "./AboutPage.module.css";
 
@@ -50,7 +50,7 @@ const POLYFORM = {
 /** A credited work: proper name, URL, a catalog key for the description, and the license (a catalog key or a literal name). */
 type Credit = { name: string; url: string; detail: MessageKey; license: { key: MessageKey } | { literal: string } };
 
-/** Offered parser models (static until catalog.json carries the base-model license; TODO(T66)). */
+/** Offered parser models when the catalog is not loaded (keep in sync with training/configs/catalog.yaml). */
 const MODELS: Credit[] = [
   {
     name: "DeBERTa-v3-xsmall",
@@ -157,9 +157,37 @@ function CreditList({ items }: { items: readonly Credit[] }): React.JSX.Element 
   );
 }
 
+/** The catalog's models, if every one carries its base model's page and license (T66). */
+function CatalogModels({ models }: { models: readonly LibraryModel[] }): React.JSX.Element {
+  const { t } = useI18n();
+  return (
+    <ul className={styles.list}>
+      {models.map(({ entry: e }) => {
+        const params = {
+          name: e.display_name,
+          base: e.base_model,
+          baseLicense: e.base_model_license ?? "",
+          license: e.license,
+        };
+        return (
+          <li key={e.id} className={styles.item}>
+            <ExternalLink href={e.base_model_url ?? ""}>{e.base_model}</ExternalLink>
+            <span>{t("about.model.catalog", params)}</span>
+            <span className={styles.license}>
+              {t("about.licenseLabel")}: {t("about.license.catalog", params)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** About & licenses: attribution for the app, models, training data, word lists, libraries, and dictionary (T21). */
 export function AboutPage(): React.JSX.Element {
   const { t } = useI18n();
+  const { models } = useModelLibrary();
+  const fromCatalog = models.length > 0 && models.every((m) => m.entry.base_model_url && m.entry.base_model_license);
   return (
     <section className={styles.page} aria-labelledby="page-title">
       <h1 id="page-title">{t("about.title")}</h1>
@@ -178,7 +206,7 @@ export function AboutPage(): React.JSX.Element {
 
       <section aria-labelledby="about-models" className={styles.section}>
         <h2 id="about-models">{t("about.modelsTitle")}</h2>
-        <CreditList items={MODELS} />
+        {fromCatalog ? <CatalogModels models={models} /> : <CreditList items={MODELS} />}
       </section>
 
       <section aria-labelledby="about-data" className={styles.section}>

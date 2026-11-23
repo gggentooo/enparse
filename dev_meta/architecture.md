@@ -228,7 +228,7 @@ The app ships up to four models (one per base model) and the user chooses which 
 | Field | Meaning |
 |-------|---------|
 | `id`, `display_name`, `description`, `description_ko` | Model id (`train_<id>.yaml` key) and texts from `training/configs/catalog.yaml` (English, and Korean shown when the interface is Korean; T43). Model order = `catalog.yaml` order = preference order (the first is the default) |
-| `base_model`, `license`, `model_version` | Base model id and license; release version |
+| `base_model`, `base_model_url`, `base_model_license`, `license`, `model_version` | Base model id, its page and license (optional; About page, T66); license of the trained files; release version (`catalog.yaml` → `release.version`) |
 | `folder`, `labels` | Path of the model folder and its `labels.json` |
 | `variants` | `int8` and `fp16`, each optional (T23): ONNX file and size in bytes |
 | `shared_files` | Config and tokenizer files with sizes and SHA-256 |
@@ -256,12 +256,13 @@ The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2**
 
 | Part | Where | Notes |
 |------|-------|-------|
-| App (`dist/`) | Cloudflare Pages | `npm run build`; `public/models/` is left out of `dist/` (`vite.config.ts` → `skipModelFiles`), since single ONNX files (90–302 MB) exceed Pages' 25 MiB per-file limit. |
-| Model files (`/models/*`) | R2 bucket bound as `MODELS` | `functions/models/[[path]].ts` (Pages Function) serves GET/HEAD with single byte ranges, ETag, and cache headers (`catalog.json` always revalidates). Integrity is checked by the app (SHA-256 in `labels.json` → `files`). |
+| App (`dist/`) | Cloudflare Pages | `npm run build`; `public/models/` and the ONNX Runtime `.wasm` that Vite copies from the library are left out of `dist/` (`vite.config.ts` → `skipModelFiles`), since single files (26.9–302 MB) exceed Pages' 25 MiB per-file limit; the build fails if any file is over it (T66). Deployed with Wrangler Direct Upload (`PUBLISHING.md`). |
+| Model files (`/models/*`) | R2 bucket bound as `MODELS` | `functions/models/[[path]].ts` (Pages Function) serves GET/HEAD with single byte ranges, ETag, and cache headers (`catalog.json` and every `labels.json` always revalidate; T66). Integrity is checked by the app (SHA-256 in `labels.json` → `files`). |
 | ONNX Runtime Web (`/models/_ort/*`) | Same R2 bucket | `ort-wasm-simd-threaded.asyncify.{mjs,wasm}` from the `onnxruntime-web` version Transformers.js pins (the `.wasm` is 26.9 MB, over Pages' limit). `transformerBackend.ts` sets `wasmPaths` here; by default Transformers.js would load them from cdn.jsdelivr.net (not allowed). |
+| Access (closed preview) | Cloudflare Access | Self-hosted application on the Pages hostnames, email one-time PIN; same-origin requests carry its cookie, and the manifest is fetched with credentials (`PUBLISHING.md`; T66). |
 | Response headers | `public/_headers` | COOP `same-origin` + COEP `require-corp` (cross-origin isolation for multi-threaded WASM), `nosniff`, `no-referrer`; `sw.js` is `no-cache` so updates are found. |
 | Offline app shell (T69) | `dist/sw.js` (from `src/pwa/sw.ts`) | Precaches the built shell (list and version hash injected at build); page loads network-first with the cached shell offline (COOP/COEP re-applied); never handles `/models/*` or `/dict/*`; a new version waits for the user's "reload" in the update banner. |
-| Source of truth | Git LFS (`public/models/`) | Uploaded to R2 by the Phase 11 packaging step (upload tool chosen there). |
+| Source of truth | `public/models/` (ONNX via Git LFS) | Written by `training/scripts/package_models.py` (T66). `scripts/r2.ts` maps every release file to its R2 key (model files at the bucket root, `_ort/`, `dict/v<N>/`) and uploads with `wrangler r2 object put --remote` (via npx; `catalog.json` last), or verifies a deployed site. `npm run preview:release` (`vite.release.ts`) serves the production build with the real Functions over the same files. |
 | Dictionary data | R2, same origin | Sharded JSON (T42) at `/dict/v<N>/` (owner, 2026-11-23): `functions/dict/[[path]].ts` serves the R2 bucket `MODELS` under the key prefix `dict/`; versioned files are immutable (one-year cache), `manifest.json` revalidates. Built by `training/dictionary/` (T70; format in `training/dictionary/DATA_CARD.md`); data license CC BY-SA 4.0. `npm run dev:models` serves `training/data/dict/` locally. |
 
 **Local model testing (2026-11-21):** `npm run dev:models` (`vite --mode local-models`) adds a dev-server-only Vite plugin, `vite.localModels.ts`, that emulates the `/models/*` route from the selected training exports (`training/data/onnx/<model>/<run>/`), with `catalog.json` built from the catalog fixture and file sizes and SHA-256 from disk, and `/models/_ort/*` from `node_modules/onnxruntime-web/dist`. Never in builds. The dev server pre-bundles the worker's dependencies (`optimizeDeps.include`), because discovering them at the first model load reloads the page and cancels the download.
@@ -963,3 +964,12 @@ enparse/
 ### 2026-11-23T13:30:00Z — Claude Opus 5.5, Shared preposition before a coordination (T93)
 
 - Modified: *Nested phrases* → a preposition before a coordination of nouns covers the coordination (`[as [[water vapor] or [ice]]]`) unless a later conjunct has its own preposition or is not a noun (`treeDecoder.ts` → `buildPhrases`).
+
+### 2026-11-23T14:00:00Z — Claude Opus 5.5, End-to-end tests (T62)
+
+- Added: `e2e/` (Playwright tests, `fakeBackend.ts`), `playwright.config.ts`, `vite.e2e.ts` (`vite --mode e2e`: fake model backend via a resolve hook on `parser.worker.ts`'s `./transformerBackend` import, e2e catalog at `/models/*`, test dictionary at `/dict/*`; dev server only). CI runs the end-to-end tests.
+
+### 2026-11-23T14:30:00Z — Claude Opus 5.5, T66 release and deployment
+
+- Added: *Deployment* → Access row; upload and preview tooling (`scripts/r2.ts`, `vite.release.ts`) in the source-of-truth row.
+- Modified: *Deployment* → the build drops the bundled ONNX Runtime `.wasm` and fails on files over 25 MiB; `labels.json` revalidates. *Model library* → `catalog.json` gains optional `base_model_url` and `base_model_license`.

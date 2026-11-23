@@ -5,11 +5,15 @@
  * Phase 7/8 test metrics and Phase 10 timings, in the T23 schema.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import fixture from "./catalog.fixture.json";
 import { downloadBytes, loadCatalog, modelFiles, parseCatalog, requirementsOf, variantFor } from "./catalog";
 import { CatalogLoadError } from "./types";
 
+/** Written by training/scripts/package_models.py (T66); absent in CI (Git LFS not checked out). */
+const PACKAGED = fileURLToPath(new URL("../../../public/models/catalog.json", import.meta.url));
 const clone = (): Record<string, unknown> => JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>;
 const models = (c: Record<string, unknown>): Array<Record<string, unknown>> =>
   c.models as Array<Record<string, unknown>>;
@@ -47,6 +51,19 @@ describe("parseCatalog", () => {
     expect(err?.message).toMatch(/no variant/);
     expect(err?.message).toMatch(/relative path/);
     expect(err?.message).toMatch(/labels file/);
+  });
+
+  it("accepts the base model's page and license, and rejects a link that is not https (T66)", () => {
+    expect(parseCatalog(fixture).models[0]?.base_model_license).toBe("Apache 2.0");
+    const bad = clone();
+    (models(bad)[0] as Record<string, unknown>).base_model_url = "javascript:alert(1)";
+    expect(() => parseCatalog(bad)).toThrow(/base_model_url invalid/);
+  });
+
+  it.skipIf(!existsSync(PACKAGED))("accepts the packaged public/models/catalog.json (T66)", () => {
+    const c = parseCatalog(JSON.parse(readFileSync(PACKAGED, "utf8")));
+    expect(c.models.map((m) => m.id)).toEqual(fixture.models.map((m) => m.id));
+    expect(c.models.every((m) => m.base_model_license && m.base_model_url)).toBe(true);
   });
 
   it("allows a model with one variant (T23)", () => {

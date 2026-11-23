@@ -777,6 +777,8 @@ Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm lo
 **Deliverables:** shipped model files per offered model, `catalog.json`, model card, release tag.
 **Exit criterion:** app integration test passes for every offered model.
 
+**Outcome (2026-11-23, T66): exit criterion met.** Release model-v1.0.0: Large (`modernbert_base`, run `lr0.0002_w1_s42_bfaug`) and Compact (`deberta_v3_xsmall`, `lr0.0003_w2_s42_bf`) packaged to `public/models/` by `scripts/package_models.py`; DistilBERT and BERT not offered (UPOS below 97.00). Release record with checksums: `reports/release.md`; model card complete. Integration tests: `src/modules/parser/packagedModels.test.ts` (Node: files match the catalog and `labels.json`; Phase 9 int8 outputs reproduced exactly on 20 test sentences; `ParseResult` with `model_version`, wink offsets, valid trees) and `e2e/release.spec.ts` (production build behind the Pages Functions: download, verify, load, parse, switch) pass for both models. Upload to R2 and deployment: `PUBLISHING.md`. The git tag is created by the owner when the release is committed.
+
 ### Phase 12 — Maintenance (ongoing)
 
 - Optional: collect misparsed sentences reported in the app (opt-in, stored locally until exported by the user) as a regression set and extra training data. Requires a new app feature; not yet planned. Already prepared for: feedback records can store words with wink offsets and the model version from `ParseResult`, and unreviewed words are handled as partial labels (Phase 4).
@@ -1058,3 +1060,7 @@ Cold load (download from a local server + init + self-test) 1.2–1.8 s; warm lo
 
 - Added: *Decoding* step 3 → shared preposition (owner).
 - Modified: biaffine outcome → multi-word bracket F1 on the new brackets: DeBERTa 89.04, ModernBERT 89.14 (still ≥ 88); Phase 8 thresholds refitted and unchanged (0.85 / 0.80; roles 0.3 / 0.4).
+
+### 2026-11-23T14:30:00Z — Claude Opus 5.5, Phase 11 outcome
+
+- Added: Phase 11 outcome (release model-v1.0.0, integration tests, release record).

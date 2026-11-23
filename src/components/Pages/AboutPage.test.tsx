@@ -11,14 +11,24 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockService } from "../../hooks/testParserService";
 import { languageService } from "../../services/languageService";
+import type { ParserService } from "../../services/parserService";
+import { fixtureLibrary } from "../testUtils";
 import { AboutPage, EWT_ATTRIBUTION, REQUIRED_NOTICE } from "./AboutPage";
+
+const h = vi.hoisted(() => ({ service: null as ParserService | null }));
+vi.mock("../../services/parserService", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/parserService")>()),
+  parserService: () => h.service,
+}));
 
 afterEach(cleanup);
 // These tests read English text; the Korean default is covered in Header.test.tsx.
 beforeEach(async () => {
   await languageService().setLanguage("en");
+  h.service = mockService().service; // no catalog loaded: the static model credits
 });
 
 describe("AboutPage", () => {
@@ -32,6 +42,30 @@ describe("AboutPage", () => {
     expect(within(models).getAllByText(/CC BY-SA 4.0 \(trained\)/)).toHaveLength(2);
     expect(screen.getByText(EWT_ATTRIBUTION)).toBeTruthy();
     expect(screen.getByText(/^Required Notice: Copyright Hankyung Lee/)).toBeTruthy();
+  });
+
+  it("credits the models from the catalog once it has loaded: base model, its license, and the trained files' (T66)", () => {
+    const m = mockService();
+    m.update({ library: fixtureLibrary() });
+    h.service = m.service;
+    render(<AboutPage />);
+    const models = screen.getByRole("region", { name: "Parser models" });
+    const items = within(models).getAllByRole("listitem");
+    expect(items.map((li) => within(li).getByRole("link").textContent)).toEqual([
+      "answerdotai/ModernBERT-base (opens in a new tab)",
+      "microsoft/deberta-v3-xsmall (opens in a new tab)",
+    ]);
+    expect(
+      within(models)
+        .getByRole("link", { name: /ModernBERT-base/ })
+        .getAttribute("href"),
+    ).toBe("https://huggingface.co/answerdotai/ModernBERT-base");
+    expect(
+      within(models).getByText(
+        "Large model. Fine-tuned from answerdotai/ModernBERT-base (Apache 2.0). Trained model files: CC BY-SA 4.0.",
+      ),
+    ).toBeTruthy();
+    expect(within(models).getByText("License: MIT (base) · CC BY-SA 4.0 (trained)")).toBeTruthy();
   });
 
   it("credits the dictionary sources and states the dictionary data license (T70)", () => {

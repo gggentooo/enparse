@@ -118,6 +118,8 @@ export const en = {
     "Fine-tuned from answerdotai/ModernBERT-base (Apache 2.0). Trained model files: CC BY-SA 4.0.",
   "about.license.mitTrained": "MIT (base) · CC BY-SA 4.0 (trained)",
   "about.license.apacheTrained": "Apache 2.0 (base) · CC BY-SA 4.0 (trained)",
+  "about.model.catalog": "{name} model. Fine-tuned from {base} ({baseLicense}). Trained model files: {license}.",
+  "about.license.catalog": "{baseLicense} (base) · {license} (trained)",
   "about.wordList.ngsl":
     "New General Service List by Browne, C., Culligan, B., and Phillips, J. Used as the known-word list for word parts (lower-cased, de-duplicated).",
   "about.lib.transformers": "Runs the parser models.",
