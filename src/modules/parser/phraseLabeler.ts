@@ -11,62 +11,63 @@
  *
  * Layer: modules/ (parser). Internal submodule; runs inside parser.worker.ts.
  *
- * Conventions (owner, 2026-11-20; T10):
+ * Conventions (owner, 2026-11-20, T10; brackets and attachments 2026-11-23, T73):
  *   - Roles: Subject, Predicate, Object, Indirect Object, Complement,
  *     Modifier (adjective/adverb type), plus roles from the kept UD
  *     subtypes: Passive subject (nsubj:pass), Agent (obl:agent, the
  *     "by" phrase), Relative clause (acl:relcl), Possessive (nmod:poss),
- *     Particle (compound:prt).
- *   - Clause: subject + predicate are promoted to S (Clause); the inner
- *     predicate projection is VP(Predicate). Embedded clauses are shown too.
- *   - Single-word head wrappers ([dog] inside [red dog]) are collapsed for
- *     display; treeDecoder.ts spans and the metrics are unchanged.
- *   - Discontinuous predicates (contiguous: false; questions, inversion,
- *     fronted adjuncts): the pieces get the same role label and a "split
- *     predicate" flag; no contiguous bracket is invented.
- *   - Copula: cop + the predicative word form VP(Predicate); the adjective
- *     or noun is labeled Complement (sentence pattern 2).
- *   - Coordination: the outer bracket of the conjoined phrases takes the
- *     shared role; each conjunct is marked as coordinated (never a
- *     modifier of the first conjunct).
+ *     Particle (compound:prt). Quantity words shown as quantifiers
+ *     (quantifiers.ts) are Modifiers.
+ *   - Clause: a clause bracket is S; its predicate bracket is VP(Predicate).
+ *     A main clause (the root's, and clauses coordinated with it) has no S
+ *     bracket: its subject and predicate brackets are the outermost ones
+ *     and are always shown (pinned; owner, 2026-11-23, T82). Embedded
+ *     clauses keep their S bracket.
+ *   - Copula: the complement bracket (or the one predicative word) is the
+ *     Complement (sentence pattern 2); it attaches to the subject.
+ *   - Split predicate: an aux or cop on the other side of the subject
+ *     (questions, inversion) gets role Predicate and splitPredicate, as does
+ *     the predicate bracket or word; no contiguous bracket is invented.
+ *   - Coordination ([[A] and [B]]; T82): the bracket around the conjuncts
+ *     takes the shared role; each conjunct (the first one's own bracket has
+ *     level "conjunct") is marked as coordinated, never a modifier of the
+ *     first conjunct; "and" and commas sit between them.
  *
- * How labels are found (works on gated phrases too: brackets never change
- * span, only disappear):
- *   - Each head's projections follow treeDecoder.ts's bracketing order (right
- *     dependents closest first, then left closest first); level k covers the
- *     head plus the subtrees of its first k non-punctuation dependents.
- *     Every bracket is matched to its (head, level) by its non-punctuation
- *     words.
- *   - Role: on a dependent's maximal projection (its full subtree), from its
- *     relation (ROLE_BY_RELATION). A word without dependents carries its role
- *     itself.
- *   - Collapsed brackets (owner, 2026-11-21; T59): if the bracket that would
- *     carry a role (maximal projection, predicate, or complement level) was
- *     collapsed by gating, the role goes on the head word as a badge
- *     (badge: true, "phrase boundary uncertain"); it is never moved to an
- *     inner bracket, whose span would be wrong. If several of a word's
- *     brackets collapsed, the outermost role wins.
+ * How labels are found (labelPhrases runs on the full phrases of the
+ * displayed tree; treeDecoder.ts → headLayouts gives each head's grouping):
+ *   - Role: on a dependent's outermost bracket, from its relation
+ *     (ROLE_BY_RELATION). A word without dependents carries its role itself.
+ *     A root clause without a subject (imperatives) is the Predicate.
+ *   - Inner brackets of the same head: level "predicate" → Predicate, level
+ *     "complement" → Complement. A head word that is the whole predicate or
+ *     complement carries that role itself.
+ *   - Attachment (attachTo): each dependent's outermost bracket or word
+ *     records the word it attaches to (its head in the displayed tree; a
+ *     subject points to the copula if there is one; a complement to the
+ *     subject). `uncertain` if the role gate fails.
+ *   - Attachment span (attachFrom; owner, 2026-11-23, T81): a modifier
+ *     before its head (det, amod, nummod, compound, nmod, advmod, quantifier)
+ *     in the same bracket modifies everything from just after itself through
+ *     the head word, in noun and verb phrases alike: in "the big red dog",
+ *     the → "big red dog", big → "red dog", red → "dog". The span stops at
+ *     the head word. Other dependents attach to the one word
+ *     (attachFrom = attachTo).
  *   - Role gate (owner, 2026-11-21; T59): with a RoleGate, a role is shown
  *     only if its head word's confidence (relation probability × head
  *     probability, calibrated) is ≥ labels.json → nested.role_threshold
  *     (fitted in Phase 8 for ≥ 95% role precision on dev).
- *   - S: projections of a head at and above the level where its subject
- *     (nsubj, csubj, incl. :pass) attaches. The level just below is the
- *     predicate: role Predicate (VP(Predicate)).
- *   - Copula: the level where `cop` attaches is a VP; the level below it
- *     (the adjective or noun with its modifiers) is the Complement.
- *   - Split predicate: an aux or cop attached above the subject (questions,
- *     inversion) gets role Predicate and splitPredicate, as does the
- *     predicate level.
- *   - Coordination: `conj` dependents and the coordination head's own
- *     innermost bracket are marked coordinated; `conj` gives no role, so the
- *     outer bracket (the head's maximal projection) carries the shared role.
- *   - A root clause without a subject (imperatives) is the Predicate.
+ *   - Collapsed brackets (gateLabeled; owner, 2026-11-21, T59; span
+ *     confidence 2026-11-23, T78): a multi-word bracket whose span confidence
+ *     is below nested.bracket_threshold is removed and its children move
+ *     into the parent. Its role and attachment go on its head word as a
+ *     badge (badge: true, "phrase boundary uncertain"), never on an inner
+ *     bracket. If several brackets of a word collapsed, the outermost wins.
+ *     Pinned brackets are never removed: below the threshold they are marked
+ *     `unsure` (shown dashed).
  *
  * Dependencies:
- *   Internal: ./types.ts (SentencePhrases, PhraseNode, PhraseType, PhraseRole,
- *             DecodedTree). External: none.
- *   Input produced by: ./treeDecoder.ts (buildPhrases, decodeArcTree, gatePhrases).
+ *   Internal: ./types.ts, ./treeDecoder.ts (buildPhrases, headLayouts,
+ *             spanConfidence), ./quantifiers.ts (displayTree). External: none.
  *   Used by: ./parser.ts, ./ambiguity.ts (alternative trees).
  *
  * Caveats:
@@ -80,10 +81,11 @@
  *
  * Open items (todo.md): grammar label language (T18).
  *
- * Status: implemented (T34). Tests: phraseLabeler.test.ts.
+ * Status: implemented (T34; phrase-per-head brackets, attachments, and span gating T76, T78). Tests: phraseLabeler.test.ts.
  */
 
-import { buildPhrases, gatePhrases } from "./treeDecoder";
+import { QUANTIFIER_RELATION, displayTree } from "./quantifiers";
+import { type HeadLayout, buildPhrases, headLayouts, spanConfidence } from "./treeDecoder";
 import type {
   DecodedTree,
   LabeledPhrase,
@@ -93,6 +95,7 @@ import type {
   PhraseNode,
   PhraseRole,
   RoleGate,
+  RoleLabels,
   SentencePhrases,
   WordLeaf,
 } from "./types";
@@ -123,9 +126,9 @@ export const ROLE_BY_RELATION: Readonly<Record<string, PhraseRole>> = {
   advcl: "Modifier",
   acl: "Modifier",
   nummod: "Modifier",
+  [QUANTIFIER_RELATION]: "Modifier",
 };
 
-const SUBJECT_RELATIONS = new Set(["nsubj", "csubj"]);
 const AUXILIARY_RELATIONS = new Set(["aux", "cop"]);
 const CLAUSE_UPOS = new Set(["VERB", "AUX"]);
 
@@ -136,26 +139,17 @@ export function roleOf(relation: string): PhraseRole | null {
   return ROLE_BY_SUBTYPE[relation] ?? ROLE_BY_RELATION[base(relation)] ?? null;
 }
 
+/** Modifiers that, before their head, apply to everything up to and including the head (T81). */
+const PREMODIFIER_RELATIONS = new Set(["det", "amod", "nummod", "compound", "nmod", "advmod", QUANTIFIER_RELATION]);
+
 type Item = PhraseNode | WordLeaf;
-
-/** Per-head structure: levels of the bracketing order and the special levels. */
-type HeadInfo = {
-  /** Non-punctuation dependents in bracketing order. */
-  order: number[];
-  /** Key (sorted non-punctuation words) of each level 0..order.length. */
-  levels: Map<string, number>;
-  /** Level where the subject attaches (S from here up), or null. */
-  subjectLevel: number | null;
-  /** Level where `cop` attaches, or null. */
-  copLevel: number | null;
-};
-
-const keyOf = (words: Iterable<number>): string => [...words].sort((a, b) => a - b).join(",");
+type Attachment = Pick<RoleLabels, "role" | "attachTo" | "attachFrom" | "uncertain" | "coordinated">;
+type Labeled = LabeledPhrase | LabeledWord;
 
 /**
  * Label a sentence's nested phrases (see the header). Pure; spans and order are unchanged.
- * @param items phrases from buildPhrases (optionally gated by gatePhrases)
- * @param heads 1-based heads (0 = root) of the tree the phrases were built from
+ * @param items phrases from buildPhrases (not gated; gateLabeled runs on the result)
+ * @param heads 1-based heads (0 = root) of the tree the phrases were built from (the displayed tree)
  * @param relations full relation per word (kept subtypes included)
  * @param upos UPOS per word
  * @param gate optional role confidence gate (T59)
@@ -167,171 +161,203 @@ export function labelPhrases(
   upos: readonly string[],
   gate?: RoleGate,
 ): LabeledSentencePhrases {
-  const n = heads.length;
   const isPunct = (i: number): boolean => upos[i] === "PUNCT";
-  const deps: number[][] = Array.from({ length: n }, () => []);
-  heads.forEach((h, i) => {
-    if (h > 0) deps[h - 1]?.push(i);
-  });
   const rel = (i: number): string => relations[i] ?? "dep";
+  const layouts = headLayouts(heads, upos, relations.map(base));
+  const layout = (h: number): HeadLayout => layouts[h] as HeadLayout;
 
-  const subtreeMemo = new Map<number, number[]>();
-  const subtree = (i: number): number[] => {
-    const hit = subtreeMemo.get(i);
-    if (hit) return hit;
-    const out = isPunct(i) ? [] : [i];
-    for (const d of deps[i] ?? []) out.push(...subtree(d));
-    subtreeMemo.set(i, out);
-    return out;
-  };
-
-  const info: HeadInfo[] = Array.from({ length: n }, (_, h) => {
-    const real = (deps[h] ?? []).filter((d) => !isPunct(d));
-    const order = [
-      ...real.filter((d) => d > h).sort((a, b) => a - b),
-      ...real.filter((d) => d < h).sort((a, b) => b - a),
-    ];
-    const levels = new Map<string, number>();
-    const words = new Set<number>([h]);
-    levels.set(keyOf(words), 0);
-    order.forEach((d, k) => {
-      for (const w of subtree(d)) words.add(w);
-      levels.set(keyOf(words), k + 1);
-    });
-    const at = (pred: (d: number) => boolean): number | null => {
-      const k = order.findIndex(pred);
-      return k < 0 ? null : k + 1;
-    };
-    return {
-      order,
-      levels,
-      subjectLevel: at((d) => SUBJECT_RELATIONS.has(base(rel(d)))),
-      copLevel: at((d) => base(rel(d)) === "cop"),
-    };
-  });
-
-  /** Aux/cop dependents attached above the subject: split-predicate pieces. */
+  /** Aux/cop dependents outside their head's predicate bracket: split-predicate pieces. */
   const splitPieces = new Set<number>();
-  info.forEach((hi) => {
-    if (hi.subjectLevel === null) return;
-    hi.order.forEach((d, k) => {
-      if (k + 1 > (hi.subjectLevel as number) && AUXILIARY_RELATIONS.has(base(rel(d)))) splitPieces.add(d);
-    });
+  layouts.forEach((lay) => {
+    for (const d of lay.outside) if (AUXILIARY_RELATIONS.has(base(rel(d)))) splitPieces.add(d);
   });
-  const isSplit = (h: number): boolean => (deps[h] ?? []).some((d) => splitPieces.has(d));
-  const hasConj = (h: number): boolean => (deps[h] ?? []).some((d) => base(rel(d)) === "conj");
+  const isSplit = (h: number): boolean => layout(h).outside.some((d) => splitPieces.has(d));
+  const hasConj = (h: number): boolean => layout(h).real.some((d) => base(rel(d)) === "conj");
   const isConj = (i: number): boolean => base(rel(i)) === "conj";
 
-  /** Role of a word's maximal projection; the root clause without a subject is the Predicate. */
+  /** Role of a word's whole phrase; the root clause without a subject is the Predicate. */
   const maximalRole = (h: number): PhraseRole | null => {
     if (splitPieces.has(h)) return "Predicate";
     if (heads[h] !== 0) return roleOf(rel(h));
-    const hi = info[h] as HeadInfo;
-    const clause = CLAUSE_UPOS.has(upos[h] ?? "") || hi.copLevel !== null;
-    return clause && hi.subjectLevel === null ? "Predicate" : null;
+    const lay = layout(h);
+    const clause = CLAUSE_UPOS.has(upos[h] ?? "") || lay.cop !== null;
+    return clause && lay.subject === null ? "Predicate" : null;
   };
+  const sure = (word: number): boolean => !gate || (gate.confidence[word] ?? 0) >= gate.threshold;
+  const shown = (role: PhraseRole | null, word: number): PhraseRole | null => (sure(word) ? role : null);
 
-  const coveredWords = (item: Item, out: number[]): number[] => {
-    if ("word" in item) {
-      if (!isPunct(item.word)) out.push(item.word);
-    } else for (const c of item.children) coveredWords(c, out);
-    return out;
+  /** Word a dependent's arrow points to: its head; a subject points to the copula if there is one. */
+  const target = (d: number): number | null => {
+    const h = (heads[d] ?? 0) - 1;
+    if (h < 0 || isPunct(d)) return null;
+    const lay = layout(h);
+    return lay.subject === d && lay.cop !== null ? lay.cop : h;
   };
-  const levelOf = (node: PhraseNode): number | null =>
-    (info[node.head] as HeadInfo).levels.get(keyOf(coveredWords(node, []))) ?? null;
-  const shown = (role: PhraseRole | null, word: number): PhraseRole | null =>
-    role !== null && (!gate || (gate.confidence[word] ?? 0) >= gate.threshold) ? role : null;
+  /** Last word of a word's subtree and whether a word is below another (displayed tree). */
+  const lastOf = (w: number): number => Math.max(w, ...layout(w).real.map(lastOf));
+  const below = (w: number, h: number): boolean => {
+    for (let k = (heads[w] ?? 0) - 1, steps = 0; k >= 0 && steps <= heads.length; k = (heads[k] ?? 0) - 1, steps++) {
+      if (k === h) return true;
+    }
+    return false;
+  };
+  /**
+   * First word of what a dependent attaches to (T81): a modifier before its head, in the same
+   * bracket, modifies everything from just after itself through the head word ("big" → "red
+   * dog"); every other dependent attaches to the one word.
+   */
+  const spanStart = (d: number, to: number): number => {
+    const h = (heads[d] ?? 0) - 1;
+    if (to !== h || d > h || !PREMODIFIER_RELATIONS.has(base(rel(d))) || layout(h).outside.includes(d)) return to;
+    let start = lastOf(d) + 1;
+    while (start < h && isPunct(start)) start++;
+    for (let w = start; w < h; w++) if (!isPunct(w) && !below(w, h)) return to;
+    return Math.min(start, to);
+  };
+  /** Labels of a dependent's outermost bracket or of the dependent word itself. */
+  const dependent = (d: number): Attachment => {
+    const attachTo = target(d);
+    return {
+      role: shown(maximalRole(d), d),
+      attachTo,
+      attachFrom: attachTo === null ? null : spanStart(d, attachTo),
+      uncertain: attachTo !== null && !sure(d),
+      coordinated: !isPunct(d) && isConj(d),
+    };
+  };
+  const none = { role: null, attachTo: null, attachFrom: null, uncertain: false, coordinated: false } as const;
 
-  /** Role-bearing levels of a head, outermost first: maximal projection, predicate, complement. */
-  const roleLevels = (h: number): Array<[number, PhraseRole | null]> => {
-    const hi = info[h] as HeadInfo;
-    const out: Array<[number, PhraseRole | null]> = [[hi.order.length, maximalRole(h)]];
-    if (hi.subjectLevel !== null) out.push([hi.subjectLevel - 1, "Predicate"]);
-    const copSplit = hi.copLevel !== null && hi.subjectLevel !== null && hi.copLevel > hi.subjectLevel;
-    if (hi.copLevel !== null && !copSplit) out.push([hi.copLevel - 1, "Complement"]);
-    return out;
-  };
-  const present = new Set<string>();
-  const collect = (item: Item): void => {
-    if ("word" in item) return;
-    present.add(`${item.head}:${levelOf(item)}`);
-    item.children.forEach(collect);
-  };
-  items.forEach(collect);
-  /** Badge role per head word whose role-bearing bracket is missing (collapsed). */
-  const badgeRole = (h: number): PhraseRole | null => {
-    if ((info[h] as HeadInfo).order.length === 0) return null;
-    for (const [level, role] of roleLevels(h)) if (role !== null && !present.has(`${h}:${level}`)) return role;
-    return null;
-  };
-
-  const labelWord = (leaf: WordLeaf, parentHead: number | null): LabeledWord => {
+  const labelWord = (leaf: WordLeaf, parent: PhraseNode | null): LabeledWord => {
     const w = leaf.word;
-    const isHead = parentHead === w;
-    const ownProjection = !isHead && !isPunct(w) && subtree(w).length === 1;
-    const badge = isHead && !isPunct(w) ? badgeRole(w) : null;
-    const role = shown(ownProjection ? maximalRole(w) : badge, w);
+    const isHead = parent?.head === w;
+    if (!isHead) {
+      return { word: w, ...dependent(w), isHead, splitPredicate: splitPieces.has(w), badge: false };
+    }
+    // The head word inside its own phrase: a one-word complement or predicate carries that role.
+    const lay = layout(w);
+    let role: PhraseRole | null = null;
+    let attachTo: number | null = null;
+    let splitPredicate = false;
+    if (lay.cop !== null && lay.complement.length === 0) {
+      role = "Complement";
+      attachTo = lay.subject;
+    } else if (parent?.level === "clause") {
+      role = "Predicate";
+      splitPredicate = isSplit(w);
+    }
     return {
       word: w,
-      role,
+      role: shown(role, w),
       isHead,
-      coordinated: !isPunct(w) && isConj(w) && !isHead,
-      splitPredicate: !isHead && splitPieces.has(w),
-      badge: badge !== null && role !== null,
+      coordinated: hasConj(w),
+      splitPredicate,
+      badge: false,
+      attachTo,
+      attachFrom: attachTo,
+      uncertain: false,
     };
   };
 
-  const labelNode = (node: PhraseNode, parentHead: number | null): LabeledPhrase => {
+  const labelNode = (node: PhraseNode, parent: PhraseNode | null): LabeledPhrase => {
     const h = node.head;
-    const hi = info[h] as HeadInfo;
-    const level = levelOf(node);
-    const top = hi.order.length;
-    const sub = hi.subjectLevel;
-    const predLevel = sub === null ? null : sub - 1;
-    let category: PhraseCategory = node.type;
-    if (level !== null && sub !== null && level >= sub) category = "S";
-    else if (level !== null && hi.copLevel !== null && level >= hi.copLevel) category = "VP";
-
-    const copSplit = hi.copLevel !== null && sub !== null && hi.copLevel > sub;
-    let role: PhraseRole | null = null;
+    const lay = layout(h);
+    const category: PhraseCategory = node.level === "clause" ? "S" : node.type;
+    let labels: Attachment = none;
     let splitPredicate = false;
-    if (level === top) role = maximalRole(h);
-    else if (level !== null && level === predLevel) {
-      role = "Predicate";
+    // Inner brackets of a head are told by their level; a main clause's are at the top level (T82).
+    if (node.level === "predicate") {
+      labels = { ...none, role: shown("Predicate", h) };
       splitPredicate = isSplit(h);
-    } else if (level !== null && hi.copLevel !== null && !copSplit && level === hi.copLevel - 1) role = "Complement";
+    } else if (node.level === "complement") {
+      labels = { ...none, role: shown("Complement", h), attachTo: lay.subject, attachFrom: lay.subject };
+    } else if (node.level === "conjunct") {
+      labels = { ...none, coordinated: true };
+    } else if (parent?.head !== h) labels = dependent(h);
     return {
       type: node.type,
+      level: node.level,
       head: h,
       start: node.start,
       end: node.end,
       contiguous: node.contiguous,
       category,
-      role: shown(role, h),
-      isHead: parentHead === h,
-      coordinated: (level === top && isConj(h) && parentHead !== h) || (level === 0 && hasConj(h)),
+      ...labels,
+      isHead: parent?.head === h,
       splitPredicate,
       badge: false,
-      wrapper: node.start === node.end && parentHead === h,
-      children: node.children.map((c) => ("word" in c ? labelWord(c, h) : labelNode(c, h))),
+      ...(node.pinned ? { pinned: true } : {}),
+      unsure: false,
+      children: node.children.map((c) => ("word" in c ? labelWord(c, node) : labelNode(c, node))),
     };
   };
 
-  return items.map((it) => ("word" in it ? labelWord(it, null) : labelNode(it, null)));
+  return items.map((it: Item) => ("word" in it ? labelWord(it, null) : labelNode(it, null)));
 }
 
 /**
- * The nested view of one decoded tree: buildPhrases → gatePhrases (bracket threshold) →
- * labelPhrases with the role gate (relation × head probability ≥ role threshold).
- * Used by parser.ts (primary parse) and ambiguity.ts (alternatives).
+ * Collapse multi-word brackets whose confidence is below threshold (see the header): their
+ * children move into the parent (word order kept); the bracket's role and attachment go to
+ * its head word as a badge. Outer brackets are handled after inner ones, so the outermost
+ * collapsed bracket's role wins.
+ * @param confidence span confidence of a bracket (treeDecoder.ts → spanConfidence)
+ */
+export function gateLabeled(
+  items: LabeledSentencePhrases,
+  confidence: (node: LabeledPhrase) => number,
+  threshold: number,
+): LabeledSentencePhrases {
+  const headOf = (x: Labeled): number => ("word" in x ? x.word : x.head);
+  const first = (x: Labeled): number => ("word" in x ? x.word : x.start);
+  /** Give the head word of a collapsed bracket its role (badge) and attachment. */
+  const badge = (xs: Labeled[], from: LabeledPhrase): Labeled[] =>
+    xs.map((x) => {
+      if (headOf(x) !== from.head) return x;
+      if (!("word" in x)) return { ...x, children: badge(x.children, from) };
+      return {
+        ...x,
+        role: from.role ?? x.role,
+        badge: from.role !== null || x.badge,
+        attachTo: from.attachTo ?? x.attachTo,
+        attachFrom: from.attachTo !== null ? from.attachFrom : x.attachFrom,
+        uncertain: from.attachTo !== null ? from.uncertain : x.uncertain,
+        coordinated: from.coordinated || x.coordinated,
+        splitPredicate: from.splitPredicate || x.splitPredicate,
+      };
+    });
+  const gate = (item: Labeled, parentHead: number | null): Labeled[] => {
+    if ("word" in item) return [item];
+    const children = item.children.flatMap((c) => gate(c, item.head));
+    if (item.start === item.end || confidence(item) >= threshold) return [{ ...item, children }];
+    // A main clause's subject and predicate brackets are always shown: marked unsure instead.
+    if (item.pinned) return [{ ...item, unsure: true, children }];
+    return badge(children, item).map((c) => ({ ...c, isHead: headOf(c) === parentHead }));
+  };
+  const sort = (xs: Labeled[]): Labeled[] =>
+    xs.map((x) => ("word" in x ? x : { ...x, children: sort(x.children) })).sort((a, b) => first(a) - first(b));
+  return sort(items.flatMap((it) => gate(it, null)));
+}
+
+/**
+ * The nested view of one decoded tree: quantifier display rule → buildPhrases → labelPhrases
+ * with the role gate (relation × head probability ≥ role threshold) → gateLabeled (span
+ * confidence ≥ bracket threshold). Used by parser.ts (primary parse) and ambiguity.ts
+ * (alternatives).
+ * @param words word texts (quantifier rule)
  */
 export function labeledView(
   tree: DecodedTree,
   upos: readonly string[],
+  words: readonly string[],
   thresholds: { bracket: number; role: number },
 ): LabeledSentencePhrases {
-  const baseRelations = tree.relations.map(base);
-  const items = gatePhrases(buildPhrases(tree.heads, upos, baseRelations), tree, thresholds.bracket);
-  const confidence = tree.relationProbs.map((p, i) => p * (tree.headProbs[i] ?? 0));
-  return labelPhrases(items, tree.heads, tree.relations, upos, { confidence, threshold: thresholds.role });
+  const shownTree = displayTree(tree.heads, tree.relations, words);
+  const items = buildPhrases(shownTree.heads, upos, shownTree.relations.map(base));
+  const own = tree.relationProbs.map((p, i) => p * (tree.headProbs[i] ?? 0));
+  const confidence = shownTree.source.map((src) => own[src] ?? 0);
+  const labeled = labelPhrases(items, shownTree.heads, shownTree.relations, upos, {
+    confidence,
+    threshold: thresholds.role,
+  });
+  const isPunct = (w: number): boolean => upos[w] === "PUNCT";
+  return gateLabeled(labeled, (node) => spanConfidence(node, tree, isPunct), thresholds.bracket);
 }

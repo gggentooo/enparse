@@ -40,6 +40,7 @@ function input(tagged: TaggedSentence, margins = { label: 0.3, attachment: 0.3 }
     tagged,
     tree,
     upos: tagged.words.map((w) => w.upos),
+    words: tagged.words.map((_, i) => `w${i}`),
     chunkTags: repairBio(tagged.words.map((w) => w.chunkTag)),
     margins,
     thresholds: THRESHOLDS,

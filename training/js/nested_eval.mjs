@@ -25,6 +25,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import * as yaml from "js-yaml";
+import { displayTree } from "../../src/modules/parser/quantifiers.ts";
 import { buildPhrases, decodeArcTree, decodeTree, phraseSpans } from "../../src/modules/parser/treeDecoder.ts";
 import { scoreNested } from "./lib/nested.mjs";
 
@@ -40,7 +41,7 @@ const records = readFileSync(join(dir, `${values.split}_predictions.jsonl`), "ut
   .split("\n")
   .filter((l) => l.trim())
   .map((l) => JSON.parse(l));
-const result = scoreNested(records, { decodeTree, decodeArcTree, buildPhrases, phraseSpans });
+const result = scoreNested(records, { decodeTree, decodeArcTree, buildPhrases, phraseSpans, displayTree });
 writeFileSync(join(dir, `${values.split}_nested.json`), JSON.stringify(result, null, 2) + "\n");
 console.log(
   `${values.model}/${values.run} ${values.split}: nested F1 ${result.nested_f1.toFixed(4)} ` +

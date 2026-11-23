@@ -9,16 +9,17 @@
  *
  * Tasks:
  *   1. AnnotatorInput: minimal parse-result shape the annotator needs
- *      (including nested phrases with role, isHead, and contiguous metadata
- *      from parser/phraseLabeler.ts).
+ *      (including nested phrases with role, isHead, attachment, and
+ *      contiguous metadata from parser/phraseLabeler.ts).
  *   2. Annotation, AnnotatedSentence, AnnotatedToken, Reading (primary or
  *      alternative: flat segments and nested nodes), AnnotatedNode (phrase
- *      category, grammatical role, isHead marker, contiguous flag).
+ *      category, grammatical role, isHead marker, attachment (attachTo,
+ *      uncertain), contiguous flag).
  *
  * Dependencies:
  *   None. Used by: ./annotator.ts, ./index.ts.
  *
- * Status: implemented (T57).
+ * Status: implemented (T57; attachments T79).
  */
 
 /** Flat chunk types (parser ChunkType). */
@@ -47,6 +48,9 @@ type InputLabels = {
   coordinated: boolean;
   splitPredicate: boolean;
   badge: boolean;
+  attachTo: number | null;
+  attachFrom: number | null;
+  uncertain: boolean;
 };
 export type InputWord = InputLabels & { word: number };
 export type InputPhrase = InputLabels & {
@@ -55,7 +59,7 @@ export type InputPhrase = InputLabels & {
   start: number;
   end: number;
   contiguous: boolean;
-  wrapper: boolean;
+  unsure: boolean;
   children: Array<InputPhrase | InputWord>;
 };
 export type InputToken = {
@@ -117,6 +121,18 @@ type NodeLabels = {
   splitPredicate: boolean;
   /** Role shown on a head word whose bracket collapsed (boundary uncertain; T59). */
   badge: boolean;
+  /**
+   * Index of the token this phrase or word attaches to (what it modifies or complements; drawn
+   * as an arrow), or null (head words inside their phrase, the root, punctuation; T73).
+   */
+  attachTo: number | null;
+  /**
+   * First token of what it attaches to: the target is tokens attachFrom..attachTo ("big" →
+   * "red dog"; T81). Equal to attachTo for a one-word target; null when attachTo is null.
+   */
+  attachFrom: number | null;
+  /** The attachment is below the model's confidence threshold (role hidden; drawn as uncertain). */
+  uncertain: boolean;
 };
 export type AnnotatedWordNode = NodeLabels & { kind: "word"; id: string; token: number };
 export type AnnotatedPhraseNode = NodeLabels & {
@@ -126,6 +142,8 @@ export type AnnotatedPhraseNode = NodeLabels & {
   start: number;
   end: number;
   contiguous: boolean;
+  /** A bracket that is always shown (a main clause's subject or predicate) but whose boundary the model is unsure of: drawn dashed (T82). */
+  unsure: boolean;
   children: AnnotatedNode[];
 };
 export type AnnotatedNode = AnnotatedWordNode | AnnotatedPhraseNode;

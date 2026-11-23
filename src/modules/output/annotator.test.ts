@@ -7,7 +7,16 @@ import type { ParseResult, SentenceParse, Token } from "../parser";
 import { annotate, annotateNodes, flatSegments } from "./annotator";
 import type { AnnotatorInput } from "./types";
 
-const labels = { role: null, isHead: false, coordinated: false, splitPredicate: false, badge: false } as const;
+const labels = {
+  role: null,
+  isHead: false,
+  coordinated: false,
+  splitPredicate: false,
+  badge: false,
+  attachTo: null,
+  attachFrom: null,
+  uncertain: false,
+} as const;
 
 /** Tokens of "The dog ran ." with offsets into `text`. */
 function tokens(words: string[], offset = 0, gaps: boolean[] = []): Token[] {
@@ -87,40 +96,48 @@ describe("flatSegments", () => {
 });
 
 describe("annotateNodes", () => {
-  it("keeps roles and head flags and collapses wrapper brackets into their word", () => {
+  it("keeps roles, head flags, and attachments, with ids from the node's path", () => {
     const nodes = annotateNodes(
       [
         {
           ...labels,
           role: "Subject",
+          attachTo: 2,
+          attachFrom: 2,
           category: "NP",
           head: 1,
           start: 0,
           end: 1,
           contiguous: true,
-          wrapper: false,
+          unsure: true,
           children: [
-            { ...labels, word: 0 },
-            {
-              ...labels,
-              isHead: true,
-              category: "NP",
-              head: 1,
-              start: 1,
-              end: 1,
-              contiguous: true,
-              wrapper: true,
-              children: [{ ...labels, word: 1 }],
-            },
+            { ...labels, word: 0, attachTo: 1, attachFrom: 1, uncertain: true },
+            { ...labels, word: 1, isHead: true },
           ],
         },
         { ...labels, word: 2, role: "Predicate", badge: true },
       ],
       "n",
     );
-    expect(nodes[0]).toMatchObject({ kind: "phrase", category: "NP", role: "Subject", id: "n-0" });
+    expect(nodes[0]).toMatchObject({
+      kind: "phrase",
+      unsure: true,
+      category: "NP",
+      role: "Subject",
+      id: "n-0",
+      attachTo: 2,
+      attachFrom: 2,
+    });
     const inner = nodes[0]?.kind === "phrase" ? nodes[0].children : [];
-    expect(inner[1]).toMatchObject({ kind: "word", token: 1, isHead: true, id: "n-0-1" });
+    expect(inner[0]).toMatchObject({
+      kind: "word",
+      token: 0,
+      id: "n-0-0",
+      attachTo: 1,
+      attachFrom: 1,
+      uncertain: true,
+    });
+    expect(inner[1]).toMatchObject({ kind: "word", token: 1, isHead: true, id: "n-0-1", attachTo: null });
     expect(nodes[1]).toMatchObject({ kind: "word", token: 2, role: "Predicate", badge: true });
   });
 });

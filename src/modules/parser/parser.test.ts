@@ -61,15 +61,14 @@ describe("Parser", () => {
 
   it("builds the labeled nested view only for models that ship it", async () => {
     const [withNested] = (await new Parser(mockBackend(), MODEL).parse("The dog barks.")).sentences;
-    const top = withNested?.phrases?.[0];
-    expect(top && "category" in top ? top.category : null).toBe("S");
-    const subject = top && "children" in top ? top.children[0] : undefined;
-    expect(subject && "role" in subject ? subject.role : null).toBe("Subject");
+    // The main clause is shown as its subject and predicate brackets (no clause bracket; T82).
+    const roles = withNested?.phrases?.map((x) => ("children" in x ? x.role : null));
+    expect(roles).toEqual(["Subject", "Predicate", null]);
     const [flat] = (await new Parser(mockBackend(), { ...MODEL, nestedView: false }).parse("The dog barks.")).sentences;
     expect(flat?.phrases).toBeNull();
   });
 
-  it("collapses uncertain brackets and badges their roles", () => {
+  it("marks the main clause's uncertain brackets as unsure", () => {
     const t = taggedDog();
     t.arc = arcFor([2, 3, 0, 3], 0.4); // every head uncertain: brackets collapse, roles below the role gate
     const span: SentenceSpan = {
@@ -78,7 +77,9 @@ describe("Parser", () => {
       words: ["The", "dog", "barks", "."].map((w, i) => ({ text: w, start: i, end: i + 1 })),
     };
     const s = buildSentenceParse(span, t, LABELS, true);
-    expect(s.phrases?.some((x) => "children" in x && x.end > x.start)).toBe(false);
+    // The subject bracket stays (pinned) but is marked unsure; nothing is shown as certain.
+    const multi = s.phrases?.filter((x) => "children" in x && x.end > x.start) ?? [];
+    expect(multi.every((x) => "unsure" in x && x.unsure)).toBe(true);
   });
 
   it("wraps backend failures as ParserRuntimeError and checks sentence counts", async () => {

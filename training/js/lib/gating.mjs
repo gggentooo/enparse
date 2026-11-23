@@ -4,18 +4,23 @@
  * Description:
  *   For biaffine prediction records (arc_scores = word-level head log-probs,
  *   rel_candidates), decodes each sentence with the app's decodeArcTree at an
- *   arc temperature, builds nested phrases, and for every threshold gates them
- *   with gatePhrases (both injected from treeDecoder.ts). Counts labeled
+ *   arc temperature, builds and labels the nested phrases of the displayed
+ *   tree (quantifier rule), and for every threshold collapses brackets whose
+ *   span confidence is below it (gateLabeled, spanConfidence; all injected
+ *   from the app's parser module; T78). Counts labeled
  *   multi-word brackets (type, start, end), multiset match against the gold
  *   tree's brackets:
  *     precision = correct shown / shown (null when nothing is shown)
  *     coverage  = shown / predicted (before gating)
  *     recall    = correct shown / gold
+ *   "Shown" means shown as certain. The main clause's subject and predicate
+ *   brackets are never hidden (T82): below the threshold they are drawn dashed
+ *   and counted separately (dashed, dashed_precision).
  *
  * Phase: 8 (T58). Used by: ../gating_eval.mjs, ../tests/gating.test.mjs.
  * Dependencies: none (decoder functions injected).
  *
- * Status: implemented (T58).
+ * Status: implemented (T58; span confidence and gating after labeling T78; dashed pinned brackets T82).
  */
 
 /** Thresholds evaluated (0 = no gating). */
@@ -45,27 +50,64 @@ export function scaleArc(arc, t) {
 }
 
 /**
+ * One record as the app shows it: decoded tree, displayed tree (quantifier rule), phrases,
+ * role confidences, span confidence per bracket (cached), and the gold phrases.
+ */
+function views(r, d, arcT, relT) {
+  const tree = d.decodeArcTree(scaleArc(r.arc_scores, arcT), relT === 1 ? r.rel_candidates : scaleRel(r.rel_candidates, relT));
+  const words = r.words ?? [];
+  const shown = d.displayTree(tree.heads, tree.relations, words);
+  const items = d.buildPhrases(shown.heads, r.pred_upos, shown.relations.map(base));
+  const own = tree.relationProbs.map((p, i) => p * tree.headProbs[i]);
+  const confidence = shown.source.map((src) => own[src]);
+  const isPunct = (w) => r.pred_upos[w] === "PUNCT";
+  const cache = new Map();
+  const spanConfidence = (node) => {
+    const k = `${node.start}:${node.end}:${node.head}:${node.level}`;
+    if (!cache.has(k)) cache.set(k, d.spanConfidence(node, tree, isPunct));
+    return cache.get(k);
+  };
+  const gold = d.displayTree(r.gold_head, r.gold_deprel ?? r.gold_rel, words);
+  const goldItems = d.buildPhrases(gold.heads, r.gold_upos, gold.relations.map(base));
+  return { tree, shown, items, confidence, spanConfidence, gold, goldItems };
+}
+
+/**
  * Precision, coverage, and recall of shown multi-word brackets per threshold.
  * @param {object[]} records biaffine prediction records
- * @param {{ decodeArcTree: Function, buildPhrases: Function, gatePhrases: Function, phraseSpans: Function }} d
+ * @param {{ decodeArcTree: Function, displayTree: Function, buildPhrases: Function, labelPhrases: Function,
+ *           gateLabeled: Function, spanConfidence: Function, phraseSpans: Function }} d app functions
  * @param {number} t arc temperature
  * @param {number[]} thresholds
  */
 export function gatingCurve(records, d, t, thresholds) {
-  const acc = thresholds.map(() => ({ shown: 0, correct: 0 }));
+  const acc = thresholds.map(() => ({ shown: 0, correct: 0, dashed: 0, dashedCorrect: 0 }));
   let predicted = 0;
   let gold = 0;
+  /** Multi-word bracket keys of gated phrases: shown as certain, and pinned ones shown dashed (unsure). */
+  const split = (items) => {
+    const sure = [];
+    const dashed = [];
+    const walk = (x) => {
+      if ("word" in x) return;
+      if (x.end > x.start) (x.unsure ? dashed : sure).push(key(x));
+      x.children.forEach(walk);
+    };
+    items.forEach(walk);
+    return { sure, dashed };
+  };
   for (const r of records) {
-    const tree = d.decodeArcTree(scaleArc(r.arc_scores, t), r.rel_candidates);
-    const rels = tree.relations.map(base);
-    const items = d.buildPhrases(tree.heads, r.pred_upos, rels);
-    const goldSpans = multi(d.phraseSpans(d.buildPhrases(r.gold_head, r.gold_upos, r.gold_rel)));
+    const v = views(r, d, t, 1);
+    const labeled = d.labelPhrases(v.items, v.shown.heads, v.shown.relations, r.pred_upos);
+    const goldSpans = multi(d.phraseSpans(v.goldItems));
     gold += goldSpans.length;
-    predicted += multi(d.phraseSpans(items)).length;
+    predicted += multi(d.phraseSpans(v.items)).length;
     thresholds.forEach((th, i) => {
-      const shown = multi(d.phraseSpans(d.gatePhrases(items, tree, th)));
-      acc[i].shown += shown.length;
-      acc[i].correct += matches(goldSpans, shown);
+      const shown = split(d.gateLabeled(labeled, v.spanConfidence, th));
+      acc[i].shown += shown.sure.length;
+      acc[i].correct += matches(goldSpans, shown.sure);
+      acc[i].dashed += shown.dashed.length;
+      acc[i].dashedCorrect += matches(goldSpans, shown.dashed);
     });
   }
   return thresholds.map((threshold, i) => ({
@@ -74,6 +116,8 @@ export function gatingCurve(records, d, t, thresholds) {
     coverage: predicted ? acc[i].shown / predicted : 0,
     recall: gold ? acc[i].correct / gold : 0,
     shown: acc[i].shown,
+    dashed: acc[i].dashed,
+    dashed_precision: acc[i].dashed ? acc[i].dashedCorrect / acc[i].dashed : null,
   }));
 }
 
@@ -118,7 +162,7 @@ function roleUnits(items) {
 
 /**
  * Precision, coverage, and recall of shown roles per role threshold, with brackets gated at
- * bracketThreshold (labelPhrases with badges; d.labelPhrases injected from phraseLabeler.ts).
+ * bracketThreshold (labelPhrases, then gateLabeled with badges; injected from phraseLabeler.ts).
  * A role is correct if the gold tree's labeled phrases have the same role on the same span
  * (badge: on a bracket or word with the same head word).
  */
@@ -126,10 +170,8 @@ export function roleCurve(records, d, arcT, relT, bracketThreshold, thresholds) 
   const acc = thresholds.map(() => ({ shown: 0, correct: 0 }));
   let gold = 0;
   for (const r of records) {
-    const tree = d.decodeArcTree(scaleArc(r.arc_scores, arcT), scaleRel(r.rel_candidates, relT));
-    const items = d.gatePhrases(d.buildPhrases(tree.heads, r.pred_upos, tree.relations.map(base)), tree, bracketThreshold);
-    const goldItems = d.buildPhrases(r.gold_head, r.gold_upos, r.gold_deprel.map(base));
-    const goldLabeled = d.labelPhrases(goldItems, r.gold_head, r.gold_deprel, r.gold_upos);
+    const v = views(r, d, arcT, relT);
+    const goldLabeled = d.labelPhrases(v.goldItems, v.gold.heads, v.gold.relations, r.gold_upos);
     const spans = new Set();
     const byHead = new Set();
     const walk = (x) => {
@@ -142,9 +184,9 @@ export function roleCurve(records, d, arcT, relT, bracketThreshold, thresholds) 
     };
     goldLabeled.forEach(walk);
     gold += spans.size;
-    const confidence = tree.relationProbs.map((p, i) => p * tree.headProbs[i]);
     thresholds.forEach((threshold, i) => {
-      const units = roleUnits(d.labelPhrases(items, tree.heads, tree.relations, r.pred_upos, { confidence, threshold }));
+      const labeled = d.labelPhrases(v.items, v.shown.heads, v.shown.relations, r.pred_upos, { confidence: v.confidence, threshold });
+      const units = roleUnits(d.gateLabeled(labeled, v.spanConfidence, bracketThreshold));
       acc[i].shown += units.length;
       acc[i].correct += units.filter((u) => (u.span ? spans.has(u.span) : byHead.has(u.badge))).length;
     });

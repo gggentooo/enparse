@@ -6,8 +6,9 @@
  *   (src/modules/parser/treeDecoder.ts, passed in so this file stays free of
  *   TypeScript imports): decode each record into a tree (decodeRecord: MST
  *   over arc_scores for biaffine records, else the rel_pos_v1 group B
- *   candidates with repair), build nested phrases for prediction and gold,
- *   and compare brackets. Relations are compared without subtypes.
+ *   candidates with repair), build nested phrases for prediction and gold
+ *   (phrasesOf: the app's quantifier display rule, then one bracket per
+ *   phrase; T75, T77), and compare brackets. Relations are compared without subtypes.
  *
  * Phase: 7 (test evaluation), 9 (parity of the nested view).
  *
@@ -15,7 +16,7 @@
  *   nested_f1            labeled bracket F1 (type, start, end; multiset)
  *   nested_unlabeled_f1  bracket F1 ignoring labels
  *   nested_multiword_f1  labeled bracket F1 over brackets of two or more words
- *                        (nested-view target; single-word wrappers excluded)
+ *                        (nested-view target; leaves out a main clause's one-word subject and predicate brackets)
  *   tree_uas / tree_las  after decoding and repair (what the app shows)
  *   tree_uas_no_punct / tree_las_no_punct
  *                        same, without words whose gold UPOS is PUNCT
@@ -29,6 +30,16 @@
  */
 
 const base = (rel) => rel.split(":")[0];
+
+/**
+ * Nested phrases of a tree as the app displays it: the quantifier display rule
+ * (decoder.displayTree from quantifiers.ts, when given; T77) and then buildPhrases.
+ * @param {string[]} [words] word texts (the rule needs them; none = rule not applied)
+ */
+export function phrasesOf(decoder, heads, upos, relations, words = []) {
+  const shown = decoder.displayTree ? decoder.displayTree(heads, relations, words) : { heads, relations };
+  return decoder.buildPhrases(shown.heads, upos, shown.relations.map(base));
+}
 
 /**
  * Decoded tree of one evaluate.py record (relations without subtypes).
@@ -91,8 +102,8 @@ export function scoreNested(records, decoder) {
         }
       }
     });
-    const goldSpans = decoder.phraseSpans(decoder.buildPhrases(r.gold_head, r.gold_upos, r.gold_rel));
-    const predSpans = decoder.phraseSpans(decoder.buildPhrases(tree.heads, r.pred_upos, tree.relations));
+    const goldSpans = decoder.phraseSpans(phrasesOf(decoder, r.gold_head, r.gold_upos, r.gold_rel, r.words));
+    const predSpans = decoder.phraseSpans(phrasesOf(decoder, tree.heads, r.pred_upos, tree.relations, r.words));
     const key = (s, labeled) => (labeled ? `${s.type}:${s.start}:${s.end}` : `${s.start}:${s.end}`);
     const isMulti = (s) => s.end > s.start;
     for (const [acc, labeled, keep] of [

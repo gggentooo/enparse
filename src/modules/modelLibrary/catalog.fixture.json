@@ -66,10 +66,10 @@
         "las": 0.9245,
         "nested": {
           "uas_no_punct": 0.9451,
-          "bracket_f1": 0.8975,
-          "shown_precision": 0.9571,
-          "shown_coverage": 0.4858,
-          "role_precision": 0.9606
+          "bracket_f1": 0.8913,
+          "shown_precision": 0.9583,
+          "shown_coverage": 0.6671,
+          "role_precision": 0.958
         }
       },
       "nested_view": true,
@@ -137,10 +137,10 @@
         "las": 0.9231,
         "nested": {
           "uas_no_punct": 0.943,
-          "bracket_f1": 0.8971,
-          "shown_precision": 0.9571,
-          "shown_coverage": 0.5372,
-          "role_precision": 0.9599
+          "bracket_f1": 0.8903,
+          "shown_precision": 0.9564,
+          "shown_coverage": 0.6818,
+          "role_precision": 0.9562
         }
       },
       "nested_view": true,

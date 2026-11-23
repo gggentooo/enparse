@@ -1,17 +1,24 @@
 /*
  * src/components/Pages/NestedReading.module.css — styles for NestedReading.tsx
  *
- * Description: nested phrases, in one of two shapes (.boxes: rounded boxes; .brackets: colored brackets at both
- *   ends, no vertical padding so depth widens a line instead of growing it) and with labels either always shown
- *   (.always: in the layout) or only on hover/focus of the innermost phrase/word (.hover: floating over it).
+ * Description: nested phrases, in one of two shapes (.boxes: rounded boxes; .brackets: inline phrases with a
+ *   colored bracket at each end); a sentence never wraps: the view scrolls sideways and with labels either always shown
+ *   (.always: in the layout) or only on hover/focus of the innermost phrase/word (.hover: floating over it);
+ *   pinned labels (Subject, Predicate) always in the layout; the attachment arrow overlay and its target word.
  * Dependencies: src/css/tokens.css. Used by: NestedReading.tsx.
  * Status: implemented (T57).
  */
 
 .nested {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-1);
+  /* One sentence, one line: a long sentence scrolls sideways. The top padding leaves room for the
+     floating labels and the arrow, which the scroll container would otherwise clip. */
+  overflow-x: auto;
+  padding: 1.75rem 0 var(--space-1);
+  white-space: nowrap;
 }
 
 .phrase {
@@ -25,7 +32,7 @@
 
 .children {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-1);
 }
 
@@ -66,43 +73,56 @@
   background: color-mix(in srgb, var(--phrase-color) 6%, transparent);
 }
 
-/* Shape: brackets, a vertical rule with short serifs at either end. */
-.brackets,
+/* Shape: brackets. Phrases are inline: the left bracket sits before a phrase's first word and the right
+   bracket after its last, with no vertical padding per level. */
+.brackets {
+  display: block;
+  white-space: nowrap;
+  line-height: 2.3;
+}
+
 .brackets .children {
-  align-items: center;
+  display: inline;
 }
 
 .brackets .phrase {
-  align-items: center;
-  padding: 0 calc(var(--space-1) + 5px);
+  display: inline;
+  padding: 2px 3px;
+  border-right: 2px var(--bracket-style) var(--phrase-color);
+  border-left: 2px var(--bracket-style) var(--phrase-color);
+  border-radius: 5px;
 }
 
-.brackets .phrase::before,
-.brackets .phrase::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  border: 2px var(--bracket-style) var(--phrase-color);
-  pointer-events: none;
+.brackets .word {
+  display: inline;
 }
 
-.brackets .phrase::before {
-  left: 0;
-  border-right: none;
-  border-radius: 3px 0 0 3px;
+/* Labels that stay in the layout (pinned, or the "always" look): a small raised tag, before a phrase's
+   words and after a single word. */
+.brackets .label,
+.brackets .badge {
+  margin: 0 3px 0 0;
+  padding: 0;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: super;
 }
 
-.brackets .phrase::after {
-  right: 0;
-  border-left: none;
-  border-radius: 0 3px 3px 0;
+.brackets .badge {
+  margin: 0 0 0 2px;
 }
 
-/* Labels on hover: floating, so they take no space. Only the innermost hovered/focused phrase shows its label. */
-.hover .label,
-.hover .badge {
+.brackets .badge.uncertain {
+  text-decoration: underline dashed;
+}
+
+/* Labels on hover: floating, so they take no space. Only the innermost hovered/focused phrase shows its label.
+   Pinned labels (Subject, Predicate) stay in the layout in every look. */
+.hover .label:not(.pinned),
+.hover .badge:not(.pinned) {
   position: absolute;
   z-index: 2;
   background: var(--color-surface, Canvas);
@@ -110,15 +130,31 @@
   pointer-events: none;
 }
 
-.hover .label {
+.hover .label:not(.pinned) {
   bottom: 100%;
   left: 0;
+  margin: 0;
+  padding: 0 var(--space-1);
+  font-size: 0.7rem;
+  line-height: 1.4;
   border: 1px solid var(--phrase-color);
   border-radius: var(--radius-sm);
 }
 
-.hover .badge {
+.hover .badge:not(.pinned) {
   top: 100%;
+  left: 0;
+  margin: 0;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-text-muted);
+  font-size: 0.65rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.hover .badge.uncertain:not(.pinned) {
+  border-style: dashed;
 }
 
 .hover .phrase:hover:not(:has(.phrase:hover)) > .label,
@@ -130,6 +166,54 @@
 
 .hover .phrase:hover:not(:has(.phrase:hover)) {
   background: color-mix(in srgb, var(--phrase-color) 16%, transparent);
+}
+
+.pinned {
+  color: var(--color-text-muted);
+}
+
+/* Arrow from the pointed phrase or word to the word it attaches to. */
+.arrow {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.arrow path {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+}
+
+.arrow marker path {
+  fill: var(--color-text);
+  stroke: none;
+}
+
+.arrow text {
+  fill: var(--color-text);
+  font-size: 0.7rem;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--color-surface, Canvas);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* The model is unsure of this attachment. */
+.unsure > path {
+  stroke-dasharray: 4 3;
+}
+
+/* The word an arrow points to. */
+.target {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
 }
 
 /* Bracket collapsed by gating: the role is shown, but the phrase boundary is uncertain (T59). */
@@ -160,6 +244,11 @@
 
 .ADVP {
   --phrase-color: var(--chunk-advp);
+}
+
+/* Always-shown bracket (main clause subject or predicate) whose boundary the model is unsure of. */
+.dashed {
+  --bracket-style: dashed;
 }
 
 .S {

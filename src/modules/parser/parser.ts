@@ -117,11 +117,13 @@ export function buildSentenceParse(
         role: requireSet(labels.nested.role_threshold, "nested.role_threshold"),
       }
     : null;
-  const phrases = thresholds ? labeledView(tree, upos, thresholds) : null;
+  const words = span.words.map((w) => w.text);
+  const phrases = thresholds ? labeledView(tree, upos, words, thresholds) : null;
   const alternatives = buildAlternatives({
     tagged,
     tree,
     upos,
+    words,
     chunkTags,
     margins: {
       label: requireSet(labels.ambiguity.margin, "ambiguity.margin"),

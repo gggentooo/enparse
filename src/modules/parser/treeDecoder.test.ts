@@ -3,10 +3,11 @@
  *
  * Covers: label parsing and head resolution (rel_pos_v1), best-candidate
  * decoding, root repair (none / several), cycle repair, unresolvable heads,
- * the documented bracketing examples, PP labels, punctuation placement,
+ * the documented bracketing examples (phrase-per-head; T75), clause /
+ * predicate / complement levels, PP labels, punctuation placement,
  * non-projective trees, and phrase spans; MST decoding over arc scores
  * (optimality against brute force on small random sentences, single root,
- * relations) and confidence gating.
+ * relations, head distributions) and span confidence.
  */
 
 import { describe, expect, it } from "vitest";
@@ -14,16 +15,16 @@ import {
   REPAIR_RELATION,
   ROOT_LABEL,
   ROOT_RELATION,
-  bracketConfidence,
   bracketString,
   buildPhrases,
   decodeArcTree,
   decodeTree,
-  gatePhrases,
   maxSpanningTree,
   parseDepLabel,
   phraseSpans,
+  projectiveTree,
   resolveHead,
+  spanConfidence,
 } from "./treeDecoder";
 import type { DepCandidate, PhraseNode, RelationCandidate } from "./types";
 
@@ -136,51 +137,113 @@ describe("decodeTree", () => {
 });
 
 describe("buildPhrases", () => {
-  it("reproduces the documented example", () => {
+  const levels = (items: ReturnType<typeof buildPhrases>): string[] => {
+    const out: string[] = [];
+    const walk = (x: (typeof items)[number]): void => {
+      if ("word" in x) return;
+      out.push(`${x.level}:${x.start}-${x.end}`);
+      x.children.forEach(walk);
+    };
+    items.forEach(walk);
+    return out;
+  };
+
+  it("reproduces the documented example: one bracket per phrase; the main clause is its subject and predicate brackets", () => {
     const words = ["The", "red", "dog", "rarely", "barks", "loudly", "."];
     const upos = ["DET", "ADJ", "NOUN", "ADV", "VERB", "ADV", "PUNCT"];
     const rel = ["det", "amod", "nsubj", "advmod", "root", "advmod", "punct"];
     const items = buildPhrases([3, 3, 5, 5, 0, 5, 5], upos, rel);
-    expect(bracketString(items, words)).toBe("[[The [red [dog]]] [rarely [[barks] loudly]]] .");
+    expect(bracketString(items, words)).toBe("[The red dog] [rarely barks loudly] .");
+    expect(bracketString(items, words, true)).toBe("[NP The red dog] [VP rarely barks loudly] .");
+    expect(levels(items)).toEqual(["phrase:0-2", "predicate:3-5"]);
+  });
+
+  it("brackets a copular clause as subject + [cop [complement]]", () => {
+    const words = "Mackerel is a common name given to fish .".split(" ");
+    const upos = "NOUN AUX DET ADJ NOUN VERB ADP NOUN PUNCT".split(" ");
+    const rel = "nsubj cop det amod root acl case obl punct".split(" ");
+    const items = buildPhrases([5, 5, 5, 5, 0, 5, 8, 6, 5], upos, rel);
+    expect(bracketString(items, words)).toBe("[Mackerel] [is [a common name [given [to fish]]]] .");
     expect(bracketString(items, words, true)).toBe(
-      "[VP [NP The [NP red [NP dog]]] [VP rarely [VP [VP barks] loudly]]] .",
+      "[NP Mackerel] [VP is [NP a common name [VP given [PP to fish]]]] .",
+    );
+    expect(levels(items)).toEqual(["phrase:0-0", "predicate:1-7", "complement:2-7", "phrase:5-7", "phrase:6-7"]);
+  });
+
+  it("keeps auxiliaries flat in the predicate; a main clause's one-word subject and predicate are bracketed", () => {
+    const words = ["He", "has", "been", "given", "a", "book"];
+    const upos = ["PRON", "AUX", "AUX", "VERB", "DET", "NOUN"];
+    const rel = ["nsubj", "aux", "aux", "root", "det", "obj"];
+    expect(bracketString(buildPhrases([4, 4, 4, 0, 6, 4], upos, rel), words)).toBe("[He] [has been given [a book]]");
+    expect(bracketString(buildPhrases([2, 0], ["PRON", "VERB"], ["nsubj", "root"]), ["He", "runs"])).toBe(
+      "[He] [runs]",
     );
   });
 
-  it("labels a nominal with a case dependent as PP (right dependents nest first)", () => {
+  it("keeps words before the subject outside the predicate (question, fronted adverb)", () => {
+    const upos = ["AUX", "DET", "NOUN", "VERB", "ADV", "PUNCT"];
+    const rel = ["aux", "det", "nsubj", "root", "advmod", "punct"];
+    const words = ["Does", "the", "dog", "bark", "loudly", "?"];
+    expect(bracketString(buildPhrases([4, 3, 4, 0, 4, 4], upos, rel), words)).toBe("Does [the dog] [bark loudly] ?");
+  });
+
+  it("brackets coordinated phrases side by side, with the conjunction between them", () => {
+    const words = "She likes red apples and green pears".split(" ");
+    const upos = "PRON VERB ADJ NOUN CCONJ ADJ NOUN".split(" ");
+    const rel = "nsubj root amod obj cc amod conj".split(" ");
+    const items = buildPhrases([2, 0, 4, 2, 7, 7, 4], upos, rel);
+    expect(bracketString(items, words)).toBe("[She] [likes [[red apples] and [green pears]]]");
+    expect(levels(items)).toEqual(["phrase:0-0", "predicate:1-6", "phrase:2-6", "conjunct:2-3", "phrase:5-6"]);
+    // One-word conjuncts stay plain words; a sentence-initial conjunction stays outside.
+    const short = buildPhrases(
+      [3, 3, 0, 5, 3],
+      ["CCONJ", "PRON", "VERB", "CCONJ", "VERB"],
+      ["cc", "nsubj", "root", "cc", "conj"],
+    );
+    expect(bracketString(short, ["And", "he", "sings", "and", "dances"])).toBe("And [he] [sings and dances]");
+  });
+
+  it("gives a clause coordinated with the main clause its own subject and predicate brackets", () => {
+    const words = "He ran , and she walked home .".split(" ");
+    const upos = "PRON VERB PUNCT CCONJ PRON VERB ADV PUNCT".split(" ");
+    const rel = "nsubj root punct cc nsubj conj advmod punct".split(" ");
+    const items = buildPhrases([2, 0, 6, 6, 6, 2, 6, 2], upos, rel);
+    expect(bracketString(items, words)).toBe("[He] [ran] , and [she] [walked home] .");
+  });
+
+  it("labels a nominal with a case dependent as PP; the preposition stays inside its noun's phrase", () => {
     const words = ["the", "man", "in", "the", "car"];
     const upos = ["DET", "NOUN", "ADP", "DET", "NOUN"];
     const rel = ["det", "root", "case", "det", "nmod"];
     const items = buildPhrases([2, 0, 5, 5, 2], upos, rel);
-    expect(bracketString(items, words)).toBe("[the [[man] [in [the [car]]]]]");
-    expect(bracketString(items, words, true)).toBe("[NP the [NP [NP man] [PP in [NP the [NP car]]]]]");
+    expect(bracketString(items, words)).toBe("[the man [in the car]]");
+    expect(bracketString(items, words, true)).toBe("[NP the man [PP in the car]]");
   });
 
-  it("keeps non-root punctuation in its head's outermost phrase", () => {
-    const words = ["Paris", ",", "France", "rocks"];
-    const upos = ["PROPN", "PUNCT", "PROPN", "VERB"];
-    const rel = ["nsubj", "punct", "appos", "root"];
-    const items = buildPhrases([4, 1, 1, 0], upos, rel);
-    expect(bracketString(items, words)).toBe("[[[Paris] , France] [rocks]]");
+  it("keeps punctuation in the innermost bracket of its head that surrounds it", () => {
+    const words = ["Paris", ",", "France", ",", "rocks", "."];
+    const upos = ["PROPN", "PUNCT", "PROPN", "PUNCT", "VERB", "PUNCT"];
+    const rel = ["nsubj", "punct", "appos", "punct", "root", "punct"];
+    // "," (1) and "," (3) depend on France, "." on the root.
+    const items = buildPhrases([5, 3, 1, 3, 0, 5], upos, rel);
+    expect(bracketString(items, words)).toBe("[Paris , France ,] [rocks] .");
+    // Punctuation between a head's words goes inside that head's bracket.
+    const inner = buildPhrases([4, 1, 1, 0], ["PROPN", "PUNCT", "PROPN", "VERB"], ["nsubj", "punct", "appos", "root"]);
+    expect(bracketString(inner, ["Paris", ",", "France", "rocks"])).toBe("[Paris , France] [rocks]");
   });
 
   it("marks discontinuous phrases in non-projective trees", () => {
     // word 0 depends on word 2, word 1 on word 3: crossing arcs
     const items = buildPhrases([3, 4, 0, 3], ["NOUN", "NOUN", "VERB", "VERB"], ["nsubj", "obj", "root", "ccomp"]);
-    const spans = phraseSpans(items);
-    expect(spans.length).toBeGreaterThan(0);
-    const root = items[0];
-    expect(root && "start" in root && root.contiguous).toBe(true);
-    const inner = JSON.stringify(items);
-    expect(inner).toContain('"contiguous":false');
+    expect(phraseSpans(items).length).toBeGreaterThan(0);
+    expect(JSON.stringify(items)).toContain('"contiguous":false');
   });
 
-  it("lists every bracket as a span", () => {
-    const items = buildPhrases([2, 0], ["ADJ", "NOUN"], ["amod", "root"]);
-    expect(phraseSpans(items)).toEqual([
+  it("lists every bracket as a span; a single word is not a bracket", () => {
+    expect(phraseSpans(buildPhrases([2, 0], ["ADJ", "NOUN"], ["amod", "root"]))).toEqual([
       { type: "NP", start: 0, end: 1 },
-      { type: "NP", start: 1, end: 1 },
     ]);
+    expect(buildPhrases([0], ["NOUN"], ["root"])).toEqual([{ word: 0 }]);
   });
 });
 
@@ -260,6 +323,47 @@ describe("maxSpanningTree", () => {
   });
 });
 
+describe("projectiveTree", () => {
+  const crossing = (heads: number[]): boolean => {
+    const arcs = heads.slice(1).map((h, d) => [Math.min(h, d + 1), Math.max(h, d + 1)] as const);
+    return arcs.some(([a, b]) => arcs.some(([x, y]) => a < x && x < b && b < y));
+  };
+
+  it("finds the best single-root tree without crossing arcs on random graphs (brute force, n ≤ 5)", () => {
+    const rand = lcg(11);
+    for (let trial = 0; trial < 150; trial++) {
+      const n = 1 + Math.floor(rand() * 5);
+      const score = Array.from({ length: n + 1 }, () => Array.from({ length: n + 1 }, () => Math.log(rand() + 1e-6)));
+      const best = Math.max(
+        ...allTrees(n)
+          .filter((t) => !crossing(t))
+          .map((t) => scoreOf(score, t)),
+      );
+      const got = projectiveTree(score) as number[];
+      expect(crossing(got)).toBe(false);
+      expect(got.slice(1).filter((h) => h === 0)).toHaveLength(1);
+      expect(scoreOf(score, got)).toBeCloseTo(best, 9);
+    }
+  });
+
+  it("equals the spanning tree when that has no crossing arcs, and returns null when nothing is possible", () => {
+    const L = Math.log;
+    // the dog barks: the→dog, dog→barks, barks→root
+    const score = [
+      [-Infinity, -Infinity, -Infinity, -Infinity],
+      [L(0.01), -Infinity, L(0.98), L(0.01)],
+      [L(0.01), L(0.01), -Infinity, L(0.98)],
+      [L(0.98), L(0.01), L(0.01), -Infinity],
+    ];
+    expect(projectiveTree(score)).toEqual(maxSpanningTree(score));
+    const none = [
+      [-Infinity, -Infinity],
+      [-Infinity, -Infinity],
+    ];
+    expect(projectiveTree(none)).toBeNull();
+  });
+});
+
 describe("decodeArcTree", () => {
   it("decodes the argmax tree, root relation, and head probabilities", () => {
     // The dog barks : The→dog, dog→barks, barks→root
@@ -306,29 +410,118 @@ describe("decodeArcTree", () => {
   });
 });
 
-describe("confidence gating", () => {
+describe("spanConfidence", () => {
   // The red dog barks . — heads: The→dog, red→dog, dog→barks, barks→root, .→barks
   const heads = [3, 3, 4, 0, 4];
   const upos = ["DET", "ADJ", "NOUN", "VERB", "PUNCT"];
   const rels = ["det", "amod", "nsubj", "root", "punct"];
-  const words = ["The", "red", "dog", "barks", "."];
   const items = buildPhrases(heads, upos, rels);
+  const np = items[0] as PhraseNode; // [The red dog]
+  const isPunct = (w: number): boolean => upos[w] === "PUNCT";
 
-  const tree = (headProbs: number[]) => ({ heads, headProbs });
+  /** Point-mass distributions on the chosen heads, with overrides per word: [column, probability][]. */
+  const tree = (over: Record<number, [number, number][]> = {}) => {
+    const headDist = heads.map((h, w) => {
+      const row = new Array<number>(heads.length + 1).fill(0);
+      row[h] = 1;
+      for (const [col, p] of over[w] ?? []) row[col] = p;
+      return row;
+    });
+    return { heads, headProbs: headDist.map((row, w) => row[heads[w] as number] as number), headDist };
+  };
 
-  it("scores a bracket by its non-head words' and outer dependents' head probabilities", () => {
-    const np = (items[0] as PhraseNode).children[0] as PhraseNode; // [The [red [dog]]]
-    expect(bracketString([np], words)).toBe("[The [red [dog]]]");
-    expect(bracketConfidence(np, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9); // outermost: no outer dependents
-    const inner = np.children.find((child) => "children" in child) as PhraseNode; // [red [dog]]; "The" attaches outside
-    expect(bracketString([inner], words)).toBe("[red [dog]]");
-    expect(bracketConfidence(inner, tree([0.5, 0.8, 1, 1, 1]))).toBeCloseTo(0.4, 9);
-    expect(bracketConfidence(inner, tree([1, 0.8, 1, 1, 1]))).toBeCloseTo(0.8, 9);
+  it("is 1 when every word is sure of its head", () => {
+    expect(spanConfidence(np, tree(), isPunct)).toBe(1);
   });
 
-  it("collapses brackets below the threshold and keeps the rest", () => {
-    expect(bracketString(gatePhrases(items, tree([1, 1, 1, 1, 1]), 0.9), words)).toBe(bracketString(items, words));
-    expect(bracketString(gatePhrases(items, tree([1, 0.5, 1, 1, 1]), 0.9), words)).toBe("The red [dog] [barks] .");
-    expect(bracketString(gatePhrases(items, tree([0.5, 0.8, 1, 1, 1]), 0.6), words)).toBe("The red [dog] [barks] .");
+  it("ignores an unsure attachment whose alternatives stay inside the bracket", () => {
+    // "red": 0.6 dog, 0.4 The — both inside [The red dog].
+    expect(
+      spanConfidence(
+        np,
+        tree({
+          1: [
+            [3, 0.6],
+            [1, 0.4],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBeCloseTo(1, 9);
+  });
+
+  it("counts an inside word that may attach outside, the head word that may attach inside, and an outside word that may attach inside", () => {
+    // "red" may attach to "barks" (outside).
+    expect(
+      spanConfidence(
+        np,
+        tree({
+          1: [
+            [3, 0.6],
+            [4, 0.4],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBeCloseTo(0.6, 9);
+    // "dog" (the head word) may attach to "The" (inside).
+    expect(
+      spanConfidence(
+        np,
+        tree({
+          2: [
+            [4, 0.7],
+            [1, 0.3],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBeCloseTo(0.7, 9);
+    // "barks" (outside, head outside) may attach to "dog" (inside).
+    expect(
+      spanConfidence(
+        np,
+        tree({
+          3: [
+            [0, 0.8],
+            [3, 0.2],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBeCloseTo(0.8, 9);
+  });
+
+  it("does not count punctuation or outside words attached into the bracket", () => {
+    const clause = { children: items.filter((x) => !("word" in x && x.word === 4)) }; // every word but "."
+    const predicateLike = { children: [{ word: 3 }] }; // "barks" alone: "dog" attaches into it
+    expect(
+      spanConfidence(
+        predicateLike,
+        tree({
+          2: [
+            [4, 0.5],
+            [0, 0.5],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBe(1);
+    expect(
+      spanConfidence(
+        clause,
+        tree({
+          4: [
+            [4, 0.5],
+            [0, 0.5],
+          ],
+        }),
+        isPunct,
+      ),
+    ).toBe(1);
+  });
+
+  it("falls back to the chosen-head probabilities of the inside words without distributions", () => {
+    expect(spanConfidence(np, { heads, headProbs: [0.5, 0.8, 1, 1, 1] })).toBeCloseTo(0.4, 9);
   });
 });

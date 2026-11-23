@@ -169,6 +169,11 @@ export type DecodedTree = {
   headProbs: number[];
   /** Probability of the chosen relation per word (role gating, T59); 1 for rel_pos_v1 trees (joint label in headProbs). */
   relationProbs: number[];
+  /**
+   * Probability of every head per word: row i = word i; column 0 = root, column j = word j
+   * (biaffine trees; absent for rel_pos_v1). Used by span confidence (gating).
+   */
+  headDist?: number[][];
 };
 
 /** Phrase label in the nested view; null when the head's UPOS has no phrase type. */
@@ -177,9 +182,17 @@ export type PhraseType = "NP" | "VP" | "PP" | "ADJP" | "ADVP" | null;
 /** A word shown without its own bracket (0-based index into the sentence). */
 export type WordLeaf = { word: number };
 
-/** One bracketed level of the nested view. */
+/**
+ * What a bracket is for its head (treeDecoder.ts → buildPhrases): the clause (subject +
+ * predicate), the predicate, the complement of a copula, the first conjunct of a coordination
+ * (the head with its own dependents, beside the other conjuncts), or any other phrase.
+ */
+export type PhraseLevel = "phrase" | "complement" | "predicate" | "clause" | "conjunct";
+
+/** One bracket of the nested view. */
 export type PhraseNode = {
   type: PhraseType;
+  level: PhraseLevel;
   /** 0-based index of the head word. */
   head: number;
   /** First and last covered word (0-based, inclusive). */
@@ -187,6 +200,11 @@ export type PhraseNode = {
   end: number;
   /** False if the covered words have gaps (non-projective tree). */
   contiguous: boolean;
+  /**
+   * Always shown: the subject and predicate brackets of a main clause, which has no bracket of
+   * its own (owner, 2026-11-23; T82). Never collapsed by gating; may hold a single word.
+   */
+  pinned?: boolean;
   children: Array<PhraseNode | WordLeaf>;
 };
 
@@ -227,6 +245,20 @@ export type RoleLabels = {
   splitPredicate: boolean;
   /** Role shown on this head word because its bracket was collapsed by gating (phrase boundary uncertain; T59). */
   badge: boolean;
+  /**
+   * 0-based index of the word this phrase or word attaches to in the displayed tree (the word
+   * it modifies or complements; shown as an arrow), or null (heads inside their own phrase,
+   * the root, punctuation).
+   */
+  attachTo: number | null;
+  /**
+   * First word of what it attaches to: the target is the words attachFrom..attachTo. Equal to
+   * attachTo except for a modifier before its head, which modifies everything from just after
+   * itself through the head word ("big" → "red dog"; T81). Null when attachTo is null.
+   */
+  attachFrom: number | null;
+  /** The attachment's confidence is below the role threshold (shown as uncertain; role hidden). */
+  uncertain: boolean;
 };
 
 /** Role confidence gating (T59): per-word confidence (relation × head probability) and the model's threshold. */
@@ -239,8 +271,8 @@ export type LabeledWord = WordLeaf & RoleLabels;
 export type LabeledPhrase = Omit<PhraseNode, "children"> &
   RoleLabels & {
     category: PhraseCategory;
-    /** Single-word head bracket inside a bracket with the same head ([dog] in [red dog]): collapsed for display. */
-    wrapper: boolean;
+    /** A pinned bracket whose span confidence is below the bracket threshold (shown dashed). */
+    unsure: boolean;
     children: Array<LabeledPhrase | LabeledWord>;
   };
 

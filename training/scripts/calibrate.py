@@ -23,8 +23,9 @@ Description:
          alternative) with mean alternatives per sentence ≤
          ambiguity.max_mean_alternatives. (proposed rule)
       4. Bracket threshold: js/gating_eval.mjs decodes trees with the app's
-         treeDecoder.ts (MST, calibrated head probabilities) and picks the
-         lowest bracket-confidence threshold whose dev shown-bracket precision
+         treeDecoder.ts (MST, calibrated head probabilities), builds and labels
+         the phrases the app shows, and picks the lowest span-confidence
+         threshold (T78) whose dev shown-bracket precision
          (labeled, multi-word) is ≥ acceptance.nested_view.min_shown_precision;
          reports test precision and coverage at that threshold.
       5. Write the values into the checkpoint's labels.json (export copies
@@ -51,10 +52,10 @@ Dependencies:
     Writes: data/checkpoints/<model>/<run>/best/labels.json (calibration, ambiguity, nested);
             data/eval/<model>/<run>/calibration.json; reports/calibration.md.
     Related: src/modules/parser/transformerBackend.ts (temperatures), ambiguity.ts
-             (margins), treeDecoder.ts (gatePhrases with nested.bracket_threshold), phraseLabeler.ts
-             (role gate with nested.role_threshold).
+             (margins), treeDecoder.ts (spanConfidence), phraseLabeler.ts (gateLabeled with
+             nested.bracket_threshold; role gate with nested.role_threshold).
 
-Status: implemented (T58).
+Status: implemented (T58; span-confidence gating T78).
 """
 
 from __future__ import annotations
@@ -461,9 +462,10 @@ def render(results: list[dict[str, Any]], skipped: list[str], cfg: dict[str, Any
         "per sentence "
         f"≤ {amb['max_mean_alternatives']} (cap {amb['max_alternatives']}; proposed rule, "
         "owner-set mean cap). The "
-        "bracket threshold is the lowest bracket confidence (product of chosen-head probabilities "
-        "of the words inside the bracket except its head and of the head's dependents outside it, "
-        "`treeDecoder.ts`) whose dev shown-bracket precision (labeled, "
+        "bracket threshold is the lowest span confidence (T78: per word, the probability that "
+        "its head stays on its side of the bracket; `treeDecoder.ts` → `spanConfidence`; brackets "
+        "are one per phrase, T75, with the quantifier display rule, T77) whose dev shown-bracket "
+        "precision (labeled, "
         f"multi-word) is ≥ {_pct(nv['min_shown_precision'])}; test values are reported at it. "
         "The role threshold (T59) is the lowest role confidence (relation × head probability of "
         "the role's head word) whose dev role precision is ≥ the same target, with brackets gated "

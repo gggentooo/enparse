@@ -55,6 +55,8 @@ describe("scoreNested", () => {
     assert.equal(s.tree_uas, 0.75);
     assert.equal(s.tree_uas_no_punct, 1);
     assert.equal(s.tree_las_no_punct, 1);
+    // A main clause's subject and predicate are bracketed even as single words (T82); the
+    // multi-word score leaves those out.
     const spans = phraseSpans(buildPhrases(gold.gold_head, gold.gold_upos, gold.gold_rel));
     assert.ok(spans.some((x) => x.end === x.start), "gold has single-word brackets");
     assert.ok(spans.some((x) => x.end > x.start), "gold has multi-word brackets");

@@ -6,11 +6,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { labelPhrases } from "../../../src/modules/parser/phraseLabeler.ts";
-import { buildPhrases, decodeArcTree, gatePhrases, phraseSpans } from "../../../src/modules/parser/treeDecoder.ts";
+import { gateLabeled, labelPhrases } from "../../../src/modules/parser/phraseLabeler.ts";
+import { displayTree } from "../../../src/modules/parser/quantifiers.ts";
+import { buildPhrases, decodeArcTree, phraseSpans, spanConfidence } from "../../../src/modules/parser/treeDecoder.ts";
 import { chooseThreshold, gatingCurve, roleCurve, scaleArc, scaleRel } from "../lib/gating.mjs";
 
-const decoder = { decodeArcTree, buildPhrases, gatePhrases, phraseSpans, labelPhrases };
+const decoder = { decodeArcTree, displayTree, buildPhrases, labelPhrases, gateLabeled, spanConfidence, phraseSpans };
 const L = Math.log;
 // the red dog barks . : the→dog, red→dog, dog→barks, barks→root, .→barks
 const record = (pThe) => ({
@@ -38,14 +39,16 @@ describe("gatingCurve", () => {
   });
 
   it("counts a wrong attachment and hides the brackets it makes uncertain", () => {
-    // "the" attaches to "barks" (wrong, p 0.6): NP[red dog] ok, VP[red dog barks] wrong,
-    // VP[the red dog barks] ok. The wrong one has confident words inside, but "the" is an outer
-    // dependent of its head, so it is hidden with the one containing "the"; NP[red dog] stays.
+    // "the" attaches to "barks" (wrong, p 0.6): the subject [red dog] is wrong (gold: [the red dog]).
+    // Without gating it is shown; gated at 0.7 it is not shown as certain ("the" may belong inside,
+    // p 0.38) but, as the main clause's subject, it stays as a dashed bracket (T82).
     const curve = gatingCurve([record(0.37)], decoder, 1, [0, 0.7]);
-    assert.equal(curve[0].shown, 3);
-    assert.ok(Math.abs(curve[0].precision - 2 / 3) < 1e-9);
-    assert.equal(curve[1].shown, 1);
-    assert.equal(curve[1].precision, 1);
+    assert.equal(curve[0].shown, 1);
+    assert.equal(curve[0].precision, 0);
+    assert.equal(curve[1].shown, 0);
+    assert.equal(curve[1].precision, null);
+    assert.equal(curve[1].dashed, 1);
+    assert.equal(curve[1].dashed_precision, 0);
   });
 
   it("chooses the lowest threshold meeting the precision target and ignores empty ones", () => {
@@ -62,14 +65,14 @@ describe("gatingCurve", () => {
 
 describe("roleCurve", () => {
   it("counts roles on brackets, words, and badges, and gates them by confidence", () => {
-    // Correct tree: Subject [the red dog], Modifier red, Predicate [barks]; the clause itself has no role.
+    // Correct tree: Subject [the red dog], Modifier red, Predicate [barks] (main clause: no clause bracket).
     const all = roleCurve([record(0.97)], decoder, 1, 1, 0, [0, 0.999]);
     assert.equal(all[0].shown, 3);
     assert.equal(all[0].precision, 1);
     assert.equal(all[0].recall, 1);
     assert.equal(all[1].shown, 0); // relation prob 0.9 × head prob < 0.999
     assert.equal(all[1].precision, null);
-    // Brackets gated at 0.99: [the red dog] collapses (0.97 × 0.97); its Subject role becomes a badge on "dog".
+    // Brackets gated at 0.99: [the red dog] is below it (about 0.92) but pinned, so it keeps its Subject role.
     const gated = roleCurve([record(0.97)], decoder, 1, 1, 0.99, [0]);
     assert.equal(gated[0].shown, 3);
     assert.equal(gated[0].precision, 1);

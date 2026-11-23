@@ -89,7 +89,16 @@ const tokens: Token[] = words.map((text, index) => {
     relationProb: 0.9,
   };
 });
-const labels = { role: null, isHead: false, coordinated: false, splitPredicate: false, badge: false } as const;
+const labels = {
+  role: null,
+  isHead: false,
+  coordinated: false,
+  splitPredicate: false,
+  badge: false,
+  attachTo: null,
+  attachFrom: null,
+  uncertain: false,
+} as const;
 const result: ParseResult = {
   modelId: "deberta_v3_xsmall",
   modelVersion: "v1",
@@ -108,17 +117,35 @@ const result: ParseResult = {
       phrases: [
         {
           ...labels,
-          type: "VP",
-          category: "S",
-          head: 1,
+          type: "NP",
+          level: "phrase",
+          category: "NP",
+          role: "Subject",
+          attachTo: 2,
+          attachFrom: 1,
+          head: 0,
           start: 0,
+          end: 0,
+          contiguous: true,
+          pinned: true,
+          unsure: false,
+          children: [{ ...labels, word: 0, isHead: true }],
+        },
+        {
+          ...labels,
+          type: "VP",
+          level: "predicate",
+          category: "VP",
+          role: "Predicate",
+          head: 1,
+          start: 1,
           end: 2,
           contiguous: true,
-          wrapper: false,
+          pinned: true,
+          unsure: true,
           children: [
-            { ...labels, word: 0, role: "Subject" },
-            { ...labels, word: 1, isHead: true, role: "Predicate" },
-            { ...labels, word: 2, role: "Complement", badge: true },
+            { ...labels, word: 1, isHead: true },
+            { ...labels, word: 2, role: "Complement", badge: true, attachTo: 0, attachFrom: 0, uncertain: true },
           ],
         },
         { ...labels, word: 3 },
@@ -192,18 +219,56 @@ describe("OutputPage", () => {
   it("shows the nested view with categories, roles, and uncertain-role badges", () => {
     setup();
     fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
-    const clause = screen.getByRole("group", { name: "Clause (S)" });
-    expect(within(clause).getByText("Subject")).toBeTruthy();
-    expect(within(clause).getByText("Predicate")).toBeTruthy();
-    expect(within(clause).getByText("Complement").className).toMatch(/uncertain/);
+    // The main clause has no bracket: subject and predicate are the outermost groups (T82).
+    expect(screen.queryByRole("group", { name: /Clause/ })).toBeNull();
+    const subject = screen.getByRole("group", { name: /^Noun phrase \(NP\) · Subject/ });
+    const predicate = screen.getByRole("group", { name: /^Verb phrase \(VP\) · Predicate; boundary uncertain/ });
+    expect(subject.className).not.toMatch(/dashed/);
+    expect(predicate.className).toMatch(/dashed/);
+    expect(within(predicate).getByText("Complement").className).toMatch(/uncertain/);
+  });
+
+  it("draws an arrow from a word to what it attaches to, on hover and on focus, and names it for screen readers", () => {
+    setup();
+    fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
+    const view = screen.getByRole("group", { name: /Predicate/ }).parentElement as HTMLElement;
+    expect(view.querySelector("svg")).toBeNull();
+
+    fireEvent.mouseOver(word("Dogs"));
+    expect(view.querySelector("svg text")?.textContent).toBe("Subject");
+    expect(view.querySelector("svg")?.getAttribute("class")).not.toMatch(/unsure/);
+    // The target is a span of words (T81): "look unhappy".
+    expect(view.querySelector('[data-token="1"]')?.className).toMatch(/target/);
+    expect(view.querySelector('[data-token="2"]')?.className).toMatch(/target/);
+    expect(view.querySelector('[data-token="0"]')?.className).not.toMatch(/target/);
+    fireEvent.mouseLeave(view);
+    expect(view.querySelector("svg")).toBeNull();
+
+    // An uncertain attachment: dashed arrow; the head word has no arrow of its own.
+    fireEvent.focus(word("unhappy"));
+    expect(view.querySelector("svg")?.getAttribute("class")).toMatch(/unsure/);
+    expect(view.querySelector('[data-token="0"]')?.className).toMatch(/target/);
+    fireEvent.focus(word("look"));
+    expect(view.querySelector("svg")).toBeNull();
+
+    expect(screen.getByRole("group", { name: "Noun phrase (NP) · Subject; attaches to “look unhappy”" })).toBeTruthy();
+    expect(within(view).getByText("attaches to “Dogs” (uncertain)")).toBeTruthy();
+  });
+
+  it("keeps Subject and Predicate labels pinned in every look", () => {
+    setup();
+    fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
+    const view = screen.getByRole("group", { name: /Predicate/ }).parentElement as HTMLElement;
+    expect(within(view).getByText("Subject").className).toMatch(/pinned/);
+    expect(within(view).getByText("Predicate").className).toMatch(/pinned/);
+    expect(within(view).getByText("Complement").className).not.toMatch(/pinned/);
   });
 
   it("toggles the nested look: labels on hover or always, brackets or boxes", () => {
     setup();
     expect(screen.queryByRole("checkbox", { name: "Draw phrases as brackets" })).toBeNull();
     fireEvent.click(screen.getByRole("radio", { name: "Structure" }));
-    const clause = screen.getByRole("group", { name: "Clause (S)" });
-    const nested = clause.closest("div") as HTMLElement;
+    const nested = screen.getByRole("group", { name: /Predicate/ }).closest("div") as HTMLElement;
     expect(nested.className).toMatch(/brackets/);
     expect(nested.className).toMatch(/hover/);
     fireEvent.click(screen.getByRole("checkbox", { name: "Show labels only on hover" }));

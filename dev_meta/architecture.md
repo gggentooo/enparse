@@ -124,6 +124,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/transformerBackend.ts` | Primary `ParserBackend`: runs the ONNX model via Transformers.js (`model.forward()`, both outputs); splits `logits` into label groups (`labels.json` → `groups`: UPOS\|CHUNK, relation) and reads `arc_scores` per sentence; applies the calibration temperatures. Packs sentences into windows like training (`build_windows`), validates `labels.json`, and self-tests after loading; fp16 runs on WebGPU, int8 on WASM (the variant is chosen by pre-flight and `parserService`). |
 | `parser/treeDecoder.ts`      | Decodes arc scores into a dependency tree (maximum spanning tree, one root), builds nested phrases by a fixed bracketing order, and collapses low-confidence brackets (Phase 8 threshold). No grammar rules. |
 | `parser/phraseLabeler.ts` | Deterministic post-processor on `treeDecoder.ts` output: labels nested phrases with grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause vs. predicate categories (`S` vs. `VP`), and head-of-parent markers (`isHead`) using the model's dependency tree. Never overrides attachments. Conventions approved by the owner (2026-11-20): see *Parsing engine* → *Role labeling*. |
+| `parser/quantifiers.ts` | Display rule for quantity expressions from a closed list (*a number of*, *a lot of*, *some of* …): shows the quantity word as a quantifier of the following noun before bracketing. The only hand-written grammar rule of the nested view (owner, 2026-11-23); the model's tree and `Token.head` are unchanged. |
 | `preflight/preflight.ts`     | Runs pre-flight stages (device, model, post-load file verification) through `core/environment` and combines results into a `PreflightReport` with a verdict (`ok`, `warn`, `blocked`). |
 | `preflight/checks.ts`        | One pure function per check (pass, warn, fail, skip); unit-testable without browser APIs. |
 | `preflight/requirements.ts`  | Minimum requirements and check severity (which checks block); values from `plan-training.md` Phase 10. |
@@ -133,7 +134,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/winkBackend.ts`      | wink-nlp support (not a `ParserBackend`): sentence split and runtime words (hyphenated words, URLs, e-mail addresses, and symbol runs kept whole; contractions always split; no sentence break inside a URL) and lemmas. |
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
-| `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (wrapper brackets collapsed). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
+| `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (each with the token it attaches to, for the arrows; T79). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
 | `dictionary/dictionary.ts`   | Lookup interface: resolves a word to definitions and example usages. Display is in components.    |
 | `dictionary/staticDb.ts`     | Local static dictionary database adapter. No live API calls.                                       |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
@@ -156,7 +157,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | Speed / size     | Up to four models (~65–150 MB int8 each); the user chooses one in the model library. Each is downloaded once on request and cached. Inference in a Web Worker via WebGPU, falling back to WASM. Speed per model measured in `plan-training.md` Phase 10 and shown to the user. |
 | Client-side only | Model runs in the browser. Training is a one-time offline development step; no server is used at runtime. |
 | NP/VP chunks     | Model predicts chunk labels (BIO tags for NP, VP, PP, ADJP, ADVP) for each word. |
-| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases and `phraseLabeler.ts` deterministically attaches grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause/predicate labels, and head-of-parent markers from the predicted tree (see `plan-training.md` → *Nested phrase structure*). Shown per model only if it meets the nested-view targets (UAS without punctuation ≥ 93, labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets); brackets below the confidence threshold collapse to flat words. A biaffine parser head (arc scores as a second ONNX output, MST decoding) replaces the head-position labels after Phase 7's extended stage. |
+| Nested phrases   | In the same pass, the model predicts each word's dependency head and relation; `treeDecoder.ts` turns them into nested phrases — one bracket per phrase; the main clause shown as its subject bracket and its predicate bracket with no bracket around them, always present and dashed when the model is unsure of their boundary; coordinated phrases side by side, `[[A] and [B]]` (T82); a copular predicate shown as `[is [complement]]` (owner, 2026-11-23; T73) — and `phraseLabeler.ts` deterministically attaches grammatical roles (e.g., `NP(Subject)`, `VP(Predicate)`), clause/predicate labels, head markers, and each phrase's attachment (the word it modifies or complements; shown as an arrow) from the predicted tree (see `plan-training.md` → *Nested phrase structure*). Quantity expressions from a closed list (*a number of*) are displayed as quantifiers of the following noun (`parser/quantifiers.ts`). Shown per model only if it meets the nested-view targets (UAS without punctuation ≥ 93, labeled bracket F1 ≥ 88, ≥ 95% precision of shown brackets); brackets whose span confidence is below the threshold collapse to flat words (their role and arrow move to the head word); an unsure attachment is marked uncertain. A biaffine parser head (arc scores as a second ONNX output, MST decoding) replaces the head-position labels after Phase 7's extended stage. |
 | Words / subwords | Words with POS from the model and lemma from wink-nlp; derivational affixes from `subword/subwordParser.ts`. |
 | Ambiguity        | Context-selected primary parse plus probability-ranked alternatives (see *Ambiguity handling*). |
 
@@ -174,7 +175,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 - **Traceability:** every `ParseResult` carries the model id and model version (from `labels.json`) and each word's wink character offsets, so parses and user feedback can be traced to the model and word split that produced them.
 - **Quantization:** int8 (WASM) and fp16 (WebGPU) per model, each shipped only if it passes Phase 9 parity. Phase 9 (2026-11-21): both variants pass for DeBERTa-v3-xsmall (90 / 144 MB) and ModernBERT (156 / 302 MB); chunk F1 and LAS within 0.13 points of fp32 (`training/reports/parity.md`).
 - **Context window:** whole wink sentences are packed into windows of up to 256 subword tokens without overlap, exactly like training windows (`plan-training.md` Phase 4 and *Biaffine design*), so context extends beyond the current sentence. Only a sentence longer than 256 subwords is split with a 32-token overlap; each word then takes its scores from the window where it is farthest from the edge.
-- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Single-word head wrappers are collapsed for display. Discontinuous predicates keep one role label across their pieces with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated. **Uncertain structure (owner, 2026-11-21; T59):** when gating collapses a bracket that carries a role, the role is shown as a badge on its head word ("phrase boundary uncertain"), never on an inner bracket. A role is shown only if its head word's relation × head probability is ≥ `labels.json` → `nested.role_threshold` (Phase 8: 0.4 for DeBERTa-v3-xsmall and ModernBERT; test role precision 96.1% and 96.0%, 97% and 96% of roles shown).
+- **Role labeling (`parser/phraseLabeler.ts`; owner, 2026-11-20):** roles Subject, Predicate, Object, Indirect Object, Complement, Modifier, plus Passive subject, Agent (*by* phrase), Relative clause, Possessive, and Particle from the kept subtypes. Subject + predicate are promoted to `S` (Clause) with an inner `VP(Predicate)`. Dependents without dependents stay plain words in their phrase. A modifier before its head attaches to everything from just after itself through the head word (*big* → *red dog*; owner, 2026-11-23, T81); the nested view highlights that span and points the arrow at it. Words of a predicate on the other side of the subject (the auxiliary of a question) keep the Predicate role with a split-predicate flag (no invented contiguous bracket). Copula + predicative word form `VP(Predicate)` with the adjective or noun as `Complement`. Coordinated phrases share the outer role; conjuncts are marked as coordinated. **Uncertain structure (owner, 2026-11-21; T59):** when gating collapses a bracket that carries a role, the role is shown as a badge on its head word ("phrase boundary uncertain"), never on an inner bracket. A role is shown only if its head word's relation × head probability is ≥ `labels.json` → `nested.role_threshold` (Phase 8, refitted 2026-11-23 after T82: 0.3 for both DeBERTa-v3-xsmall and ModernBERT; test role precision 95.8% and 95.6%, 98% of roles shown). Bracket thresholds (span confidence): 0.85 and 0.80; test precision of brackets shown as certain 95.8% and 95.6%, with 67% and 68% of brackets shown as certain and a further 4% (main-clause subject and predicate) shown dashed.
 - **BIO repair:** a stray `I-X` (after `O` or another type) becomes `B-X` (owner, 2026-11-20). This is how seqeval's default mode already reads chunks for the reported chunk F1, so the app shows what was measured.
 
 ### Model training (offline, `training/`)
@@ -194,7 +195,7 @@ raw text
         └─► parser.worker.ts
               ├─► winkBackend: sentence split, lemmas
               ├─► transformerBackend: windows → UPOS + chunk + relation probabilities, arc scores
-              ├─► treeDecoder.ts: arc scores → dependency tree (MST) → nested phrases (gated)
+              ├─► treeDecoder.ts: arc scores → dependency tree (MST) → nested phrases (quantifiers.ts display rule; labeled, then gated)
               ├─► phraseLabeler.ts: dependency tree + nested phrases → roles, clause/predicate, head flags
               └─► ambiguity.ts: alternative parses
         └─► output/annotator.ts → annotation model → OutputPage
@@ -435,7 +436,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
-      │       │   │   └── NestedReading.tsx (nested phrases as boxes or brackets, labels always or on hover per two OutputPage toggles; head marks)
+      │       │   │   └── NestedReading.tsx (one box or bracket per phrase; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
       │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary with T53)
       │       ├── VocabPage.tsx (custom vocab lists; T48)
@@ -571,6 +572,7 @@ enparse/
 │   │   │   ├── ambiguity.ts
 │   │   │   ├── treeDecoder.ts
 │   │   │   ├── phraseLabeler.ts
+│   │   │   ├── quantifiers.ts
 │   │   │   ├── parser.worker.ts
 │   │   │   ├── bio.ts (BIO repair and chunk grouping)
 │   │   │   └── testFixtures.ts (test-only: mocked backend for *.test.ts)
@@ -869,3 +871,23 @@ enparse/
 - Changed: `NestedReading` shows phrase labels and word role badges only on hover or keyboard focus of the innermost box (2026-11-23T00:00:00Z, Claude Opus 5.5).
 - Changed: `NestedReading` draws phrases as colored brackets at both ends instead of rounded boxes (no vertical padding per level) (2026-11-23T00:10:00Z, Claude Opus 5.5).
 - Added: OutputPage nested-view toggles: labels always or on hover; phrases as boxes or brackets (`NestedLook`; defaults: brackets, on hover) (2026-11-23T00:20:00Z, Claude Opus 5.5).
+
+### 2026-11-22T23:55:00Z — Claude Fable 5.2, Nested view: phrase-per-head brackets and attachments (T73, T74)
+
+- Modified: *Parsing engine* → *Nested phrases*, *Role labeling*, data flow: one bracket per phrase, clause / predicate / complement brackets, attachments (arrows), span-confidence gating after labeling, quantifier display rule (`parser/quantifiers.ts`).
+
+### 2026-11-23T00:40:00Z — Claude Fable 5.2, Nested view rework built (T75–T80)
+
+- Added: `parser/quantifiers.ts` (module table, skeleton).
+- Modified: *Role labeling* → refitted role and bracket thresholds (span confidence) per model; component hierarchy → `NestedReading` (arrows, pinned Subject / Predicate labels).
+- Modified: `output/annotator.ts` nodes carry `attachTo` and `uncertain`; wrapper collapsing removed.
+- Changed: `NestedReading` never wraps a sentence: each sentence is one line that scrolls horizontally; the phrase (flat) view still wraps (2026-11-23T01:10:00Z, Claude Sonnet 5.5).
+
+### 2026-11-23T01:30:00Z — Claude Fable 5.2, Attachment spans (T81)
+
+- Modified: *Role labeling* → modifiers before their head target a span (`attachFrom`..`attachTo` in the parser labels and the annotation model); `NestedReading` highlights the span.
+
+### 2026-11-23T02:30:00Z — Claude Fable 5.2, Main-clause and coordination brackets (T82)
+
+- Modified: *Nested phrases*, *Role labeling* thresholds, component hierarchy: no bracket around the main clause (pinned subject and predicate brackets, dashed when unsure), side-by-side coordination; `LabeledPhrase.pinned` / `unsure`, `AnnotatedPhraseNode.unsure`; refitted thresholds.
+- Added: `treeDecoder.ts` → `projectiveTree` (measured, not used for decoding).

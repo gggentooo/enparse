@@ -12,10 +12,9 @@
  * Tasks:
  *   1. Map sentences → paragraphs/sentences/flat segments/nested nodes/tokens
  *      with stable ids for React keys and word selection.
- *   2. Attach nested phrase categories/roles, head-of-parent flags (isHead),
- *      non-contiguous span flags, and collapse `wrapper` brackets (a
- *      single-word head bracket inside a bracket with the same head) into
- *      their word.
+ *   2. Attach nested phrase categories/roles, head-word flags (isHead),
+ *      non-contiguous span flags, and each node's attachment (attachTo: the
+ *      token it modifies or complements; uncertain) for the arrows (T79).
  *   3. Readings per sentence: the primary parse (rank 0, share 1 − Σ
  *      alternatives) and each alternative with rank, share, reason, and the
  *      words it changes. Words changed by any alternative are `ambiguous`.
@@ -32,7 +31,7 @@
  *   ParseResult; parserService passes it through.
  *   Used by: services/parserService.ts (via ./index.ts).
  *
- * Status: implemented (T57). Tests: annotator.test.ts.
+ * Status: implemented (T57; attachments T79). Tests: annotator.test.ts.
  */
 
 import type {
@@ -71,7 +70,7 @@ export function flatSegments(chunks: readonly InputChunk[], tokenCount: number, 
   return out;
 }
 
-/** Nested nodes with ids; wrapper brackets collapse into their single word. */
+/** Nested nodes with ids (stable per reading: the node's path in the tree). */
 export function annotateNodes(nodes: readonly InputNode[], prefix: string): AnnotatedNode[] {
   return nodes.map((n, i): AnnotatedNode => {
     const id = `${prefix}-${i}`;
@@ -81,20 +80,11 @@ export function annotateNodes(nodes: readonly InputNode[], prefix: string): Anno
       coordinated: n.coordinated,
       splitPredicate: n.splitPredicate,
       badge: n.badge,
+      attachTo: n.attachTo,
+      attachFrom: n.attachFrom,
+      uncertain: n.uncertain,
     };
     if (isWord(n)) return { kind: "word", id, token: n.word, ...labels };
-    const only = n.children[0];
-    if (n.wrapper && n.children.length === 1 && only && isWord(only)) {
-      // [dog] inside [red dog]: show the word with the bracket's labels.
-      return {
-        kind: "word",
-        id,
-        token: only.word,
-        ...labels,
-        role: n.role ?? only.role,
-        isHead: n.isHead || only.isHead,
-      };
-    }
     return {
       kind: "phrase",
       id,
@@ -102,6 +92,7 @@ export function annotateNodes(nodes: readonly InputNode[], prefix: string): Anno
       start: n.start,
       end: n.end,
       contiguous: n.contiguous,
+      unsure: n.unsure,
       children: annotateNodes(n.children, id),
       ...labels,
     };

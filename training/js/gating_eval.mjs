@@ -5,12 +5,13 @@
  *   Reads a biaffine run's dev and test predictions (scripts/evaluate.py →
  *   <split>_predictions.jsonl), applies the arc temperature, decodes trees with
  *   the app's treeDecoder.ts (decodeArcTree: MST and head probabilities),
- *   builds nested phrases, and gates them with gatePhrases at each threshold
- *   (lib/gating.mjs). Picks the lowest threshold whose dev precision of shown
+ *   builds and labels the nested phrases of the displayed tree, and collapses
+ *   brackets whose span confidence is below each threshold (gateLabeled;
+ *   lib/gating.mjs; T78). Picks the lowest threshold whose dev precision of shown
  *   multi-word brackets (labeled) is ≥ --min-precision, so coverage is as high
  *   as possible; reports test precision, coverage, and recall at every
- *   threshold. Then the role gate (T59): at that bracket threshold, labels
- *   phrases with phraseLabeler.ts (badges on collapsed brackets) and picks the
+ *   threshold. Then the role gate (T59): at that bracket threshold (badges
+ *   on collapsed brackets), picks the
  *   lowest role threshold (relation × head probability, calibrated with
  *   --rel-temperature) whose dev role precision is ≥ --min-precision.
  *   Prints one JSON line (read by scripts/calibrate.py) and writes
@@ -21,11 +22,11 @@
  *
  * Dependencies:
  *   Node: tsx, js-yaml; ./lib/gating.mjs; app code: src/modules/parser/treeDecoder.ts,
- *         src/modules/parser/phraseLabeler.ts.
+ *         src/modules/parser/phraseLabeler.ts, src/modules/parser/quantifiers.ts.
  *   Reads: ../configs/data.yaml (paths.eval); <split>_predictions.jsonl (dev, test).
  *   Writes: data/eval/<model>/<run>/gating.json.
  *
- * Status: implemented (T58).
+ * Status: implemented (T58; span confidence T78).
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -33,8 +34,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import * as yaml from "js-yaml";
-import { labelPhrases } from "../../src/modules/parser/phraseLabeler.ts";
-import { buildPhrases, decodeArcTree, gatePhrases, phraseSpans } from "../../src/modules/parser/treeDecoder.ts";
+import { gateLabeled, labelPhrases } from "../../src/modules/parser/phraseLabeler.ts";
+import { displayTree } from "../../src/modules/parser/quantifiers.ts";
+import { buildPhrases, decodeArcTree, phraseSpans, spanConfidence } from "../../src/modules/parser/treeDecoder.ts";
 import { ROLE_THRESHOLDS, THRESHOLDS, chooseThreshold, gatingCurve, roleCurve } from "./lib/gating.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,7 +58,7 @@ const read = (split) =>
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l));
 
-const decoder = { decodeArcTree, buildPhrases, gatePhrases, phraseSpans, labelPhrases };
+const decoder = { decodeArcTree, displayTree, buildPhrases, labelPhrases, gateLabeled, spanConfidence, phraseSpans };
 const t = Number(values["arc-temperature"]);
 const relT = Number(values["rel-temperature"]);
 const minP = Number(values["min-precision"]);

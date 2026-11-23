@@ -79,7 +79,7 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - **Files:** `training/scripts/package_models.py`, `public/models/`, `public/models/catalog.json`, `training/MODEL_CARD.md`
 - **Task:** Package every offered model with filled `labels.json` and `catalog.json`, model card, release tag, and the in-app integration test per model. Add the base model's license to `catalog.json` so the About page can read its model credits from the catalog (`TODO(T66)` in `AboutPage.tsx`).
-- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65
+- **Needs:** T12, T23, T43, T50, T52, T63, T64, T65, T78
 
 ---
 
@@ -110,6 +110,46 @@ This guide applies to all contributors (human and AI) editing this file.
 ---
 
 ## Done
+
+#### [Modules/parser, Training, Components/Pages] Main-clause and coordination brackets; projective decoding check · T82 · Build
+
+- **Done:** 2026-11-23 (owner decisions the same day). (1) The main clause, and clauses coordinated with it, have no bracket of their own: the subject bracket and the predicate bracket are the outermost brackets, always shown (also for one word) and drawn dashed when their span confidence is below the bracket threshold. Embedded clauses keep their bracket. (2) Coordination is shown side by side, `[[A] and [B]]`, with the conjunction between the brackets and the shared role on the outer bracket; one-word conjuncts stay plain. (3) Multi-word modifiers keep their own bracket (`[[deeply forked] tails]`; owner). (4) Projective decoding (no crossing attachments) was measured and **not adopted** under the owner's rule "only if accuracy does not drop": dev UAS 94.25 → 94.21 for DeBERTa-v3-xsmall (test 94.35 → 94.38) and 94.10 → 94.16 for ModernBERT (test 94.21 → 94.29); `projectiveTree` and `js/projective_eval.mjs` are kept for a later decision (e.g. per model). Refit from the stored predictions: test bracket F1 89.13 / 89.03; bracket thresholds 0.85 / 0.80, test precision of brackets shown as certain 95.83% / 95.64%, 66.7% / 68.2% of brackets shown as certain plus 4% dashed (86% / 85% of those correct); role thresholds 0.3 / 0.3, role precision 95.80% / 95.62%. Both models keep the nested view. Built in `treeDecoder.ts` (`headLayouts`, `buildPhrases`, `projectiveTree`), `phraseLabeler.ts` (`pinned`, `unsure`, level `conjunct`), `output/`, `NestedReading`, `training/js` (`lib/gating.mjs`, `projective_eval.mjs`); written to the checkpoints' and exports' `labels.json`, `reports/calibration.md`, `reports/training_biaffine.md`, the catalog fixture, `plan-training.md`, and `architecture.md`. Owner's example (*Mackerel typically have vertical stripes on their backs and deeply forked tails*): both models are unsure where *on their backs* and *tails* attach (0.42–0.64), so the primary view leaves that part flat and "Other readings" offers `[[vertical stripes on their backs] and [[deeply forked] tails]]`.
+
+#### [Modules/parser, Components/Pages] Modifier arrows target a span · T81 · Build
+
+- **Done:** 2026-11-23 (owner decisions the same day). A modifier before its head (`det`, `amod`, `nummod`, `compound`, `nmod`, `advmod`, quantifier) in the same bracket modifies everything from just after itself through the head word, in noun and verb phrases: *the big red dog* → the → *big red dog*, big → *red dog*, red → *dog*; *has often quietly slept* → often → *quietly slept*. The span stops at the head word (owner); other dependents keep a one-word target. Brackets, thresholds, and models are unchanged. Built in `phraseLabeler.ts` (`attachFrom`), `parser/types.ts`, `output/types.ts`, `output/annotator.ts`, `NestedReading.tsx` (span highlight, arrow to the span's middle, accessible name). Owner also decided to leave the rare model error of an adjective attached to a following adjective (Accurate: *big → red*, confidence 0.48; 2–4 wrong cases in about 1,200 test adjectives) without a correction rule. Recorded in `plan-training.md` → *Nested phrase structure* → *Attachments* and `architecture.md` → *Role labeling*.
+
+#### [Components/Pages] Nested view: new brackets, arrows on hover, clause labels · T80 · Build
+
+- **Done:** 2026-11-23. `NestedReading`: one bracket or box per phrase; in the bracket look phrases are inline and wrap like text; arrow with the role to the attached word on hover or focus (dashed when uncertain), also in the accessible names; Subject and Predicate labels always shown. Checked in Chrome with both models on the owner's *Mackerel* text (`npm run dev:models`).
+
+#### [Modules/output] Annotation model: phrases with attachments · T79 · Build
+
+- **Done:** 2026-11-23. `AnnotatedNode` carries `attachTo` (token index) and `uncertain`; wrapper collapsing removed.
+
+#### [Training] Per-attachment gating and Phase 8 recalibration · T78 · Build
+
+- **Done:** 2026-11-23. `spanConfidence` (per word, the probability that its head stays on its side of the bracket; `DecodedTree.headDist`) replaces the whole-bracket product; gating runs after labeling (`gateLabeled`, badges carry role and attachment). Refitted from the stored predictions: bracket thresholds 0.80 / 0.75, test shown precision 95.61% / 95.66%, 76.1% / 75.6% of brackets shown (was 48.6% / 53.7%); role thresholds 0.2 / 0.3, test role precision 95.51% / 95.71%. Both models keep the nested view. Written to the checkpoints' and exports' `labels.json`, `reports/calibration.md`, the catalog fixture, and `plan-training.md` → Phase 8.
+
+#### [Modules/parser] Quantifier expressions ("a number of") · T77 · Build
+
+- **Done:** 2026-11-23. `parser/quantifiers.ts` (`displayTree`; words: number, lot, lots, couple, plenty, deal (great/good), bit, amount, some); applied to predicted and gold trees in `training/js` (`lib/nested.mjs` → `phrasesOf`).
+
+#### [Modules/parser] phraseLabeler.ts and ambiguity.ts on the new brackets · T76 · Build
+
+- **Done:** 2026-11-23. `labelPhrases` rewritten on the levels (roles, one-word predicate / complement roles on the word, split predicate, coordination) and records `attachTo` / `uncertain` per dependent; `labeledView` takes the word texts; alternatives use it unchanged. `LabeledPhrase.wrapper` removed.
+
+#### [Modules/parser] treeDecoder.ts phrase-per-head bracketing · T75 · Build
+
+- **Done:** 2026-11-23. `buildPhrases` builds one bracket per phrase with levels (`phrase`, `complement`, `predicate`, `clause`; `headLayouts` shared with the labeler); punctuation in the innermost surrounding bracket. Test multi-word bracket F1 on the new brackets: DeBERTa-v3-xsmall 89.85, ModernBERT 89.98 (target ≥ 88; `reports/training_biaffine.md` re-rendered from the stored predictions).
+
+#### [Modules/parser] Specify phrase-per-head bracketing, attachment gating, and arrows · T74 · Build
+
+- **Done:** 2026-11-23. Rules written into `plan-training.md` (*Key design decisions* → quantifier exception; *Nested phrase structure* → *Decoding* 3–5, *Quantity expressions*, *Attachments*; Phase 8 task 5) and `architecture.md` (*Parsing engine*). Quantifier list confirmed by the owner with *some of* and *amount of* added.
+
+#### [Modules/parser] Nested view: phrase-per-head brackets and attachment arrows · T73 · Decision
+
+- **Done:** 2026-11-23 (owner). Replaces the 2026-11-18 bracketing order. (1) One bracket per phrase instead of one level per dependent; one-word modifiers stay flat inside their phrase; the clause splits into subject and predicate, a copular predicate is `[is [complement]]`: `[Mackerel] [is [a common name [given [to …]]]]`. (2) Prepositions bracket with their noun phrase and attach as a unit (`[given [to …]]`). (3) Quantity expressions such as *a number of* are shown as a quantifier of the following noun, by a closed-list display rule (an approved exception to *No rule-based nesting*; the models keep the UD analysis). (4) On hover, an arrow shows what each phrase attaches to, with the relation (modifies, complement, …). (5) Confidence is gated per attachment, not per whole bracket. (6) Subject and Predicate are always labeled. Both offered models already produce the needed trees (checked on the owner's *Mackerel* example); no retraining. To be recorded in `plan-training.md` → *Nested phrase structure* and `architecture.md` → *Parsing engine* by T74.
 
 #### [Components/Pages] ModelsPage · T54 · Build
 
@@ -464,3 +504,23 @@ This guide applies to all contributors (human and AI) editing this file.
 - Modified: T54, T55, T56, T57 moved to *Done* with outcomes.
 - Modified: T66 notes the base-model license for `catalog.json` (About page credits).
 - Modified: stages recomputed from *Needs*: no change (T66 waits on T43, T65; T72 on T46; T62 on T53).
+
+### 2026-11-22T23:45:24Z — Claude Fable 5.2, Nested-view rework tasks added (T73–T80)
+
+- Added: T73 (owner decision, Done): phrase-per-head brackets, quantifier exception, `[given [to …]]`, attachment arrows, per-attachment gating.
+- Added: T74 (spec in documents), T75 (treeDecoder bracketing), T76 (phraseLabeler and alternatives), T77 (quantifier rule), T78 (gating and recalibration), T79 (annotation model), T80 (nested view UI).
+- Modified: T66 needs T78 (recalibrated `nested.*` thresholds are packaged); stages recomputed: T74 0, T75 1, T76 2, T77 3, T78 and T79 4, T80 5, T66 1→5.
+
+### 2026-11-23T00:50:00Z — Claude Fable 5.2, T74–T80 done; restaged
+
+- Modified: T74 lists the owner-confirmed quantifier list (*some of*, *amount of* added).
+- Modified: T74–T80 moved to *Done* with outcomes (bracket F1 89.85 / 89.98; 76% of brackets shown at ≥ 95% precision).
+- Modified: stages recomputed from *Needs*: T66 5→1 (waits on T43, T65); stages 4 and 5 removed.
+
+### 2026-11-23T01:30:00Z — Claude Fable 5.2, T81 added and done
+
+- Added: T81 (Done): modifier arrows target the span up to the head word; no correction rule for adjective-on-adjective model errors (owner).
+
+### 2026-11-23T02:30:00Z — Claude Fable 5.2, T82 added and done
+
+- Added: T82 (Done): main clause without an outer bracket, side-by-side coordination, refitted thresholds; projective decoding measured and not adopted (owner rule).

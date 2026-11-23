@@ -29,6 +29,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as yaml from "js-yaml";
+import { displayTree } from "../../src/modules/parser/quantifiers.ts";
 import { buildPhrases, decodeArcTree, decodeTree, phraseSpans } from "../../src/modules/parser/treeDecoder.ts";
 import { bracketCauses, context, sample, sentenceErrors } from "./lib/errors.mjs";
 import { decodeRecord } from "./lib/nested.mjs";
@@ -39,7 +40,7 @@ const dataCfg = yaml.load(readFileSync(join(TRAINING, "configs", "data.yaml"), "
 const evalCfg = yaml.load(readFileSync(join(TRAINING, "configs", "eval.yaml"), "utf8"));
 const ea = evalCfg.error_analysis;
 const evalDir = join(TRAINING, dataCfg.paths.eval);
-const decoder = { buildPhrases, phraseSpans };
+const decoder = { buildPhrases, phraseSpans, displayTree };
 const AREAS = ["upos", "chunk", "head", "relation"];
 const AREA_NAME = { upos: "UPOS", chunk: "Chunk", head: "Attachment (head)", relation: "Relation (head right)" };
 const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) : "—");

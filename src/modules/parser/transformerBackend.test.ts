@@ -333,8 +333,8 @@ describe.skipIf(!HAS_EXPORT)("integration: DeBERTa-v3-xsmall export (fp16, Node 
       const [s] = result.sentences;
       expect(s?.tokens.map((t) => t.upos)).toEqual(["DET", "ADJ", "NOUN", "ADV", "VERB", "ADV", "PUNCT"]);
       expect(s?.tokens.map((t) => t.head)).toEqual([2, 2, 4, 4, -1, 4, 4]);
-      const top = s?.phrases?.find((x) => "children" in x);
-      expect(top && "category" in top ? top.category : null).toBe("S");
+      const roles = s?.phrases?.flatMap((x) => ("children" in x ? [x.role] : []));
+      expect(roles).toEqual(["Subject", "Predicate"]);
       await b.unload();
     },
   );

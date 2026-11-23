@@ -78,6 +78,8 @@ export type AlternativesInput = {
   tagged: TaggedSentence;
   tree: DecodedTree;
   upos: readonly string[];
+  /** Word texts (quantifier display rule of the nested view). */
+  words: readonly string[];
   /** Primary chunk tags after BIO repair. */
   chunkTags: readonly string[];
   margins: { label: number; attachment: number };
@@ -97,7 +99,7 @@ export function buildAlternatives(input: AlternativesInput): Alternative[] {
 }
 
 function view(input: AlternativesInput, tree: DecodedTree, upos: readonly string[]): LabeledSentencePhrases | null {
-  return input.thresholds ? labeledView(tree, upos, input.thresholds) : null;
+  return input.thresholds ? labeledView(tree, upos, input.words, input.thresholds) : null;
 }
 
 /** Words with a close second group A label: (index, second label, ratio p2/p1), smallest margins first. */
@@ -199,8 +201,8 @@ function attachmentCandidates(input: AlternativesInput): Candidate[] {
         reason: "attachment",
         changes,
         chunks: groupChunks(input.chunkTags),
-        // Gating: the switched word's head is the reading being shown (probability 1); every
-        // other word keeps its calibrated head probability.
+        // Gating: the switched word's head is the reading being shown (probability 1; its
+        // constrained row in alt.headDist); every other word keeps its calibrated probabilities.
         phrases: view(
           input,
           { ...alt, headProbs: alt.heads.map((h, i) => (i === w ? 1 : Math.exp(logp[i]?.[h] ?? -Infinity))) },

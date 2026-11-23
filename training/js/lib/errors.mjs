@@ -22,6 +22,8 @@
  * Status: implemented (Phase 7).
  */
 
+import { phrasesOf } from "./nested.mjs";
+
 const FUNCTION_WORDS = new Set(["ADP", "SCONJ", "ADV", "PART", "CCONJ"]);
 const CLAUSE_RELS = new Set(["root", "ccomp", "xcomp", "advcl", "acl", "parataxis", "csubj", "list"]);
 const ARGUMENT_RELS = new Set(["nsubj", "obj", "iobj", "expl"]);
@@ -150,8 +152,8 @@ export function sentenceErrors(r, tree) {
  * @returns {{ gold: number, missed: number, inside: number, intruder: number, labelOnly: number, other: number }}
  */
 export function bracketCauses(r, tree, decoder) {
-  const goldSpans = decoder.phraseSpans(decoder.buildPhrases(r.gold_head, r.gold_upos, r.gold_rel)).filter((s) => s.end > s.start);
-  const predSpans = decoder.phraseSpans(decoder.buildPhrases(tree.heads, r.pred_upos, tree.relations)).filter((s) => s.end > s.start);
+  const goldSpans = decoder.phraseSpans(phrasesOf(decoder, r.gold_head, r.gold_upos, r.gold_rel, r.words)).filter((s) => s.end > s.start);
+  const predSpans = decoder.phraseSpans(phrasesOf(decoder, tree.heads, r.pred_upos, tree.relations, r.words)).filter((s) => s.end > s.start);
   const labeled = new Map();
   const unlabeled = new Set();
   for (const s of predSpans) {

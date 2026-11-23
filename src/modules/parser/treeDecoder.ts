@@ -3,8 +3,8 @@
  *
  * Description:
  *   Turns the model's structure output into a valid dependency tree per
- *   sentence, then into nested phrases for the nested view, and gates
- *   low-confidence brackets. Fixed decoding procedure only; no grammar rules
+ *   sentence, then into nested phrases for the nested view, and scores each
+ *   bracket's confidence. Fixed decoding procedure only; no grammar rules
  *   (plan-training.md → Nested phrase structure). Also run by training
  *   (nested-phrase F1, Phase 8 gating via tsx), so training and the app share
  *   one implementation.
@@ -23,20 +23,22 @@
  *   3. Relation: "root" for the root word; otherwise the best candidate that
  *      is not "root" ("dep" if there is none).
  *   4. headProbs: probability of the chosen head per word (for gating);
+ *      headDist: each word's probabilities over the root and the words;
  *      relationProbs: probability of the chosen relation (role gating, T59;
  *      0 when "root" was forced without a root candidate, or for "dep");
  *      repairedWords: words whose tree head is not their argmax head.
  *
- * Confidence gating (bracketConfidence, gatePhrases; Phase 8):
- *   A bracket's confidence is the product of the chosen-head probabilities
- *   of the words it covers except its own head word, and of its head's
- *   dependents outside it (an estimate of "the span is right": nothing inside
- *   attaches wrongly and nothing outside belongs inside). Chosen over the
- *   inside-words-only product in Phase 8: at ≥ 95% dev shown precision it
- *   shows 49% vs 32% (DeBERTa) and 54% vs 43% (ModernBERT) of multi-word
- *   brackets (reports/calibration.md). Brackets below the model's threshold
- *   (labels.json → nested.bracket_threshold) collapse: their children are
- *   shown directly in the parent. (proposed; threshold set per model in Phase 8)
+ * Confidence gating (spanConfidence; Phase 8; owner, 2026-11-23, T73/T78):
+ *   A bracket's confidence estimates "these words are one phrase" from every
+ *   word's head distribution (headDist): a word inside whose chosen head is
+ *   inside counts with P(head inside); a word inside whose chosen head is
+ *   outside (the phrase's head word) and a word outside whose chosen head is
+ *   outside count with P(head outside); outside words attached into the
+ *   bracket (a subject next to its predicate) and punctuation do not count.
+ *   An unsure attachment therefore lowers only the brackets whose boundary it
+ *   could move. Brackets below the model's threshold (labels.json →
+ *   nested.bracket_threshold) are collapsed after labeling
+ *   (phraseLabeler.ts → gateLabeled).
  *
  * Decoding, schema v1 models (decodeTree; rel_pos_v1 head labels; kept so the
  * Phase 7 base and extended results stay reproducible; not used by the app):
@@ -53,17 +55,47 @@
  *      cycle's least confident word attaches to the root. Always terminates.
  *   4. Words without any usable candidate attach to the root (relation "dep").
  *
- * Nested phrases (buildPhrases):
- *   Head-outward: right dependents first (closest first), then left
- *   dependents (closest first); each step adds one nesting level. A head word
- *   (the root, or a word with non-punctuation dependents) gets its own
- *   innermost bracket; a dependent without dependents is a plain word.
- *   Punctuation is not bracketed: it sits in the outermost phrase of its
- *   head (root punctuation stays outside all brackets). Labels come from the
- *   head: NOUN/PROPN/PRON/NUM → NP (PP once a `case` dependent is attached),
- *   VERB/AUX → VP, ADJ → ADJP, ADV → ADVP, other → null.
- *   Example: "The red dog rarely barks loudly ." →
- *            [[The [red [dog]]] [rarely [[barks] loudly]]] .
+ * Nested phrases (buildPhrases; owner, 2026-11-23, T73; plan-training.md →
+ * Nested phrase structure → Decoding):
+ *   One bracket per phrase: a head word with all its dependents in word
+ *   order. A dependent without dependents stays a plain word; a dependent
+ *   with dependents is its own bracket. Levels (PhraseNode.level):
+ *   - clause: a head with a subject → the subject plus the predicate
+ *     bracket; dependents on the other side of the subject, parataxis, and
+ *     clausal conjuncts stay in the clause bracket outside the predicate.
+ *     A main clause (the root's, and clauses coordinated with it) has no
+ *     clause bracket (owner, 2026-11-23, T82): its subject bracket and its
+ *     predicate bracket are top-level items, always present even for one
+ *     word (`pinned`), beside its other words.
+ *   - conjunct: coordination is shown side by side, [[A] and [B]] (T82): the
+ *     head's dependents before the first conjunct belong to the first
+ *     conjunct, which gets its own bracket (level "conjunct") if it has any;
+ *     the other conjuncts follow, each with its leading conjunction (`cc`)
+ *     and punctuation outside its bracket; the head's later dependents are
+ *     shared by the coordination. One-word conjuncts stay plain words.
+ *   - predicate: the head and its other dependents (not bracketed if it is
+ *     one word).
+ *   - complement: with a copula before the head, the head and its dependents
+ *     after the copula / auxiliaries / subject (not bracketed if one word).
+ *   - phrase: any other head with dependents.
+ *   Punctuation is not bracketed: it sits in the innermost bracket of its
+ *   head that surrounds it, else in its head's phrase (the root's stays
+ *   outside all brackets). Labels come from the head: NOUN/PROPN/PRON/NUM →
+ *   NP (PP with a `case` dependent), VERB/AUX → VP, ADJ → ADJP, ADV → ADVP,
+ *   other → null; predicates and subjectless phrases with a copula → VP.
+ *   Examples: "The red dog rarely barks loudly ." →
+ *             [The red dog] [rarely barks loudly] .
+ *             "Mackerel is a common name given to fish ." →
+ *             [Mackerel] [is [a common name [given [to fish]]]] .
+ *             "She likes red apples and green pears" →
+ *             [She] [likes [[red apples] and [green pears]]]
+ *
+ * Projective decoding (projectiveTree; T82): the best tree without crossing
+ *   arcs (Eisner). Measured against the spanning tree on the stored
+ *   predictions (training/js/projective_eval.mjs) and not adopted: dev UAS
+ *   changes by −0.04 (DeBERTa-v3-xsmall) and +0.06 (ModernBERT) points, and
+ *   the owner's rule was to adopt it only if accuracy does not drop.
+ *   decodeArcTree keeps the spanning tree.
  *
  * Dependencies:
  *   Internal: ./types.ts. External: none.
@@ -71,7 +103,8 @@
  *            grammatical role, clause/predicate, and head-of-parent labeling);
  *            training/js (nested-phrase F1 via tsx, plan-training.md → Phase 7).
  *
- * Status: implemented (rel_pos_v1 decoding Phase 7; MST decoding and gating T45).
+ * Status: implemented (rel_pos_v1 decoding Phase 7; MST decoding T45; phrase-per-head
+ *   brackets and span confidence T75, T78; main-clause and coordination brackets T82).
  *   Tests: treeDecoder.test.ts.
  */
 
@@ -80,6 +113,7 @@ import type {
   DecodedTree,
   DepCandidate,
   RelationCandidate,
+  PhraseLevel,
   PhraseNode,
   PhraseSpan,
   PhraseType,
@@ -339,6 +373,104 @@ export function maxSpanningTree(score: number[][]): number[] {
   return best;
 }
 
+/**
+ * Best projective tree (no crossing arcs) with exactly one root child: Eisner's algorithm over
+ * the words, then the best root word. Same input as maxSpanningTree (node 0 = root; score[d][h]).
+ * Returns null if no projective tree has a finite score.
+ */
+export function projectiveTree(score: number[][]): number[] | null {
+  const n = score.length - 1;
+  if (n <= 0) return [-1];
+  // Words 0..n-1 here; s(h, d) = score[d + 1][h + 1].
+  const s = (h: number, d: number): number => score[d + 1]?.[h + 1] as number;
+  const at = (i: number, j: number): number => i * n + j;
+  // Complete (C) and incomplete (I) spans; L = head at the right end, R = head at the left end.
+  const CL = new Float64Array(n * n).fill(-Infinity);
+  const CR = new Float64Array(n * n).fill(-Infinity);
+  const IL = new Float64Array(n * n).fill(-Infinity);
+  const IR = new Float64Array(n * n).fill(-Infinity);
+  const bCL = new Int32Array(n * n);
+  const bCR = new Int32Array(n * n);
+  const bI = new Int32Array(n * n);
+  for (let i = 0; i < n; i++) {
+    CL[at(i, i)] = 0;
+    CR[at(i, i)] = 0;
+  }
+  for (let len = 1; len < n; len++) {
+    for (let i = 0; i + len < n; i++) {
+      const j = i + len;
+      let best = -Infinity;
+      let arg = i;
+      for (let k = i; k < j; k++) {
+        const v = (CR[at(i, k)] as number) + (CL[at(k + 1, j)] as number);
+        if (v > best) {
+          best = v;
+          arg = k;
+        }
+      }
+      bI[at(i, j)] = arg;
+      IL[at(i, j)] = best + s(j, i);
+      IR[at(i, j)] = best + s(i, j);
+      best = -Infinity;
+      arg = i;
+      for (let k = i; k < j; k++) {
+        const v = (CL[at(i, k)] as number) + (IL[at(k, j)] as number);
+        if (v > best) {
+          best = v;
+          arg = k;
+        }
+      }
+      CL[at(i, j)] = best;
+      bCL[at(i, j)] = arg;
+      best = -Infinity;
+      arg = j;
+      for (let k = i + 1; k <= j; k++) {
+        const v = (IR[at(i, k)] as number) + (CR[at(k, j)] as number);
+        if (v > best) {
+          best = v;
+          arg = k;
+        }
+      }
+      CR[at(i, j)] = best;
+      bCR[at(i, j)] = arg;
+    }
+  }
+  let root = -1;
+  let total = -Infinity;
+  for (let r = 0; r < n; r++) {
+    const v = (CL[at(0, r)] as number) + (CR[at(r, n - 1)] as number) + (score[r + 1]?.[0] as number);
+    if (v > total) {
+      total = v;
+      root = r;
+    }
+  }
+  if (root < 0 || !Number.isFinite(total)) return null;
+  const heads = new Array<number>(n + 1).fill(-1);
+  heads[root + 1] = 0;
+  // Spans to expand: [i, j, kind] with kind 0 = CL, 1 = CR, 2 = IL, 3 = IR.
+  const stack: [number, number, number][] = [
+    [0, root, 0],
+    [root, n - 1, 1],
+  ];
+  while (stack.length > 0) {
+    const [i, j, kind] = stack.pop() as [number, number, number];
+    if (i === j) continue;
+    if (kind === 0) {
+      const k = bCL[at(i, j)] as number;
+      stack.push([i, k, 0], [k, j, 2]);
+    } else if (kind === 1) {
+      const k = bCR[at(i, j)] as number;
+      stack.push([i, k, 3], [k, j, 1]);
+    } else {
+      if (kind === 2) heads[i + 1] = j + 1;
+      else heads[j + 1] = i + 1;
+      const k = bI[at(i, j)] as number;
+      stack.push([i, k, 1], [k + 1, j, 0]);
+    }
+  }
+  return heads;
+}
+
 /** Row-wise log-softmax over all columns except the word itself (column i + 1). */
 export function headLogProbs(arc: ArcScores): number[][] {
   return arc.map((row, i) => {
@@ -364,7 +496,15 @@ export function decodeArcTree(arc: ArcScores, relations: readonly (readonly Rela
   const n = arc.length;
   if (relations.length !== n) throw new Error("arc scores and relations lengths differ");
   if (n === 0)
-    return { heads: [], relations: [], repaired: false, repairedWords: [], headProbs: [], relationProbs: [] };
+    return {
+      heads: [],
+      relations: [],
+      repaired: false,
+      repairedWords: [],
+      headProbs: [],
+      relationProbs: [],
+      headDist: [],
+    };
   arc.forEach((row, i) => {
     if (row.length !== n + 1) throw new Error(`arc row ${i} has ${row.length} columns, expected ${n + 1}`);
   });
@@ -387,44 +527,50 @@ export function decodeArcTree(arc: ArcScores, relations: readonly (readonly Rela
     repairedWords,
     headProbs: tree.map((h, i) => Math.exp(logp[i]?.[h] as number)),
     relationProbs: picked.map((c) => c.prob),
+    headDist: logp.map((row) => row.map((lp) => Math.exp(lp))),
   };
 }
 
 // -- confidence gating -------------------------------------------------------------------
 
-/**
- * Confidence of a bracket: product of the chosen-head probabilities of its words except its
- * head, and of its head's dependents outside it (attached at outer nesting levels; if one of
- * them belongs inside, the span is wrong even when every attachment inside is right).
- */
-export function bracketConfidence(node: PhraseNode, tree: Pick<DecodedTree, "heads" | "headProbs">): number {
-  const words = new Set<number>();
-  covered(node, words);
-  let p = 1;
-  tree.heads.forEach((h, w) => {
-    const inside = words.has(w);
-    if ((inside && w !== node.head) || (!inside && h === node.head + 1)) p *= tree.headProbs[w] ?? 0;
-  });
-  return p;
+function covered(item: Item, out: Set<number>): void {
+  if ("word" in item) out.add(item.word);
+  else for (const c of item.children) covered(c, out);
 }
 
 /**
- * Collapse brackets whose confidence is below threshold: their children are placed in the
- * parent level (word order kept). Brackets of one word are never collapsed here.
- * @param tree the decoded tree the phrases were built from (heads, headProbs)
+ * Confidence that a bracket's words form one phrase (see the header). Each word counts with
+ * the probability that its head stays on the side of the bracket (inside or outside) where
+ * its chosen head is; outside words attached into the bracket and skipped words (punctuation)
+ * do not count.
+ * @param node the bracket (any object with children; labeled phrases too)
+ * @param tree the decoded model tree (heads, headProbs, and headDist for biaffine models)
+ * @param skip words to ignore (punctuation)
  */
-export function gatePhrases(
-  items: SentencePhrases,
-  tree: Pick<DecodedTree, "heads" | "headProbs">,
-  threshold: number,
-): SentencePhrases {
-  const gate = (item: Item): Item[] => {
-    if ("word" in item) return [item];
-    const children = item.children.flatMap(gate);
-    if (item.start !== item.end && bracketConfidence(item, tree) < threshold) return children;
-    return [{ ...item, children }];
-  };
-  return items.flatMap(gate).sort((a, b) => firstWord(a) - firstWord(b));
+export function spanConfidence(
+  node: { children: readonly Item[] } | Item,
+  tree: Pick<DecodedTree, "heads" | "headProbs" | "headDist">,
+  skip: (word: number) => boolean = () => false,
+): number {
+  const inside = new Set<number>();
+  covered(node as Item, inside);
+  let p = 1;
+  tree.heads.forEach((h, w) => {
+    if (skip(w)) return;
+    const wIn = inside.has(w);
+    const headIn = h > 0 && inside.has(h - 1);
+    if (!wIn && headIn) return;
+    const dist = tree.headDist?.[w];
+    if (!dist) {
+      // No distribution (rel_pos_v1 trees): the chosen head's probability bounds the side's.
+      if (wIn) p *= tree.headProbs[w] ?? 0;
+      return;
+    }
+    let massIn = 0;
+    for (const i of inside) massIn += dist[i + 1] ?? 0;
+    p *= headIn ? massIn : 1 - massIn;
+  });
+  return Math.max(0, Math.min(1, p));
 }
 
 // -- nested phrases ---------------------------------------------------------------------
@@ -443,22 +589,114 @@ function firstWord(item: Item): number {
   return "word" in item ? item.word : item.start;
 }
 
-function covered(item: Item, out: Set<number>): void {
-  if ("word" in item) out.add(item.word);
-  else for (const c of item.children) covered(c, out);
-}
-
-function makeNode(type: PhraseType, head: number, children: Item[]): PhraseNode {
+function makeNode(type: PhraseType, head: number, level: PhraseLevel, children: Item[]): PhraseNode {
   const sorted = [...children].sort((a, b) => firstWord(a) - firstWord(b));
   const words = new Set<number>();
   for (const c of sorted) covered(c, words);
   const start = Math.min(...words);
   const end = Math.max(...words);
-  return { type, head, start, end, contiguous: words.size === end - start + 1, children: sorted };
+  return { type, head, level, start, end, contiguous: words.size === end - start + 1, children: sorted };
+}
+
+const SUBJECT_RELATIONS = new Set(["nsubj", "csubj"]);
+const AUXILIARY_RELATIONS = new Set(["aux", "cop"]);
+/** Right dependents that belong to the clause, not to the complement of a copula. */
+const CLAUSE_LEVEL_RELATIONS = new Set(["advcl", "parataxis"]);
+
+/** How one head's dependents are grouped into brackets (shared with phraseLabeler.ts). */
+export type HeadLayout = {
+  /** Non-punctuation dependents, in word order. */
+  real: number[];
+  punct: number[];
+  /**
+   * Leading conjunctions (`cc` before the head and before its other dependents): shown before
+   * the head's phrase, not inside it ("[A] and [B]"). Not in the lists below.
+   */
+  lead: number[];
+  /** The subject that splits the clause, or null. */
+  subject: number | null;
+  /** A copula before the head, or null. */
+  cop: number | null;
+  /** Dependents inside the complement bracket (empty: the complement is the head word alone). */
+  complement: number[];
+  /** Dependents in the predicate bracket (without a subject: the phrase) besides the complement's. */
+  predicate: number[];
+  /** Clause-level dependents outside the predicate, besides the subject. */
+  outside: number[];
+  /** Dependents in `outside` that are clauses of their own (conjunct with a subject, parataxis with one). */
+  clauses: number[];
+};
+
+/**
+ * Layout of every head of a tree (see the header → Nested phrases).
+ * @param heads 1-based heads (0 = root)
+ * @param upos UPOS per word
+ * @param relations base relation per word
+ */
+export function headLayouts(
+  heads: readonly number[],
+  upos: readonly string[],
+  relations: readonly string[],
+): HeadLayout[] {
+  const n = heads.length;
+  const deps: number[][] = Array.from({ length: n }, () => []);
+  heads.forEach((h, i) => {
+    if (h > 0) deps[h - 1]?.push(i);
+  });
+  const rel = (i: number): string => relations[i] ?? "dep";
+  const isPunct = (i: number): boolean => upos[i] === "PUNCT";
+  const isSubject = (i: number): boolean => SUBJECT_RELATIONS.has(rel(i));
+  const hasSubject = (d: number): boolean => (deps[d] ?? []).some((x) => isSubject(x));
+  /** A conjunct or parataxis that is a clause of its own. */
+  const clausal = (d: number): boolean => rel(d) === "parataxis" || (rel(d) === "conj" && hasSubject(d));
+  return deps.map((all, h) => {
+    const real = all.filter((d) => !isPunct(d));
+    const punct = all.filter(isPunct);
+    const lead: number[] = [];
+    for (const d of real) {
+      if (d < h && rel(d) === "cc" && (deps[d] ?? []).every(isPunct)) lead.push(d);
+      else break;
+    }
+    const inner = real.slice(lead.length);
+    const subjects = inner.filter(isSubject);
+    // The nearest subject before the head, else the nearest after it.
+    const subject = subjects.filter((d) => d < h).at(-1) ?? subjects[0] ?? null;
+    const cop = inner.filter((d) => d < h && rel(d) === "cop").at(-1) ?? null;
+    let complement: number[] = [];
+    if (cop !== null) {
+      const fence = Math.max(cop, ...inner.filter((d) => d < h && (AUXILIARY_RELATIONS.has(rel(d)) || d === subject)));
+      complement = inner.filter(
+        (d) =>
+          d > fence &&
+          d !== subject &&
+          !AUXILIARY_RELATIONS.has(rel(d)) &&
+          !(d > h && (CLAUSE_LEVEL_RELATIONS.has(rel(d)) || clausal(d))),
+      );
+    }
+    const inComplement = new Set(complement);
+    const rest = inner.filter((d) => d !== subject && !inComplement.has(d));
+    if (subject === null) {
+      return { real, punct, lead, subject, cop, complement, predicate: rest, outside: [], clauses: [] };
+    }
+    const sameSide = (d: number): boolean => (subject < h ? d > subject : d < subject);
+    const outside = rest.filter((d) => !sameSide(d) || (d > h && subject < h && clausal(d)));
+    const isOutside = new Set(outside);
+    return {
+      real,
+      punct,
+      lead,
+      subject,
+      cop,
+      complement,
+      predicate: rest.filter((d) => !isOutside.has(d)),
+      outside,
+      clauses: outside.filter((d) => d > h && clausal(d) && hasSubject(d)),
+    };
+  });
 }
 
 /**
- * Nested phrases of one sentence (see the header for the bracketing order).
+ * Nested phrases of one sentence (see the header for the bracketing rule).
  * @param heads 1-based heads (0 = root), a valid tree
  * @param upos UPOS per word
  * @param relations base relation per word
@@ -470,40 +708,91 @@ export function buildPhrases(
 ): SentencePhrases {
   const n = heads.length;
   if (n === 0) return [];
-  const deps: number[][] = Array.from({ length: n }, () => []);
-  let root = -1;
-  heads.forEach((h, i) => {
-    if (h === 0) root = i;
-    else deps[h - 1]?.push(i);
-  });
+  const root = heads.indexOf(0);
   if (root < 0) throw new Error("tree has no root");
-  const isPunct = (i: number): boolean => upos[i] === "PUNCT";
+  const layouts = headLayouts(heads, upos, relations);
+  const isConj = (d: number): boolean => relations[d] === "conj";
+  /** First word of a word's subtree (leading conjunctions included). */
+  const firstOf = (w: number): number => Math.min(w, ...(layouts[w] as HeadLayout).real.map(firstOf));
 
-  // Returns the items a word contributes to its parent's level (itself or its phrase, plus loose punctuation).
-  const project = (h: number, isRoot: boolean): { phrase: Item; punct: WordLeaf[] } => {
-    const all = deps[h] ?? [];
-    const punct = all.filter(isPunct).map((word) => ({ word }));
-    const real = all.filter((d) => !isPunct(d));
-    if (real.length === 0 && !isRoot) return { phrase: { word: h }, punct };
+  /**
+   * Items a word contributes to its parent's bracket, in word order: its phrase (or the word),
+   * with its leading conjunctions and the punctuation it could not place around it. A main
+   * clause (the root's, and clauses coordinated with it) has no bracket of its own: it gives
+   * its subject bracket, its predicate bracket, and its other words.
+   */
+  const project = (h: number, main: boolean): Item[] => {
+    const lay = layouts[h] as HeadLayout;
+    const lead: Item[] = lay.lead.map((word) => ({ word }));
+    let loose: WordLeaf[] = lay.punct.map((word) => ({ word }));
+    if (lay.real.length === lay.lead.length) return [...lead, { word: h }, ...loose];
 
     const type0 = baseType(upos[h] ?? "");
-    let node = makeNode(type0, h, [{ word: h }]);
-    let hasCase = false;
-    const right = real.filter((d) => d > h).sort((a, b) => a - b);
-    const left = real.filter((d) => d < h).sort((a, b) => b - a);
-    for (const d of [...right, ...left]) {
-      const sub = project(d, false);
-      if (relations[d] === "case") hasCase = true;
-      const type = type0 === "NP" && hasCase ? "PP" : type0;
-      node = makeNode(type, h, [node, sub.phrase, ...sub.punct]);
+    const hasCase = (ds: readonly number[]): boolean => ds.some((d) => relations[d] === "case");
+    const nominal = (ds: readonly number[]): PhraseType => (type0 === "NP" && hasCase(ds) ? "PP" : type0);
+    const items = (ds: readonly number[]): Item[] => ds.flatMap((d) => project(d, false));
+    /** A bracket of this head; takes the head's punctuation that lies between its words. */
+    const layer = (type: PhraseType, level: PhraseLevel, children: Item[]): PhraseNode => {
+      const bare = makeNode(type, h, level, children);
+      const own = loose.filter((p) => p.word > bare.start && p.word < bare.end);
+      if (own.length === 0) return bare;
+      loose = loose.filter((p) => !own.includes(p));
+      return makeNode(type, h, level, [...children, ...own]);
+    };
+    /**
+     * One level of this head: `core` with dependents `ds`. Coordination ("A and B"): the
+     * dependents before the first conjunct belong to the first conjunct, which gets its own
+     * bracket beside the other conjuncts; later dependents are shared by the coordination.
+     */
+    const group = (type: (ds: readonly number[]) => PhraseType, level: PhraseLevel, core: Item, ds: number[]): Item => {
+      if (ds.length === 0) return core;
+      const conjuncts = ds.filter(isConj);
+      if (conjuncts.length === 0) return layer(type(ds), level, [core, ...items(ds)]);
+      const start = Math.min(...conjuncts.map(firstOf));
+      const mine = ds.filter((d) => !isConj(d) && d < start);
+      const shared = ds.filter((d) => !isConj(d) && d > start);
+      const first = mine.length > 0 ? layer(type(mine), "conjunct", [core, ...items(mine)]) : core;
+      return layer(type(ds), level, [first, ...items(conjuncts), ...items(shared)]);
+    };
+
+    const core = group(nominal, "complement", { word: h }, lay.complement);
+    const verbal = (ds: readonly number[]): PhraseType => (lay.cop !== null ? "VP" : nominal(ds));
+    if (lay.subject === null) {
+      const outer = group(verbal, "phrase", core, lay.predicate) as PhraseNode;
+      // Punctuation at the phrase's edge: inside the phrase, except a main clause's and a conjunct's leading one.
+      const before = main || isConj(h) ? loose.filter((p) => p.word < outer.start) : [];
+      const after = main ? loose.filter((p) => p.word > outer.end) : [];
+      const edge = loose.filter((p) => !before.includes(p) && !after.includes(p));
+      const phrase = edge.length > 0 ? makeNode(outer.type, h, outer.level, [...outer.children, ...edge]) : outer;
+      return [...lead, ...before, phrase, ...after];
     }
-    // A head keeps its punctuation in its outermost phrase; the root's stays outside.
-    if (isRoot || punct.length === 0) return { phrase: node, punct };
-    return { phrase: makeNode(node.type, h, [...node.children, ...punct]), punct: [] };
+    const predicate = group(verbal, "predicate", core, lay.predicate);
+    const subject = project(lay.subject, false);
+    const clauses = new Set(lay.clauses);
+    if (main) {
+      // No clause bracket: the subject and the predicate are always bracketed, even as single words.
+      const pin = (item: Item, type: PhraseType, level: PhraseLevel, head: number): PhraseNode => ({
+        ...("word" in item ? makeNode(type, head, level, [item]) : item),
+        pinned: true,
+      });
+      const subjectHead = lay.subject;
+      const pinnedSubject = subject.map((item) =>
+        ("word" in item ? item.word : item.head) === subjectHead
+          ? pin(item, baseType(upos[subjectHead] ?? ""), "phrase", subjectHead)
+          : item,
+      );
+      const rest = lay.outside.flatMap((d) => project(d, clauses.has(d)));
+      const all = [...lead, pin(predicate, verbal(lay.predicate), "predicate", h), ...pinnedSubject, ...rest, ...loose];
+      return all.sort((a, b) => firstWord(a) - firstWord(b));
+    }
+    const outer = layer(type0, "clause", [predicate, ...subject, ...items(lay.outside)]);
+    const before = isConj(h) ? loose.filter((p) => p.word < outer.start) : [];
+    const edge = loose.filter((p) => !before.includes(p));
+    const phrase = edge.length > 0 ? makeNode(outer.type, h, outer.level, [...outer.children, ...edge]) : outer;
+    return [...lead, ...before, phrase];
   };
 
-  const top = project(root, true);
-  return [top.phrase, ...top.punct].sort((a, b) => firstWord(a) - firstWord(b));
+  return project(root, true).sort((a, b) => firstWord(a) - firstWord(b));
 }
 
 /** Labeled spans of every bracket (for nested-phrase F1). */
