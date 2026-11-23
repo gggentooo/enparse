@@ -40,6 +40,8 @@ import type { EnvironmentProbe, FileDigest } from "../../core/environment";
 import {
   APP_WINK_VERSIONS,
   MIN_WEBGPU_STORAGE_BINDING_BYTES,
+  MOBILE_AMPLE_MEMORY_GB,
+  MOBILE_MAX_MODEL_BYTES,
   TWO_CORE_MAX,
   PARSE_BUDGET_SECONDS,
   REQUIRED_MANIFEST_FIELDS,
@@ -75,11 +77,23 @@ export function freeBytes(probe: EnvironmentProbe): number | null {
   return s === "unknown" || s === null ? null : Math.max(0, s.quotaBytes - s.usageBytes);
 }
 
-/** WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough storage buffer bindings. */
+/** A phone or tablet without ample reported memory (T96; requirements.ts → MOBILE_AMPLE_MEMORY_GB). */
+export function memoryLimited(probe: EnvironmentProbe): boolean {
+  return probe.mobile && (probe.deviceMemoryGb === null || probe.deviceMemoryGb < MOBILE_AMPLE_MEMORY_GB);
+}
+
+/**
+ * WebGPU usable for the fp16 models: an adapter with shader-f16 and large enough storage buffer
+ * bindings. Never on a memory-limited phone or tablet: int8 on WASM needs less memory (T96).
+ */
 export function webGpuUsable(probe: EnvironmentProbe): boolean {
   const g = probe.webgpu;
   return (
-    g !== "unknown" && g !== null && g.shaderF16 && g.maxStorageBufferBindingSize >= MIN_WEBGPU_STORAGE_BINDING_BYTES
+    !memoryLimited(probe) &&
+    g !== "unknown" &&
+    g !== null &&
+    g.shaderF16 &&
+    g.maxStorageBufferBindingSize >= MIN_WEBGPU_STORAGE_BINDING_BYTES
   );
 }
 
@@ -104,6 +118,7 @@ export function checkWebGpu(p: EnvironmentProbe): CheckResult {
   const g = p.webgpu;
   if (g === "unknown") return result("webgpu", "device", "skip", "not-measurable");
   if (g === null) return result("webgpu", "device", "pass", "unavailable-use-wasm", { measured: false });
+  if (memoryLimited(p)) return result("webgpu", "device", "pass", "mobile-use-wasm", { measured: false });
   if (!g.shaderF16) return result("webgpu", "device", "pass", "no-shader-f16-use-wasm", { measured: false });
   if (g.maxStorageBufferBindingSize < MIN_WEBGPU_STORAGE_BINDING_BYTES) {
     return result("webgpu", "device", "pass", "small-buffers-use-wasm", {
@@ -194,6 +209,20 @@ export function checkParseTime(model: ModelRequirements, p: EnvironmentProbe): C
     measured: t,
     required: PARSE_BUDGET_SECONDS,
   });
+}
+
+/**
+ * Phones and tablets (T96): a model whose int8 file is over MOBILE_MAX_MODEL_BYTES is blocked
+ * (the tab would be ended for memory while it loads); a smaller one warns.
+ */
+export function checkMobileMemory(model: ModelRequirements, p: EnvironmentProbe): CheckResult {
+  if (!memoryLimited(p)) return result("mobile-memory", "model", "pass", "ok");
+  const bytes = model.variants.int8?.bytes ?? null;
+  const extra = { measured: bytes, required: MOBILE_MAX_MODEL_BYTES };
+  if (bytes === null || bytes > MOBILE_MAX_MODEL_BYTES) {
+    return result("mobile-memory", "model", "fail", "too-large-for-mobile", extra);
+  }
+  return result("mobile-memory", "model", "warn", "may-not-fit", extra);
 }
 
 // -- model stage (manifest and files) ------------------------------------------------------

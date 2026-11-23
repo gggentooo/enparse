@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createWorkerHandler } from "./parser.worker";
+import { type WorkerScope, createWorkerHandler, registerWorker } from "./parser.worker";
 import { MODEL, mockBackend } from "./testFixtures";
-import { type ParserBackend, ParserLoadError, type WorkerResponse } from "./types";
+import { type ParserBackend, ParserLoadError, type WorkerRequest, type WorkerResponse } from "./types";
 
 function setup(createBackend: () => ParserBackend = () => mockBackend({ ready: false })) {
   const out: WorkerResponse[] = [];
@@ -102,5 +102,24 @@ describe("createWorkerHandler", () => {
       { type: "status", status: { state: "idle" } },
       { type: "done", id: 1 },
     ]);
+  });
+});
+
+describe("registerWorker (T97)", () => {
+  it("registers one handler per worker scope, so a re-evaluated entry module cannot answer twice", async () => {
+    const out: WorkerResponse[] = [];
+    const listeners: Array<(e: { data: WorkerRequest }) => void> = [];
+    const scope: WorkerScope = {
+      postMessage: (m) => out.push(m),
+      addEventListener: (_type, fn) => listeners.push(fn),
+    };
+    // Safari evaluates the worker's entry module again when a chunk imports it: two registrations.
+    expect(registerWorker(scope, () => mockBackend({ ready: false }))).toBe(true);
+    expect(registerWorker(scope, () => mockBackend({ ready: false }))).toBe(false);
+    expect(listeners).toHaveLength(1);
+    for (const fn of listeners) fn({ data: { type: "parse", id: 7, text: "Hi." } });
+    await new Promise((r) => setTimeout(r, 0));
+    // Exactly one answer per request (here: not ready, since nothing was loaded).
+    expect(out.filter((m) => m.type !== "status" && m.id === 7)).toHaveLength(1);
   });
 });

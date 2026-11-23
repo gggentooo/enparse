@@ -73,6 +73,17 @@ export const MIN_WEBGPU_STORAGE_BINDING_BYTES = 128 * 1024 * 1024;
 /** Devices reporting at most this many logical cores use the two-core speed tier (owner, T65). */
 export const TWO_CORE_MAX = 2;
 
+/**
+ * Phones and tablets (T96). Mobile browsers end a tab that uses too much memory (an iPhone 12
+ * mini reloads the page while a model loads), and loading a model grows memory by 1.2–2.9 GB on
+ * a computer (Phase 10). A mobile device counts as memory-limited unless it reports at least
+ * MOBILE_AMPLE_MEMORY_GB (navigator.deviceMemory; iOS never reports it). On such a device only
+ * int8 on WASM is used (smaller than fp16), a model whose int8 file is larger than
+ * MOBILE_MAX_MODEL_BYTES is blocked, and smaller ones warn.
+ */
+export const MOBILE_AMPLE_MEMORY_GB = 8;
+export const MOBILE_MAX_MODEL_BYTES = 128 * 1024 * 1024;
+
 /** wink versions pinned by the app (labels.json → versions.wink must match). */
 export const APP_WINK_VERSIONS = {
   "wink-nlp": dependencies["wink-nlp"],
@@ -114,4 +125,5 @@ export const SEVERITY: Readonly<Record<CheckId, Exclude<CheckStatus, "skip">>> =
   "model-storage": "fail",
   "model-variant": "fail",
   "parse-time": "warn",
+  "mobile-memory": "fail", // a too-large model on a phone; smaller models warn (the check decides)
 };

@@ -47,7 +47,18 @@ export {
   getModelStates,
 } from "./downloads";
 export type { DownloadProgress, Downloads, ModelCacheApi } from "./downloads";
-export { CHOICE_KEY, cardBadges, clearChoice, getSavedChoice, recommendModel, saveChoice } from "./selection";
+export {
+  CHOICE_KEY,
+  LOADING_KEY,
+  cardBadges,
+  clearChoice,
+  clearLoading,
+  getSavedChoice,
+  interruptedLoad,
+  markLoading,
+  recommendModel,
+  saveChoice,
+} from "./selection";
 export { CatalogLoadError, ModelDownloadError } from "./types";
 export type {
   CardBadge,

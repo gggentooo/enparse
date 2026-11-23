@@ -15,6 +15,7 @@ import {
   fetchStaticJson,
   listCached,
   MODEL_CACHE_NAME,
+  isMobileDevice,
   probeEnvironment,
   putCached,
   readCached,
@@ -51,6 +52,28 @@ beforeEach(() => {
   vi.stubGlobal("location", { href: `${ORIGIN}/#/input`, origin: ORIGIN });
 });
 afterEach(() => vi.unstubAllGlobals());
+
+describe("isMobileDevice (T96)", () => {
+  it("detects phones and tablets, including iPadOS in desktop mode, and not computers", () => {
+    const iphone =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1";
+    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/26.0 Safari/605.1.15";
+    expect(isMobileDevice({ userAgent: iphone })).toBe(true);
+    expect(
+      isMobileDevice({ userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/158.0 Mobile Safari/537.36" }),
+    ).toBe(true);
+    expect(isMobileDevice({ userAgent: mac, platform: "MacIntel", maxTouchPoints: 5 })).toBe(true); // iPadOS
+    expect(isMobileDevice({ userAgent: mac, platform: "MacIntel", maxTouchPoints: 0 })).toBe(false);
+    expect(
+      isMobileDevice({
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/158.0",
+        userAgentData: { mobile: false },
+      }),
+    ).toBe(false);
+    expect(isMobileDevice({ userAgentData: { mobile: true } })).toBe(true);
+    expect(isMobileDevice(undefined)).toBe(false);
+  });
+});
 
 describe("probeEnvironment", () => {
   it("reports capabilities, WebGPU limits with shader-f16, and storage", async () => {

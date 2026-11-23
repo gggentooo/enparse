@@ -97,6 +97,8 @@ export type EnvironmentProbe = {
   webgpu: Probe<WebGpuProbe | null>;
   /** navigator.deviceMemory (Chromium; coarse) or null. */
   deviceMemoryGb: number | null;
+  /** A phone or tablet (iOS, iPadOS, Android): tabs get far less memory than on a computer (T96). */
+  mobile: boolean;
   hardwareConcurrency: number | null;
   cacheStorage: boolean;
   storage: Probe<{ quotaBytes: number; usageBytes: number } | null>;
@@ -124,6 +126,10 @@ type NavigatorLike = {
   gpu?: { requestAdapter(): Promise<GpuAdapterLike | null> };
   deviceMemory?: number;
   hardwareConcurrency?: number;
+  userAgent?: string;
+  platform?: string;
+  maxTouchPoints?: number;
+  userAgentData?: { mobile?: boolean };
   storage?: {
     estimate?(): Promise<{ quota?: number; usage?: number }>;
     persisted?(): Promise<boolean>;
@@ -136,6 +142,17 @@ type GpuAdapterLike = {
 };
 
 const nav = (): NavigatorLike | undefined => (globalThis as { navigator?: NavigatorLike }).navigator;
+
+/**
+ * Phone or tablet: Chromium's userAgentData.mobile, an iOS or Android user agent, or iPadOS in
+ * desktop mode (reports "MacIntel" with a touch screen; Macs have no touch points).
+ */
+export function isMobileDevice(n: NavigatorLike | undefined = nav()): boolean {
+  if (!n) return false;
+  if (n.userAgentData?.mobile === true) return true;
+  if (/iPhone|iPad|iPod|Android/i.test(n.userAgent ?? "")) return true;
+  return n.platform === "MacIntel" && (n.maxTouchPoints ?? 0) > 1;
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<Probe<T>> {
   return new Promise((resolve) => {
@@ -227,6 +244,7 @@ export async function probeEnvironment(): Promise<EnvironmentProbe> {
     crossOriginIsolated: isolated,
     webgpu,
     deviceMemoryGb: typeof memory === "number" ? memory : null,
+    mobile: isMobileDevice(n),
     hardwareConcurrency: typeof n?.hardwareConcurrency === "number" ? n.hardwareConcurrency : null,
     cacheStorage: typeof g.caches === "object" && g.caches !== null,
     storage,

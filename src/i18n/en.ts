@@ -164,6 +164,8 @@ export const en = {
   "failure.unsupported": "This browser or device cannot run the parser.",
   "failure.out-of-memory": "The model needs more memory than is available. Close other tabs or choose a smaller model.",
   "failure.invalid-model": "The model files are damaged or incomplete. Download the model again.",
+  "failure.crashed":
+    "The page closed while this model was loading last time, usually because the device ran out of memory. Choose a smaller model on the Models page, or try again.",
   "failure.storage":
     "There is not enough storage for the model. Free some space or delete another model. Private windows have little storage: use a normal window.",
   "diag.title": "Parser diagnostics",
@@ -196,6 +198,7 @@ export const en = {
   "check.model-storage": "Storage for this model",
   "check.model-variant": "Model format for this device",
   "check.parse-time": "Expected speed",
+  "check.mobile-memory": "Phone or tablet memory",
   "hint.browser": "Use a recent version of Chrome, Edge, Firefox, or Safari.",
   "hint.threads": "Parsing runs on one thread here, so it is slower.",
   "hint.webgpu": "No suitable graphics support: the parser uses the processor (WebAssembly) instead.",
@@ -206,6 +209,8 @@ export const en = {
   "hint.wink": "Results may differ slightly from the tested setup.",
   "hint.variant": "This model has no format this device can run.",
   "hint.speed": "Long texts may take more than 5 seconds to parse on this device.",
+  "hint.mobile":
+    "Phones and tablets give a page little memory, so the page may close while the model loads. Use the smallest model, or a computer.",
   "models.intro":
     "Parsing runs on your device with a model you download once. Larger models are more accurate but slower and need more space.",
   "models.firstVisit": "No model is downloaded yet. Choose one below: it downloads once and then works offline.",

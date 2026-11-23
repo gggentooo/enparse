@@ -20,6 +20,7 @@ export function probe(over: Partial<EnvironmentProbe> = {}): EnvironmentProbe {
     crossOriginIsolated: true,
     webgpu: { maxBufferSize: 4 * GB, maxStorageBufferBindingSize: 2 * GB, shaderF16: true },
     deviceMemoryGb: 8,
+    mobile: false,
     hardwareConcurrency: 8,
     cacheStorage: true,
     storage: { quotaBytes: 10 * GB, usageBytes: 0 },

@@ -35,9 +35,16 @@ const HINTS: Readonly<Record<CheckResult["id"], MessageKey>> = {
   "model-storage": "hint.storage",
   "model-variant": "hint.variant",
   "parse-time": "hint.speed",
+  "mobile-memory": "hint.mobile",
 };
 
-const BYTE_CHECKS = new Set<CheckResult["id"]>(["storage-quota", "model-storage", "model-size", "webgpu"]);
+const BYTE_CHECKS = new Set<CheckResult["id"]>([
+  "storage-quota",
+  "model-storage",
+  "model-size",
+  "webgpu",
+  "mobile-memory",
+]);
 const GB_CHECKS = new Set<CheckResult["id"]>(["memory-hint"]);
 
 /** Catalog key of a check's name. */

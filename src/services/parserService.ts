@@ -88,12 +88,15 @@ import {
   cancelDownload,
   cardBadges,
   clearChoice,
+  clearLoading,
   deleteModel,
   downloadBytes,
   downloadModel,
   getModelStates,
   getSavedChoice,
+  interruptedLoad,
   loadCatalog,
+  markLoading,
   recommendModel,
   requirementsOf,
   saveChoice,
@@ -149,9 +152,10 @@ const MODELS_BASE = "/models/";
 
 /**
  * Why the parser is unavailable: the worker's load reasons plus `storage` (a download did not
- * fit in the browser's storage).
+ * fit in the browser's storage) and `crashed` (the page died while loading this model in the
+ * previous visit, so it was not loaded again by itself; T96).
  */
-export type FailureReason = LoadFailureReason | "storage";
+export type FailureReason = LoadFailureReason | "storage" | "crashed";
 
 /** Model status (architecture.md → Model readiness). */
 export type ModelStatus =
@@ -242,6 +246,10 @@ export type ParserServiceDeps = {
   getSavedChoice: (catalog: Catalog) => Promise<ModelId | null>;
   saveChoice: (id: ModelId) => Promise<void>;
   clearChoice: () => Promise<void>;
+  /** Crash guard (T96): the model being loaded, kept in storage until the load ends. */
+  markLoading: (id: ModelId) => Promise<void>;
+  clearLoading: () => Promise<void>;
+  interruptedLoad: () => Promise<ModelId | null>;
   createWorker: () => ParserClient;
   requestPersistentStorage: () => Promise<boolean>;
   preprocess: (raw: string) => PreprocessResult;
@@ -259,6 +267,9 @@ const defaultDeps: ParserServiceDeps = {
   getSavedChoice: (catalog) => getSavedChoice(catalog),
   saveChoice: (id) => saveChoice(id),
   clearChoice: () => clearChoice(),
+  markLoading: (id) => markLoading(id),
+  clearLoading: () => clearLoading(),
+  interruptedLoad: () => interruptedLoad(),
   createWorker: createParserWorker,
   requestPersistentStorage,
   preprocess: (raw) => preprocess(raw),
@@ -421,7 +432,14 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
     const ref: ModelRef = { id: entry.id, folder: entry.folder, variant, nestedView: entry.nested_view };
     const client = ensureWorker();
     setLibrary({ activeId: null });
-    await client.load(ref);
+    // Crash guard (T96): if the page dies inside this load (a phone killing the tab for memory),
+    // the mark survives and the next start does not load the model again by itself.
+    await deps.markLoading(entry.id).catch(() => undefined);
+    try {
+      await client.load(ref);
+    } finally {
+      await deps.clearLoading().catch(() => undefined);
+    }
     assertCurrent(seq);
     const ws = client.status();
     const backend = ws.state === "ready" ? ws.backend : "wasm";
@@ -507,6 +525,21 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
         ),
       });
       const saved = await deps.getSavedChoice(catalog);
+      const crashed = await deps.interruptedLoad().catch(() => null);
+      if (crashed) {
+        // The previous visit ended while this model was loading: do not repeat it automatically.
+        await deps.clearLoading().catch(() => undefined);
+        if (catalogEntry(crashed)) {
+          target = crashed;
+          setStatus({
+            state: "failed",
+            modelId: crashed,
+            reason: "crashed",
+            message: "the page closed while this model was loading",
+          });
+          return;
+        }
+      }
       const savedEntry = saved ? catalogEntry(saved) : undefined;
       const fit = fitness.find((f) => f.id === saved);
       const savedState = saved ? states[saved] : undefined;

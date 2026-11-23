@@ -281,8 +281,10 @@ The app parses only with the model. There is no rule-based fallback (owner decis
 | `downloading` | The chosen model's files are downloading and being verified (byte progress) | Parse disabled; progress shown |
 | `loading` | Initializing the chosen model (progress) | Parse disabled; progress shown |
 | `ready` | Model fully loaded (see below); records model id, backend (`webgpu` or `wasm`), and `model_version` | Parse enabled |
-| `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`, and `storage` when a download does not fit; T52) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
+| `failed` | Pre-flight blocked or loading failed; typed reason (`network`, `unsupported`, `out-of-memory`, `invalid-model`, `storage` when a download does not fit, T52; and `crashed`, T96) | Parse disabled; reason and `DiagnosticsPanel` shown with a retry action |
 
+- **Crash guard (T96):** the model id is kept in storage (`modelLibrary/loading`) while the worker loads it and removed when the load ends. If it is still there at the next start, the page died during the load (a phone ending the tab for memory), so the saved choice is not loaded again by itself: the status is `failed` with reason `crashed`, the model is no longer recommended, and the user may retry or choose another model.
+- **One handler per worker (T97):** `parser.worker.ts` → `registerWorker` marks the worker scope and registers its message handler once. In the production build the Transformers.js chunk imports helpers back from the worker's entry file, and Safari evaluates that entry module again; a second, model-less handler used to answer every parse with `ParserNotReadyError`.
 - **Fully loaded** means: all model files downloaded, `labels.json` validated against `LabelConfig` (schema v2, no needed field `null`), the ONNX session created, and a self-test parse of a fixed sentence giving the expected labels.
 - Parse requests are refused unless the status is `ready`: `parserService.parseText()` rejects with `ParserNotReadyError` without contacting the worker, and the worker also rejects parse messages before `ready`.
 - **Service contract (T52):** `start()` runs once at app start (`main.tsx`) and only loads a saved choice that is fully cached. A newer `chooseModel` supersedes an older one (its download is cancelled). Cancelling the chosen model's download returns to the still-loaded model (`ready`) or `no-model`. Deleting the active model unloads it and clears the saved choice. `retryLoad()` reruns `start()` (no model id) or `chooseModel` for the failed model. A parse started later supersedes an earlier one (`ParseSupersededError`). Download progress updates the snapshot at most every 1% (`PROGRESS_NOTIFY_STEP`).
@@ -333,6 +335,7 @@ ready
 | Model | `wink-versions` | `labels.json` → `versions.wink` vs the app's pinned versions | Warn |
 | Model | `storage-quota`, `model-size` | `navigator.storage.estimate()` vs `labels.json` → `files` sizes | Warn |
 | Model | `files-cached`, `files-integrity` | Cache Storage entries vs `labels.json` → `files` (bytes, SHA-256), before every load; skipped while `files` is `null`. Downloads are verified by the model library as they arrive. | Mismatch: delete and offer a re-download; then fail |
+| Fitness (per model) | `mobile-memory` | Phone or tablet (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS, Android) that does not report ≥ 8 GB (`navigator.deviceMemory`; iOS never reports it). Such a device uses int8 on WASM only (never fp16/WebGPU). A model whose int8 file is over 128 MiB (`MOBILE_MAX_MODEL_BYTES`; Large) is blocked; a smaller one (Compact) warns. Owner request, T96 (an iPhone 12 mini's tab is ended for memory while a model loads). | Fail (large model) / Warn |
 | Fitness (per model) | `model-variant`, `model-storage`, `parse-time` | Download size vs free quota (does not fit → fail; less than `STORAGE_MARGIN_BYTES` = 256 MiB left → warn), and the Phase 10 parse time for this device: fp16 on WebGPU, else the WASM speed tier — one thread without cross-origin isolation, two cores if `hardwareConcurrency` ≤ 2, else many threads (owner, T65) | Warn (shown on the model card); blocked models cannot be chosen |
 
 - Memory cannot be measured reliably in browsers, so low memory only warns; the real test is the model load and self-test (out-of-memory → `failed: out-of-memory`).
@@ -973,3 +976,7 @@ enparse/
 
 - Added: *Deployment* → Access row; upload and preview tooling (`scripts/r2.ts`, `vite.release.ts`) in the source-of-truth row.
 - Modified: *Deployment* → the build drops the bundled ONNX Runtime `.wasm` and fails on files over 25 MiB; `labels.json` revalidates. *Model library* → `catalog.json` gains optional `base_model_url` and `base_model_license`.
+
+### 2026-11-23T16:30:00Z — Claude Fable 5.2, Mobile guard and Safari worker fix
+
+- Added: *Pre-flight checks* → `mobile-memory`; *Model readiness* → crash guard and the `crashed` reason (T96), one message handler per worker (T97).

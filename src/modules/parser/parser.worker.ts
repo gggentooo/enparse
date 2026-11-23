@@ -137,14 +137,34 @@ export function createWorkerHandler(deps: WorkerDeps): (msg: WorkerRequest) => P
   };
 }
 
-// Register only inside a dedicated worker (not when imported by tests or tools).
-if (typeof WorkerGlobalScope !== "undefined" && typeof self !== "undefined" && self instanceof WorkerGlobalScope) {
-  const scope = self as unknown as DedicatedWorkerGlobalScope;
-  const handler = createWorkerHandler({
-    createBackend: createTransformerBackend,
-    post: (msg) => scope.postMessage(msg),
-  });
-  scope.addEventListener("message", (e: MessageEvent<WorkerRequest>) => {
+/** Mark on the worker's global scope: the message handler is registered. */
+const REGISTERED = "__enparseParserWorker";
+
+/** The part of the worker's global scope the registration uses. */
+export type WorkerScope = {
+  postMessage(msg: WorkerResponse): void;
+  addEventListener(type: "message", fn: (e: { data: WorkerRequest }) => void): void;
+};
+
+/**
+ * Register the message handler on a worker scope — once per scope. In the production build the
+ * Transformers.js chunk imports shared helpers back from this entry file, and Safari evaluates a
+ * worker's entry module again when it is imported (Chrome reuses the running module). Without the
+ * mark, a second handler with no model answered every parse with ParserNotReadyError before the
+ * real result arrived (T97). Returns false if the scope already has a handler.
+ */
+export function registerWorker(scope: WorkerScope, createBackend: WorkerDeps["createBackend"]): boolean {
+  const marks = scope as unknown as Record<string, unknown>;
+  if (marks[REGISTERED]) return false;
+  marks[REGISTERED] = true;
+  const handler = createWorkerHandler({ createBackend, post: (msg) => scope.postMessage(msg) });
+  scope.addEventListener("message", (e) => {
     void handler(e.data);
   });
+  return true;
+}
+
+// Register only inside a dedicated worker (not when imported by tests or tools).
+if (typeof WorkerGlobalScope !== "undefined" && typeof self !== "undefined" && self instanceof WorkerGlobalScope) {
+  registerWorker(self as unknown as WorkerScope, createTransformerBackend);
 }

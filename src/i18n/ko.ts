@@ -167,6 +167,8 @@ export const ko: Messages = {
   "failure.unsupported": "이 브라우저나 기기에서는 분석기를 실행할 수 없습니다.",
   "failure.out-of-memory": "모델에 필요한 메모리가 부족합니다. 다른 탭을 닫거나 더 작은 모델을 선택하세요.",
   "failure.invalid-model": "모델 파일이 손상되었거나 완전하지 않습니다. 모델을 다시 다운로드하세요.",
+  "failure.crashed":
+    "지난번에 이 모델을 불러오는 중 페이지가 닫혔습니다. 대개 기기의 메모리가 부족할 때 생기는 문제입니다. 모델 페이지에서 더 작은 모델을 선택하거나 다시 시도하세요.",
   "failure.storage":
     "모델을 저장할 공간이 부족합니다. 공간을 확보하거나 다른 모델을 삭제하세요. 시크릿 창은 저장 공간이 작으니 일반 창에서 사용하세요.",
   "diag.title": "분석기 진단",
@@ -199,6 +201,7 @@ export const ko: Messages = {
   "check.model-storage": "이 모델에 필요한 저장 공간",
   "check.model-variant": "이 기기용 모델 형식",
   "check.parse-time": "예상 속도",
+  "check.mobile-memory": "휴대폰·태블릿 메모리",
   "hint.browser": "최신 버전의 Chrome, Edge, Firefox 또는 Safari를 사용하세요.",
   "hint.threads": "이 환경에서는 한 스레드로만 분석하므로 더 느립니다.",
   "hint.webgpu": "적합한 그래픽 지원이 없어 프로세서(WebAssembly)로 분석합니다.",
@@ -209,6 +212,8 @@ export const ko: Messages = {
   "hint.wink": "테스트한 환경과 결과가 조금 다를 수 있습니다.",
   "hint.variant": "이 모델에는 이 기기에서 실행할 수 있는 형식이 없습니다.",
   "hint.speed": "이 기기에서는 긴 텍스트 분석에 5초 넘게 걸릴 수 있습니다.",
+  "hint.mobile":
+    "휴대폰과 태블릿은 페이지가 쓸 수 있는 메모리가 적어 모델을 불러오는 중 페이지가 닫힐 수 있습니다. 가장 작은 모델을 쓰거나 컴퓨터에서 이용하세요.",
   "models.intro":
     "분석은 한 번 다운로드한 모델로 이 기기에서 실행됩니다. 큰 모델일수록 더 정확하지만 느리고 공간을 더 차지합니다.",
   "models.firstVisit":

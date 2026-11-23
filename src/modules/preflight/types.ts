@@ -63,7 +63,8 @@ export type CheckId =
   | "files-integrity"
   | "model-storage"
   | "model-variant"
-  | "parse-time";
+  | "parse-time"
+  | "mobile-memory";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
 export type CheckStage = "device" | "model";

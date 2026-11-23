@@ -60,6 +60,28 @@ export async function clearChoice(storage: AppStorage = appStorage()): Promise<v
   await storage.remove(CHOICE_KEY);
 }
 
+/** Storage key of the model whose load is in progress (crash guard; T96). */
+export const LOADING_KEY = "modelLibrary/loading";
+
+/**
+ * Crash guard (T96): the id is stored before a model is loaded and removed when the load ends
+ * (ready or failed). If it is still there at the next start, the page died during the load —
+ * on phones, typically killed for memory — so the saved choice must not load again by itself.
+ */
+export async function markLoading(id: ModelId, storage: AppStorage = appStorage()): Promise<void> {
+  await storage.set(LOADING_KEY, id);
+}
+
+export async function clearLoading(storage: AppStorage = appStorage()): Promise<void> {
+  await storage.remove(LOADING_KEY);
+}
+
+/** The model whose load never finished in the previous visit, or null. */
+export async function interruptedLoad(storage: AppStorage = appStorage()): Promise<ModelId | null> {
+  const v = await storage.get(LOADING_KEY);
+  return typeof v === "string" ? v : null;
+}
+
 /**
  * Recommended model (owner, 2026-11-23; T43, replaces the T22 chunk-F1 rule): the first model in
  * catalog order (the default first, then its backups) that is not blocked, has a variant for this

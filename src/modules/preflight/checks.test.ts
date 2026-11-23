@@ -10,6 +10,7 @@ import {
   checkFilesIntegrity,
   checkManifestSchema,
   checkMemoryHint,
+  checkMobileMemory,
   checkModelSize,
   checkModelStorage,
   checkModelVariant,
@@ -22,7 +23,9 @@ import {
   checkWinkVersions,
   chooseVariant,
   expectedParseSeconds,
+  memoryLimited,
   wasmTier,
+  webGpuUsable,
 } from "./checks";
 import { MIN_WEBGPU_STORAGE_BINDING_BYTES, STORAGE_MARGIN_BYTES, SUPPORTED_SCHEMA_VERSION } from "./requirements";
 import { DEBERTA, MODERNBERT, manifest, probe } from "./testProbe";
@@ -84,6 +87,23 @@ describe("model fitness", () => {
     expect(checkModelStorage(MODERNBERT, tiny)).toMatchObject({ status: "fail", detail: "does-not-fit" });
     expect(checkModelStorage(MODERNBERT, tiny, 156e6).status).toBe("warn"); // already cached
     expect(checkModelStorage(DEBERTA, probe()).status).toBe("pass");
+  });
+
+  it("on a phone or tablet uses int8 on WASM, blocks a large model, and warns for a small one (T96)", () => {
+    const iphone = probe({ mobile: true, deviceMemoryGb: null });
+    expect(memoryLimited(iphone)).toBe(true);
+    expect(webGpuUsable(iphone)).toBe(false);
+    expect(checkWebGpu(iphone)).toMatchObject({ status: "pass", detail: "mobile-use-wasm" });
+    expect(chooseVariant(MODERNBERT, iphone)).toBe("int8");
+    expect(checkMobileMemory(MODERNBERT, iphone)).toMatchObject({ status: "fail", detail: "too-large-for-mobile" });
+    expect(checkMobileMemory(DEBERTA, iphone)).toMatchObject({ status: "warn", detail: "may-not-fit" });
+    // A computer, or a mobile device that reports ample memory, is not limited.
+    expect(checkMobileMemory(MODERNBERT, probe()).status).toBe("pass");
+    const bigTablet = probe({ mobile: true, deviceMemoryGb: 8 });
+    expect(memoryLimited(bigTablet)).toBe(false);
+    expect(webGpuUsable(bigTablet)).toBe(true);
+    expect(checkMobileMemory(MODERNBERT, bigTablet).status).toBe("pass");
+    expect(memoryLimited(probe({ mobile: true, deviceMemoryGb: 4 }))).toBe(true);
   });
 
   it("estimates parse time by the device's speed tier and warns over budget (T65)", () => {

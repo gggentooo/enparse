@@ -64,6 +64,7 @@ import {
   checkModelStorage,
   checkModelVariant,
   checkModuleWorkers,
+  checkMobileMemory,
   checkParseTime,
   checkStorageQuota,
   checkWasm,
@@ -140,6 +141,7 @@ export function assessModels(models: readonly ModelRequirements[], device: Devic
       checkModelVariant(m, device.probe),
       checkModelStorage(m, device.probe),
       checkParseTime(m, device.probe),
+      checkMobileMemory(m, device.probe),
     ];
     const verdict = device.report.verdict === "blocked" ? "blocked" : combine(reasons);
     return {

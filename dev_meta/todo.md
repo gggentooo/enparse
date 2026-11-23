@@ -63,6 +63,17 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Modules/parser] Safari: "The parser model is not ready" in the production build · T97 · Build
+
+- **Done:** 2026-11-23 (owner report from the deployed site; Safari only). Cause: the production build's Transformers.js chunk imports two shared helpers back from the worker's entry file (`import … from "./parser.worker-<hash>.js"`); Safari evaluates a worker's entry module a second time when it is imported (Chrome reuses the running module), so a second message handler without a model answered every parse with `ParserNotReadyError`, ahead of the real result. The dev server does not bundle, so it never happened locally. Fix: `parser.worker.ts` → `registerWorker` marks the worker scope and registers the handler once. Reproduced and confirmed fixed in Safari 27 on the production build served locally (each parse now gets one answer). Test: `parser.worker.test.ts`. The entry module is still evaluated twice in Safari (harmless; a thin entry file would avoid it). Recorded in `architecture.md` → *Model readiness*.
+
+#### [Modules/preflight] Mobile guard · T96 · Build
+
+- **Done:** 2026-11-23 (owner request: an iPhone 12 mini reloaded the page with "a problem occurred" whenever a downloaded model loaded, which made the site unusable).
+  - **Crash guard (any device):** the model id is stored while the worker loads it (`modelLibrary/selection.ts` → `markLoading`, `clearLoading`, `interruptedLoad`). If the mark is still there at the next start, the saved model is not loaded again by itself: status `failed` with the new reason `crashed`, a message that points to a smaller model, and the model drops out of the recommendation. Retry still works.
+  - **Phones and tablets:** new probe `mobile` (`core/environment.ts` → `isMobileDevice`: iOS, iPadOS including desktop mode, Android). A mobile device that does not report ≥ 8 GB of memory uses int8 on WASM only; the new fitness check `mobile-memory` blocks a model whose int8 file is over 128 MiB (Large) and warns for smaller ones (Compact). Thresholds in `preflight/requirements.ts` (**proposed**; owner may change them).
+  - Checked with an emulated iPhone 12 mini in Chrome (Large "not supported on this device", Compact recommended with the warning). Not yet checked on the real phone: whether Compact int8 fits in its memory is unknown; if it does not, the crash guard stops the reload loop. Tests: `checks.test.ts`, `environment.test.ts`, `parserService.test.ts`. Recorded in `architecture.md` → *Pre-flight checks*, *Model readiness*.
+
 #### [Training] Phase 11 packaging and release · T66 · Build
 
 - **Done:** 2026-11-23. Release **model-v1.0.0** (`training/configs/catalog.yaml` → `release.version`; the owner creates the git tag when committing).
@@ -656,3 +667,7 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T66 moved to *Done* (release model-v1.0.0 packaged, integration tests, deployment tooling, `PUBLISHING.md`).
 - Added: T94 (ONNX Runtime Web files for offline use), T95 (update path when a release changes model files), both Stage 0.
+
+### 2026-11-23T16:30:00Z — Claude Fable 5.2, T96 and T97 added and done
+
+- Added: T96 (Done): mobile guard (crash guard and phone/tablet rule). T97 (Done): Safari's duplicate worker handler in the production build.

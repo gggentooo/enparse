@@ -100,10 +100,11 @@ function fakeWorker() {
 }
 
 /** Mocked modules with an in-memory model cache and saved choice. */
-function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: string[] } = {}) {
+function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: string[]; loading?: string } = {}) {
   const worker = fakeWorker();
   const cached = new Set(opts.cached ?? []);
   let saved: string | null = opts.saved ?? null;
+  let loading: string | null = opts.loading ?? null;
   const downloadFailures: Error[] = [];
   let downloadGate: Promise<void> = Promise.resolve();
   const modelChecks: Array<{ verdict: PreflightReport["verdict"]; corrupt: string[] }> = [];
@@ -140,6 +141,9 @@ function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: strin
     getSavedChoice: vi.fn<ParserServiceDeps["getSavedChoice"]>(async () => saved),
     saveChoice: vi.fn<ParserServiceDeps["saveChoice"]>(async (id: string) => void (saved = id)),
     clearChoice: vi.fn<ParserServiceDeps["clearChoice"]>(async () => void (saved = null)),
+    markLoading: vi.fn<ParserServiceDeps["markLoading"]>(async (id: string) => void (loading = id)),
+    clearLoading: vi.fn<ParserServiceDeps["clearLoading"]>(async () => void (loading = null)),
+    interruptedLoad: vi.fn<ParserServiceDeps["interruptedLoad"]>(async () => loading),
     createWorker: vi.fn<ParserServiceDeps["createWorker"]>(() => worker.client),
     requestPersistentStorage: vi.fn<ParserServiceDeps["requestPersistentStorage"]>(async () => true),
     preprocess: vi.fn<ParserServiceDeps["preprocess"]>((raw: string) => prep(raw, raw.includes("한"))),
@@ -162,6 +166,7 @@ function setup(opts: { device?: DeviceAssessment; saved?: string; cached?: strin
       downloadGate = p;
     },
     saved: () => saved,
+    loading: () => loading,
   };
 }
 
@@ -204,6 +209,28 @@ describe("start", () => {
     expect(t.deps.downloadModel).not.toHaveBeenCalled();
     expect(t.worker.calls).toEqual([`load:${B.id}:int8`]);
     expect(t.service.getSnapshot().library.activeId).toBe(B.id);
+  });
+
+  it("marks the model while it loads and clears the mark when the load ends (crash guard, T96)", async () => {
+    const t = setup({ saved: B.id, cached: [B.id] });
+    await t.service.start();
+    expect(t.deps.markLoading).toHaveBeenCalledWith(B.id);
+    expect(t.deps.markLoading.mock.invocationCallOrder[0]).toBeLessThan(
+      t.deps.clearLoading.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(t.loading()).toBeNull();
+  });
+
+  it("does not load the saved model again after the page died while loading it; retryLoad does (T96)", async () => {
+    const t = setup({ saved: A.id, cached: [A.id, B.id], loading: A.id });
+    await t.service.start();
+    expect(t.service.getSnapshot().status).toMatchObject({ state: "failed", modelId: A.id, reason: "crashed" });
+    expect(t.worker.calls).toEqual([]);
+    expect(t.loading()).toBeNull(); // the mark is used once
+    // The model that crashed the page is no longer recommended.
+    expect(t.service.getSnapshot().library.recommendedId).toBe(B.id);
+    await t.service.retryLoad();
+    expect(t.service.getSnapshot().status).toMatchObject({ state: "ready", modelId: A.id });
   });
 
   it("does not auto-download a saved choice that is not cached", async () => {
