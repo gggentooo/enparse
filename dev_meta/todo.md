@@ -63,6 +63,18 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Components/Pages] Source code and blog links on the About page · T108 · Build
+
+- **Files:** `src/components/Pages/AboutPage.tsx`, `AboutPage.test.tsx`, `src/i18n/en.ts`, `ko.ts`
+- **Done:** 2026-11-24 (owner request). Above the app license paragraph: "Source code: https://www.github.com/gggentooo/enparse" (소스 코드:) and "Check out my blog post about Enparse: https://www.lnaba.reisen/projects/enparse" (Enparse에 관한 블로그 글도 확인해 보세요:). Links open in a new tab without opener or referrer, like the page's other links.
+- **Needs:** —
+
+#### [Components/Pages, Components/Shared] Head hint and a back-to-top button · T107 · Build
+
+- **Files:** `src/components/Pages/OutputPage.tsx`, `OutputPage.module.css`, `src/components/Shared/ScrollToTop.tsx` + `.module.css` (new), `src/components/Layout/Layout.tsx`, `ContentArea.module.css`, `src/css/tokens.css`, `src/i18n/en.ts`, `ko.ts`, `OutputPage.test.tsx`, `Shared.test.tsx`, `e2e/app.spec.ts`
+- **Done:** 2026-11-24 (owner request). (1) Under the other-readings hint (점선 밑줄이 있는 단어는 다른 해석이 가능합니다.) the output page shows "굵게 표시된 단어는 그 단어가 속한 구의 중심어입니다." / "Words marked in bold are the head of the phrase they belong to." Shown in the structure view only, since heads are bold only there. (2) A round "맨 위로" / "Back to top" button floats at the bottom right corner of the viewport on every page (above the bottom word panel, below dialogs; clear of the iPhone home indicator; hidden when printing). It scrolls to the top (no animation with reduced motion) and moves focus to the main content. The content area and the bottom word panel keep room below their last line (`--to-top-clearance`) so the button never hides text. Checked in unit tests, e2e (button stays in the corner after scrolling; scrolls to 0 and focuses the content), and in Chrome (desktop, phone width with the bottom panel). Recorded in `architecture.md` → component hierarchy.
+- **Needs:** —
+
 #### [Components/Pages] Create a vocabulary list from the text · T106 · Build
 
 - **Files:** `src/components/Pages/CreateWordList.tsx` + `.module.css`, `OutputPage.tsx`, `VocabPage.tsx`, `src/paths.ts`, `src/i18n/en.ts`, `ko.ts`, `OutputPage.test.tsx`, `VocabPage.test.tsx`, `e2e/app.spec.ts`
@@ -757,3 +769,11 @@ This guide applies to all contributors (human and AI) editing this file.
 
 - Modified: T100 decided (owner approved the eight proposals); T101–T106 built. All moved to *Done*.
 - Removed: sections *Stage 1* and *Stage 2* (empty).
+
+### 2026-11-24T07:58:12Z — Claude Opus 5.5, T107 added and done
+
+- Added: T107 (Done): head hint under the other-readings hint (structure view); floating back-to-top button on every page (owner request, 2026-11-24).
+
+### 2026-11-24T08:06:01Z — Claude Opus 5.5, T108 added and done
+
+- Added: T108 (Done): source code and blog links on the About page (owner request, 2026-11-24).

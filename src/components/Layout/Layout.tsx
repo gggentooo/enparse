@@ -10,10 +10,11 @@
  *   1. Grid layout: header on top, sidebar and content below.
  *   2. Skip-to-content link for keyboard users.
  *   3. Responsive behavior (sidebar collapses on narrow screens) if mobile is in scope.
+ *   4. Floating "back to top" button on every page (Shared/ScrollToTop.tsx; T107).
  *
  * Dependencies:
  *   External: react.
- *   Internal: ./Header.tsx, ./Sidebar.tsx, ./ContentArea.tsx, ./Layout.module.css.
+ *   Internal: ./Header.tsx, ./Sidebar.tsx, ./ContentArea.tsx, Shared/ScrollToTop.tsx, ./Layout.module.css.
  *   Used by: components/App.tsx.
  *
  * Open items (todo.md): target devices (responsive layout).
@@ -22,6 +23,7 @@
  */
 
 import { useI18n } from "../../hooks/useI18n";
+import { ScrollToTop } from "../Shared/ScrollToTop";
 import { UpdateBanner } from "../Shared/UpdateBanner";
 import { ContentArea } from "./ContentArea";
 import { Header } from "./Header";
@@ -40,6 +42,7 @@ export function Layout(): React.JSX.Element {
       <Header />
       <Sidebar />
       <ContentArea />
+      <ScrollToTop />
     </div>
   );
 }

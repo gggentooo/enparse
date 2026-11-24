@@ -64,6 +64,9 @@
   --sidebar-width: 13rem;
   --content-max-width: 60rem;
   --focus-ring: 3px solid var(--color-focus);
+  /* Floating "back to top" button (T107) and the room kept free below content so it hides nothing. */
+  --to-top-size: 3rem;
+  --to-top-clearance: calc(var(--to-top-size) + 2 * var(--space-3));
 
   /* Breakpoints (documentation only; media queries use the literal values):
      --bp-narrow: 40rem (sidebar becomes a top bar below this width). */

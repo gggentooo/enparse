@@ -467,13 +467,13 @@ Component ─► Hook ─► Service ─► Module(s)
 ```
 main.tsx (entry: mounts <RouterProvider> into index.html)
   └── App.tsx (root)
-      ├── Layout.tsx
+      ├── Layout.tsx (also renders Shared/ScrollToTop: floating back-to-top button on every page; T107)
       │   ├── Header.tsx (branding, language menu, parser status badge → DiagnosticsPanel dialog; T55)
       │   ├── Sidebar.tsx (page navigation)
       │   └── ContentArea.tsx (route outlet)
       │       ├── InputPage.tsx (text input kept as parserService draft; count, .txt drop, model status; T56)
       │       │   └── OpenShared.tsx ("Open a shared file"; also on OutputPage; T99)
-      │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57; shared-result banner and share link in ?s=…; T99)
+      │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57; hints for dotted underlines and bold heads (structure view; T107); shared-result banner and share link in ?s=…; T99)
       │       │   ├── WordStats.tsx ("Vocabulary statistics": tall dialog with every word, part of speech, Korean meaning, uses; sort; T105)
       │       │   ├── CreateWordList.tsx ("Create a vocabulary list from this text": title, definitions toggle; T106)
       │       │   ├── ShareResult.tsx ("Share": link copied and shown, or file handed to the share sheet / downloaded; T99)
@@ -496,6 +496,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       └── Shared/
           ├── Button.tsx
           ├── Modal.tsx (default; tall variant with fixed top bar and scrolling body, T104)
+          ├── ScrollToTop.tsx (bottom-right "back to top" button; scrolls up and focuses #content; T107)
           ├── Tooltip.tsx
           ├── LoadingSpinner.tsx
           ├── ModelStatus.tsx (one-line model status with retry / details; InputPage, ModelsPage, DiagnosticsPanel)
@@ -575,6 +576,7 @@ enparse/
 │   │   └── Shared/
 │   │       ├── Button.tsx + Button.module.css
 │   │       ├── Modal.tsx + Modal.module.css
+│   │       ├── ScrollToTop.tsx + ScrollToTop.module.css (back-to-top button; T107)
 │   │       ├── Tooltip.tsx + Tooltip.module.css
 │   │       ├── LoadingSpinner.tsx + LoadingSpinner.module.css
 │   │       ├── UpdateBanner.tsx + UpdateBanner.module.css (new version prompt; T69)
@@ -1045,3 +1047,8 @@ enparse/
 - Added: *Word lists from a text* (owner decisions T100: one word = lemma + part of speech; left-out tokens; phrasal verbs once; shown form; short Korean meaning; filled-in definitions; duplicates by word and part of speech; shared results), the statistics popup (T105), and the new-list dialog (T106).
 - Added: `output/wordList.ts` in *Logic modules*; `WordStats.tsx`, `CreateWordList.tsx`, `useWordGlosses.ts` in the hierarchy, services table, and skeleton; vocabulary list links in *Routing*.
 - Modified: `dictionary/dictionary.ts` (`glosses`), `dictionary/staticDb.ts` (bulk `entries`), `vocab/vocabManager.ts` (`createListWithItems`, duplicate rule), vocab row of *Module decisions* (T27 duplicate rule), `Shared/Modal` (tall variant, T104), service rows for `parserService`, `dictionaryService`, `vocabService`.
+
+### 2026-11-24T07:58:12Z — Claude Opus 5.5, Head hint and back-to-top button (T107)
+
+- Added: `Shared/ScrollToTop.tsx` in the component hierarchy and skeleton (rendered by `Layout`; content area and bottom word panel keep `--to-top-clearance` free below their last line).
+- Modified: `OutputPage` entry: bold-head hint in the structure view.

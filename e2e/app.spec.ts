@@ -177,3 +177,26 @@ test("vocabulary statistics and a vocabulary list from the text (T105, T106)", a
   const item = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "run", exact: true }) });
   await expect(item).toContainText("달리다");
 });
+
+test("head hint and the floating back-to-top button (T107)", async ({ page }) => {
+  await page.goto("/#/models");
+  await page.getByLabel("언어").selectOption("en");
+  await page.getByRole("listitem", { name: MODEL }).getByRole("button", { name: "Use this model" }).click();
+  await expect(page.getByText(`Ready: ${MODEL}`).first()).toBeVisible();
+  await page.getByRole("link", { name: "Input" }).click();
+  await page.getByLabel("English text").fill(Array.from({ length: 12 }, () => TEXT).join("\n\n"));
+  await page.getByRole("button", { name: "Parse", exact: true }).click();
+  await expect(page.getByText("Words marked in bold are the head of the phrase they belong to.")).toBeVisible();
+
+  // Always in the bottom right corner of the viewport, also after scrolling.
+  await page.setViewportSize({ width: 1280, height: 700 });
+  const toTop = page.getByRole("button", { name: "Back to top" });
+  await page.mouse.wheel(0, 3000);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const box = await toTop.boundingBox();
+  expect(box && 1280 - (box.x + box.width)).toBeLessThan(40);
+  expect(box && 700 - (box.y + box.height)).toBeLessThan(40);
+  await toTop.click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator("#content")).toBeFocused();
+});

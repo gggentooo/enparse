@@ -4,7 +4,7 @@
  *
  * Covers: Button (default type, loading = disabled + aria-busy), LoadingSpinner (status
  * label, determinate progress), Modal (title, Escape/cancel and Close call onClose),
- * Tooltip (toggle, Escape, outside click).
+ * Tooltip (toggle, Escape, outside click), ScrollToTop (T107).
  */
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -13,6 +13,7 @@ import { languageService } from "../../services/languageService";
 import { Button } from "./Button";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { Modal } from "./Modal";
+import { ScrollToTop } from "./ScrollToTop";
 import { Tooltip } from "./Tooltip";
 
 afterEach(cleanup);
@@ -100,5 +101,25 @@ describe("Tooltip", () => {
     fireEvent.click(trigger);
     fireEvent.pointerDown(screen.getByText("outside"));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("ScrollToTop (T107)", () => {
+  it("scrolls to the top (no animation with reduced motion) and focuses the main content", () => {
+    const scrollTo = vi.fn<(options: ScrollToOptions) => void>();
+    vi.stubGlobal("scrollTo", scrollTo);
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") }) as MediaQueryList);
+    render(
+      <>
+        <main id="content" tabIndex={-1}>
+          page
+        </main>
+        <ScrollToTop />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back to top" }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+    expect(document.activeElement?.id).toBe("content");
+    vi.unstubAllGlobals();
   });
 });

@@ -213,6 +213,17 @@ describe("OutputPage", () => {
     expect(screen.getByText(/dotted underline/)).toBeTruthy();
   });
 
+  it("explains bold heads under the other-readings hint, in the structure view only (T107)", () => {
+    setup();
+    const hints = screen.getAllByText(/dotted underline|marked in bold/).map((p) => p.textContent);
+    expect(hints).toEqual([
+      "Words with a dotted underline have other possible readings.",
+      "Words marked in bold are the head of the phrase they belong to.",
+    ]);
+    fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));
+    expect(screen.queryByText(/marked in bold/)).toBeNull();
+  });
+
   it("switches a sentence to another reading and back", () => {
     setup();
     fireEvent.click(screen.getByRole("radio", { name: "Phrases (flat)" }));

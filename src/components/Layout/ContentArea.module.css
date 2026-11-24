@@ -4,12 +4,14 @@
  * Description: main content padding and scrolling.
  * Tasks: 1. Content container.
  * Dependencies: src/css/tokens.css. Used by: ContentArea.tsx.
- * Status: implemented (T39).
+ * Status: implemented (T39; room for the back-to-top button T107).
  */
 
 .content {
   grid-area: content;
   padding: var(--space-4);
+  /* Room below the last content for the floating "back to top" button (T107). */
+  padding-bottom: calc(var(--space-4) + var(--to-top-clearance));
   min-width: 0;
 }
 

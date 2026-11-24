@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockService } from "../../hooks/testParserService";
+import { en } from "../../i18n/en";
 import { languageService } from "../../services/languageService";
 import type { ParserService } from "../../services/parserService";
 import { fixtureLibrary } from "../testUtils";
@@ -77,6 +78,20 @@ describe("AboutPage", () => {
     for (const license of ["CC BY 4.0", "CC BY 2.0 FR"])
       expect(within(section).getByText(`License: ${license}`)).toBeTruthy();
     expect(within(section).getByText(/shared under/)).toBeTruthy();
+  });
+
+  it("links the source code and the blog post above the app license (T108)", () => {
+    render(<AboutPage />);
+    const source = screen.getByRole("link", { name: /^https:\/\/www\.github\.com\/gggentooo\/enparse/ });
+    const blog = screen.getByRole("link", { name: /^https:\/\/www\.lnaba\.reisen\/projects\/enparse/ });
+    expect(source.getAttribute("href")).toBe("https://www.github.com/gggentooo/enparse");
+    expect(blog.getAttribute("href")).toBe("https://www.lnaba.reisen/projects/enparse");
+    expect(source.closest("p")?.textContent).toMatch(/^Source code: /);
+    expect(blog.closest("p")?.textContent).toMatch(/^Check out my blog post about Enparse: /);
+    // Source, blog, then the app license, in that order.
+    const sourceP = source.closest("p");
+    expect(sourceP?.nextElementSibling).toBe(blog.closest("p"));
+    expect(blog.closest("p")?.nextElementSibling?.textContent).toBe(en["about.appLicense"]);
   });
 
   it("opens external links in a new tab without opener or referrer", () => {

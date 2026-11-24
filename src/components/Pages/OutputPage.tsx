@@ -25,6 +25,8 @@
  *      "Open a shared file" (./OpenShared.tsx), and a share link's data in
  *      ?s=… opened through useParser().openShared; a banner marks a shared
  *      result.
+ *   8a. Hints under the toolbar: dotted underline = other readings; bold =
+ *      head of its phrase (structure view only; T107).
  *   9. Words of the text (T105, T106): "Vocabulary statistics"
  *      (./WordStats.tsx) and "Create a vocabulary list from this text"
  *      (./CreateWordList.tsx).
@@ -254,6 +256,8 @@ export function OutputPage(): React.JSX.Element {
         </div>
       </div>
       {hasAmbiguity && <p className={styles.muted}>{t("output.ambiguousHint")}</p>}
+      {/* Heads are bold only in the structure view (NestedReading; T107). */}
+      {shownView === "nested" && <p className={styles.muted}>{t("output.headHint")}</p>}
 
       <div className={`${styles.layout} ${panelPos === "bottom" ? styles.panelBottom : ""}`}>
         <div className={styles.text}>

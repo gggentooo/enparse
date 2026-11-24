@@ -130,6 +130,10 @@ const LIBRARIES: Credit[] = [
   },
 ];
 
+/** The app's source code and the owner's blog post about it (owner, 2026-11-24; T108). */
+export const SOURCE_URL = "https://www.github.com/gggentooo/enparse";
+export const BLOG_URL = "https://www.lnaba.reisen/projects/enparse";
+
 function ExternalLink({ href, children }: { href: string; children: React.ReactNode }): React.JSX.Element {
   const { t } = useI18n();
   return (
@@ -195,6 +199,12 @@ export function AboutPage(): React.JSX.Element {
 
       <section aria-labelledby="about-app" className={styles.section}>
         <h2 id="about-app">{t("about.appTitle")}</h2>
+        <p>
+          {t("about.source")} <ExternalLink href={SOURCE_URL}>{SOURCE_URL}</ExternalLink>
+        </p>
+        <p>
+          {t("about.blog")} <ExternalLink href={BLOG_URL}>{BLOG_URL}</ExternalLink>
+        </p>
         <p>{t("about.appLicense")}</p>
         <p className={styles.notice} lang="en">
           {REQUIRED_NOTICE}

@@ -161,6 +161,8 @@
   z-index: 20;
   max-height: 40vh;
   overflow-y: auto;
+  /* Its last lines can scroll clear of the back-to-top button (T107). */
+  padding-bottom: var(--to-top-clearance);
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
   box-shadow: 0 -4px 12px rgb(0 0 0 / 15%);
@@ -188,6 +190,7 @@
     z-index: 20;
     max-height: 40vh;
     overflow-y: auto;
+    padding-bottom: var(--to-top-clearance);
     border-bottom-right-radius: 0;
     border-bottom-left-radius: 0;
     box-shadow: 0 -4px 12px rgb(0 0 0 / 15%);

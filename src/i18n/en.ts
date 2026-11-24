@@ -18,6 +18,7 @@ export const en = {
   "app.errorLink": "Go to the input page",
 
   "layout.skip": "Skip to content",
+  "layout.toTop": "Back to top",
   "nav.label": "Pages",
   "nav.input": "Input",
   "nav.output": "Output",
@@ -97,6 +98,8 @@ export const en = {
   "about.intro":
     "Enparse runs entirely in your browser. The parser models, training data, word lists, and libraries below are used under their licenses.",
   "about.appTitle": "Enparse",
+  "about.source": "Source code:",
+  "about.blog": "Check out my blog post about Enparse:",
   "about.appLicense":
     "The app's own code is licensed under the PolyForm Noncommercial License 1.0.0: it may be used, changed, and shared for non-commercial purposes, keeping the notice below.",
   "about.modelsTitle": "Parser models",
@@ -336,6 +339,7 @@ export const en = {
   "output.reason.attachment": "phrase attachment",
   "output.reason.probability": "word labels",
   "output.ambiguousHint": "Words with a dotted underline have other possible readings.",
+  "output.headHint": "Words marked in bold are the head of the phrase they belong to.",
   "output.ambiguous": "(other readings possible)",
   "output.changed": "(changed in this reading)",
   "output.attachesTo": "attaches to “{word}”",

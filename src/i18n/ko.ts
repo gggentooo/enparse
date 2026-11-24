@@ -18,6 +18,7 @@ export const ko: Messages = {
   "app.errorBody": "이 페이지를 표시할 수 없습니다. 입력 페이지로 돌아가 다시 시도해 주세요.",
   "app.errorLink": "입력 페이지로 이동",
 
+  "layout.toTop": "맨 위로",
   "layout.skip": "본문으로 건너뛰기",
   "nav.label": "페이지",
   "nav.input": "입력",
@@ -99,6 +100,8 @@ export const ko: Messages = {
   "about.intro":
     "Enparse는 모든 처리를 브라우저 안에서 합니다. (모델 및 사전 다운로드 후에는 오프라인 사용 가능함) 아래의 분석 모델, 학습 데이터, 단어 목록, 라이브러리는 각각의 라이선스에 따라 사용됩니다.",
   "about.appTitle": "Enparse",
+  "about.source": "소스 코드 링크:",
+  "about.blog": "Enparse 관련 블로그 글 (영어로 되어 있습니다):",
   "about.appLicense":
     "이 앱의 코드는 PolyForm Noncommercial License 1.0.0에 따라 제공됩니다. 비상업적 목적으로 사용·수정·배포할 수 있으며, 아래 고지를 유지해야 합니다.",
   "about.modelsTitle": "분석 모델",
@@ -338,6 +341,7 @@ export const ko: Messages = {
   "output.reason.attachment": "구 연결",
   "output.reason.probability": "단어 품사",
   "output.ambiguousHint": "점선 밑줄이 있는 단어는 다른 해석이 가능합니다.",
+  "output.headHint": "굵게 표시된 단어는 그 단어가 속한 구의 중심어입니다.",
   "output.ambiguous": "(다른 해석 가능)",
   "output.changed": "(이 해석에서 바뀜)",
   "output.attachesTo": "“{word}”에 연결",
