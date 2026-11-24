@@ -10,7 +10,7 @@
  * Tasks:
  *   1. Load lists on first use; expose subscribe()/getSnapshot() so every
  *      useVocab consumer updates on change.
- *   2. Async CRUD: createList, renameList, deleteList, addItem, updateItem,
+ *   2. Async CRUD: createList, createListWithItems (T103), renameList, deleteList, addItem, updateItem,
  *      removeItem, moveItem.
  *   3. exportLists(format): Promise<Blob>; importLists(file): Promise<ImportSummary>.
  *   4. Surface storage errors to the UI (no silent failures).
@@ -59,6 +59,8 @@ export type VocabService = {
   /** Load lists once (later calls return the same promise). */
   ensureLoaded(): Promise<void>;
   createList(name: string): Promise<VocabList>;
+  /** A new list with its items in one write (T103). */
+  createListWithItems(name: string, items: readonly NewVocabItem[]): Promise<VocabList>;
   renameList(listId: string, name: string): Promise<void>;
   deleteList(listId: string): Promise<void>;
   addItem(listId: string, item: NewVocabItem): Promise<VocabItem>;
@@ -119,6 +121,7 @@ export function createVocabService(manager: VocabManager = new VocabManager()): 
       return loading;
     },
     createList: (name) => run(() => manager.createList(name)),
+    createListWithItems: (name, items) => run(() => manager.createListWithItems(name, items)),
     renameList: (id, name) => run(async () => void (await manager.renameList(id, name))),
     deleteList: (id) => run(() => manager.deleteList(id)),
     addItem: (id, item) => run(() => manager.addItem(id, item)),

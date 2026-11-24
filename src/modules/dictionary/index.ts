@@ -8,7 +8,7 @@
  *
  * Layer: modules/ (dictionary)
  *
- * Exports: createDictionaryModule (lookup, offline state, download all,
+ * Exports: createDictionaryModule (lookup, glosses (T102), offline state, download all,
  *   delete all, sources); DictionaryLoadError; constants; types.
  *
  * Dependencies:
@@ -36,6 +36,7 @@ export function createDictionaryModule(options: { api?: DictCacheApi; db?: Stati
   const dict = createDictionary(db);
   return {
     lookup: dict.lookup,
+    glosses: dict.glosses,
     offlineState: db.offlineState,
     downloadAll: db.downloadAll,
     deleteAll: db.deleteAll,
@@ -46,8 +47,10 @@ export function createDictionaryModule(options: { api?: DictCacheApi; db?: Stati
   };
 }
 
-export { LOOKUP_CACHE_SIZE, PHRASAL_PARTICLES, orderPos } from "./dictionary";
+export { GLOSS_KOREAN_WORDS, LOOKUP_CACHE_SIZE, PHRASAL_PARTICLES, glossOf, orderPos } from "./dictionary";
+export type { Gloss, GlossResult } from "./dictionary";
 export {
+  BULK_CONCURRENCY,
   DICTIONARY_CACHE_PREFIX,
   DICTIONARY_VERSION,
   DICT_INTEGRITY_RETRIES,
@@ -55,7 +58,7 @@ export {
   fnv1a32,
   shardPath,
 } from "./staticDb";
-export type { DictCacheApi } from "./staticDb";
+export type { BulkOptions, DictCacheApi } from "./staticDb";
 export { DICTIONARY_SCHEMA, DictionaryLoadError } from "./types";
 export type {
   DictionaryEntry,

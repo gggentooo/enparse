@@ -1,11 +1,11 @@
 /**
- * src/modules/dictionary/dictionary.test.ts — lookup order, part-of-speech order, recent results (T46)
+ * src/modules/dictionary/dictionary.test.ts — lookup order, part-of-speech order, recent results (T46), glosses (T102)
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createDictionary, orderPos } from "./dictionary";
+import { createDictionary, glossOf, orderPos } from "./dictionary";
 import { createDictionaryModule } from "./index";
 import { createStaticDb } from "./staticDb";
 import { fakeApi } from "./testDictionary";
@@ -88,6 +88,73 @@ describe("module API", () => {
   });
 });
 
+describe("glosses (T102)", () => {
+  const q = (word: string, lemma: string | null, upos: string | null) => ({ word, lemma, upos });
+
+  it("gives the Korean and English gloss of the word's part of speech, in query order", async () => {
+    const api = fakeApi();
+    const m = createDictionaryModule({ api });
+    const progress: Array<[number, number]> = [];
+    const r = await m.glosses(
+      [
+        q("ran", "run", "VERB"),
+        q("run", "run", "NOUN"),
+        q("saw", "see", "VERB"),
+        q("saw", "saw", "NOUN"),
+        q("xyzzy", null, "NOUN"),
+        q("looked up", "look up", "VERB"),
+        q("I", "i", "PRON"),
+        q("run", "run", "ADJ"),
+        q("is", "be", "AUX"),
+      ],
+      { onProgress: (done, total) => void progress.push([done, total]) },
+    );
+    expect(r.error).toBeNull();
+    expect(r.glosses).toEqual([
+      { headword: "run", ko: "달리다, 뛰다", en: "move fast" },
+      { headword: "run", ko: null, en: "a score" },
+      { headword: "see", ko: "보다", en: "perceive by sight" },
+      { headword: "saw", ko: "톱", en: "a cutting tool" },
+      null,
+      { headword: "look up", ko: null, en: "seek information from" },
+      { headword: "I", ko: "나", en: "the speaker" },
+      null, // no adjective "run"
+      null, // "be" is no headword here
+    ]);
+    expect(progress.at(-1)?.[0]).toBe(progress.at(-1)?.[1]);
+    // Each shard file is read once.
+    const shardsRead = api.downloads.filter((u) => u.includes("shards/"));
+    expect(new Set(shardsRead).size).toBe(shardsRead.length);
+  });
+
+  it("keeps at most three Korean words", () => {
+    const entry = {
+      key: "x",
+      headword: "x",
+      examples: [],
+      pos: [{ upos: "NOUN", from: null, senses: [], korean: [{ sense: "s", words: ["가", "나", "다", "라"] }] }],
+    };
+    expect(glossOf(entry, "PROPN")).toEqual({ headword: "x", ko: "가, 나, 다", en: null });
+  });
+
+  it("reports a failure as null glosses with a reason, and rejects only when cancelled", async () => {
+    const api = fakeApi();
+    api.offline = true;
+    const m = createDictionaryModule({ api });
+    expect(await m.glosses([q("run", "run", "VERB")])).toEqual({ glosses: [null], error: "network" });
+    api.offline = false;
+    await m.lookup({ word: "xyzzy" }); // index and manifest loaded
+    api.offline = true;
+    expect(await m.glosses([q("run", "run", "VERB")])).toEqual({ glosses: [null], error: "network" });
+    api.offline = false;
+    const controller = new AbortController();
+    controller.abort();
+    await expect(m.glosses([q("run", "run", "VERB")], { signal: controller.signal })).rejects.toMatchObject({
+      reason: "cancelled",
+    });
+  });
+});
+
 // -- the real v1 data (training/data/dict/v1, built by T70; skipped when absent) ---------------
 
 const V1 = fileURLToPath(new URL("../../../training/data/dict/v1/", import.meta.url));
@@ -110,5 +177,15 @@ describe.skipIf(!existsSync(`${V1}manifest.json`))("integration: built dictionar
     expect(american.entries[0]?.entry.pos[0]?.upos).toBe("ADJ");
     const run = (await m.lookup({ word: "run", upos: "VERB" })).entries[0]?.entry;
     expect(run?.pos[0]?.korean.flatMap((k) => k.words)).toContain("달리다");
+  });
+
+  it("gives glosses of many words at once (T102)", async () => {
+    const m = createDictionaryModule({ api: real() });
+    const words = ["run", "the", "dog", "bank", "happy", "quickly", "give up"];
+    const upos = ["VERB", "DET", "NOUN", "NOUN", "ADJ", "ADV", "VERB"];
+    const r = await m.glosses(words.map((w, i) => ({ word: w, lemma: w, upos: upos[i] })));
+    expect(r.error).toBeNull();
+    expect(r.glosses.every((g) => g !== null && g.en !== null)).toBe(true);
+    expect(r.glosses[0]?.ko).toContain("달리다");
   });
 });

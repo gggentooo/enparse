@@ -6,13 +6,14 @@
  * list (confirmed), JSON export download, import with a name conflict, and error display.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStorage } from "../../core/storage";
 import { VocabManager } from "../../modules/vocab";
 import { languageService } from "../../services/languageService";
 import { type VocabService, createVocabService } from "../../services/vocabService";
+import { renderPage } from "../testUtils";
 import { VocabPage } from "./VocabPage";
 import { exportFileName } from "./VocabTransfer";
 
@@ -45,7 +46,7 @@ async function createList(name: string): Promise<void> {
 
 describe("VocabPage", () => {
   it("creates lists and adds, edits, moves, and removes words", async () => {
-    render(<VocabPage />);
+    renderPage(<VocabPage />, "/vocab");
     expect(await screen.findByText(/No lists yet/)).toBeTruthy();
     await createList("Week 1");
     expect(screen.getByText(/This list has no words yet/)).toBeTruthy();
@@ -95,7 +96,7 @@ describe("VocabPage", () => {
   });
 
   it("renames and deletes a list after confirmation", async () => {
-    render(<VocabPage />);
+    renderPage(<VocabPage />, "/vocab");
     await screen.findByText(/No lists yet/);
     await createList("Draft");
     click("Rename list");
@@ -120,7 +121,7 @@ describe("VocabPage", () => {
     };
     URL.revokeObjectURL = (): void => undefined;
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    render(<VocabPage />);
+    renderPage(<VocabPage />, "/vocab");
     await screen.findByText(/No lists yet/);
     await createList("Shared");
     type("Word", "go", screen.getByRole("form", { name: "Add word" }));
@@ -148,10 +149,18 @@ describe("VocabPage", () => {
   });
 
   it("shows import errors from the service", async () => {
-    render(<VocabPage />);
+    renderPage(<VocabPage />, "/vocab");
     await screen.findByText(/No lists yet/);
     const bad = new File(["not,valid\n1,2"], "bad.csv", { type: "text/csv" });
     fireEvent.change(screen.getByLabelText("Import file (JSON or CSV)"), { target: { files: [bad] } });
     expect((await screen.findByRole("alert")).textContent).toMatch(/The last action failed/);
+  });
+
+  it("opens the list named in ?list= (link from a list made from a text; T106)", async () => {
+    const a = await h.service?.createList("First");
+    const b = await h.service?.createListWithItems("From text", [{ word: "look", upos: "VERB" }]);
+    expect(a && b).toBeTruthy();
+    renderPage(<VocabPage />, "/vocab", `/vocab?list=${b?.id}`);
+    expect(await screen.findByRole("heading", { level: 2, name: "From text" })).toBeTruthy();
   });
 });

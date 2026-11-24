@@ -17,6 +17,7 @@
  *      PreflightReport (null until checked); modelChecks the chosen model's
  *      report. draft is the input text kept across pages (T56). shared,
  *      shareKind, shareLink, shareFile, openShared: shared results (T99).
+ *      words: the words of the shown text (T101).
  *   3. Local pending/error state per call; a superseded parse is ignored
  *      (resolves null, no error).
  *   4. Tests in useParser.test.ts with a mocked service (passed as the
@@ -42,7 +43,9 @@ import {
   type PreprocessResult,
   type ShareKind,
   type SharedSource,
+  type WordEntry,
   parserService,
+  wordsOf,
 } from "../services/parserService";
 
 export type {
@@ -68,9 +71,13 @@ export type {
   ShareErrorReason,
   ShareKind,
   SharedSource,
+  WordEntry,
+  WordSort,
 } from "../services/parserService";
 export {
   MAX_INPUT_CHARS,
+  POS_ORDER,
+  sortWords,
   SHARE_LINK_MAX_CHARS,
   SHARE_MAX_FILE_BYTES,
   ShareFormatError,
@@ -104,6 +111,8 @@ export type UseParser = {
   shareFile: () => string;
   /** Show a shared result; rejects with ShareFormatError if it cannot be read. */
   openShared: (source: SharedSource) => Promise<void>;
+  /** The words of the shown text (T101; null with no result). */
+  words: readonly WordEntry[] | null;
 };
 
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
@@ -157,5 +166,6 @@ export function useParser(service: ParserService = parserService()): UseParser {
     shareLink: service.shareLink,
     shareFile: service.shareFile,
     openShared: service.openShared,
+    words: snap.annotation ? wordsOf(snap.annotation) : null,
   };
 }

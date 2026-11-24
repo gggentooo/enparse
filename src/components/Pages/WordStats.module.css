@@ -1,0 +1,45 @@
+/*
+ * src/components/Pages/WordStats.module.css — styles for WordStats.tsx
+ *
+ * Description: totals line, notes, and the word table inside the tall dialog.
+ * Dependencies: src/css/tokens.css. Used by: WordStats.tsx.
+ * Status: implemented (T105).
+ */
+
+.totals,
+.note {
+  margin: 0 0 var(--space-2);
+}
+
+.note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-2);
+}
+
+.table th,
+.table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table thead th {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.word {
+  font-weight: 600;
+}
+
+.table .count {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}

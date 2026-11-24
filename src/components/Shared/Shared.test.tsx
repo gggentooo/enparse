@@ -7,7 +7,7 @@
  * Tooltip (toggle, Escape, outside click).
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { languageService } from "../../services/languageService";
 import { Button } from "./Button";
@@ -61,6 +61,23 @@ describe("Modal", () => {
     fireEvent(dialog, new Event("cancel", { cancelable: true }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("tall variant: title, toolbar, and Close in the top bar; the body in a scrollable region (T104)", () => {
+    const onClose = vi.fn<() => void>();
+    render(
+      <Modal open variant="tall" title="Words" onClose={onClose} toolbar={<select aria-label="Sort" />}>
+        <p>Body</p>
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Words" });
+    const region = within(dialog).getByRole("region", { name: "Words" });
+    expect(within(region).getByText("Body")).toBeTruthy();
+    expect(within(region).queryByRole("button")).toBeNull();
+    expect(region.tabIndex).toBe(0);
+    expect(within(dialog).getByRole("combobox", { name: "Sort" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -130,3 +130,50 @@ test("share a parsed result: a short sentence as a link, anything else as a file
   ).toContainText("barks");
   await context.close();
 });
+
+test("vocabulary statistics and a vocabulary list from the text (T105, T106)", async ({ page }) => {
+  await page.goto("/#/models");
+  await page.getByLabel("언어").selectOption("en");
+  await page.getByRole("listitem", { name: MODEL }).getByRole("button", { name: "Use this model" }).click();
+  await expect(page.getByText(`Ready: ${MODEL}`).first()).toBeVisible();
+  await page.getByRole("link", { name: "Input" }).click();
+  await page.getByLabel("English text").fill(`${TEXT} The dog runs again.`);
+  await page.getByRole("button", { name: "Parse", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Sentence 1" })).toBeVisible();
+
+  // Statistics: every word once with its uses and Korean meaning; the top bar stays while the table scrolls.
+  await page.setViewportSize({ width: 390, height: 420 });
+  await page.getByRole("button", { name: "Vocabulary statistics" }).click();
+  const stats = page.getByRole("dialog", { name: "Vocabulary statistics" });
+  const run = stats.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "run", exact: true }) });
+  await expect(run.getByRole("cell").nth(1)).toHaveText(/달리다/);
+  await expect(run.getByRole("cell").nth(2)).toHaveText("2");
+  await expect(stats.getByRole("rowheader", { name: "dog", exact: true })).toHaveCount(1);
+  await stats.getByLabel("Sort by").selectOption("alpha");
+  await expect(stats.getByRole("rowheader").first()).toHaveText("again");
+  const bar = stats.getByRole("button", { name: "Close" });
+  const before = await bar.boundingBox();
+  const region = stats.getByRole("region", { name: "Vocabulary statistics" });
+  const scrolled = await region.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+    return el.scrollTop > 0;
+  });
+  expect(scrolled).toBe(true);
+  expect(await bar.boundingBox()).toEqual(before);
+  const box = await stats.boundingBox();
+  expect(box?.height).toBe(420);
+  await bar.click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // A list of every word once, with meanings from the dictionary.
+  await page.getByRole("button", { name: "Create a vocabulary list from this text" }).click();
+  const create = page.getByRole("dialog", { name: "New vocabulary list from this text" });
+  await create.getByLabel("List title").fill("Dog text");
+  await create.getByRole("button", { name: "Create list" }).click();
+  await expect(create.getByText(/^Created “Dog text” with \d+ words\.$/)).toBeVisible();
+  await create.getByRole("link", { name: "Open the list" }).click();
+  await expect(page).toHaveURL(/#\/vocab\?list=/);
+  await expect(page.getByRole("heading", { level: 2, name: "Dog text" })).toBeVisible();
+  const item = page.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "run", exact: true }) });
+  await expect(item).toContainText("달리다");
+});

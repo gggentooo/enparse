@@ -9,7 +9,9 @@
  *
  * Tasks:
  *   1. Lists: create, rename, delete, get all.
- *   2. Items: add, update, remove, move between lists; duplicate detection.
+ *   2. Items: add, update, remove, move between lists; duplicate detection
+ *      (same word and part of speech; T100). createListWithItems: a new list
+ *      with its items in one write (word lists from a parsed text; T103).
  *   3. Persist via core/storage with a schema version; migrate on load.
  *   4. Export to JSON (canonical) and CSV (hand-written codec, ./csv.ts; T27).
  *   5. Import with validation and conflict handling; typed VocabImportError.
@@ -111,15 +113,21 @@ function migrateList(raw: unknown): VocabList {
   };
 }
 
-/** Re-flag duplicates in a list: every item whose word (lookup key) appears earlier. */
-function flagDuplicates(list: VocabList): number {
-  const seen = new Set<string>();
+/**
+ * Re-flag duplicates in a list: every item whose word (lookup key) and part of speech match an
+ * earlier item's (owner, T100: "run" the noun and "run" the verb are two words). An item without
+ * a part of speech matches the same word with any part of speech.
+ */
+export function flagDuplicates(list: VocabList): number {
+  const seen = new Map<string, Set<string | null>>();
   let flagged = 0;
   for (const it of list.items) {
     const k = lookupKey(it.word);
-    it.duplicate = seen.has(k);
+    const pos = seen.get(k);
+    it.duplicate = pos !== undefined && (it.upos === null || pos.has(null) || pos.has(it.upos));
     if (it.duplicate) flagged++;
-    seen.add(k);
+    if (pos) pos.add(it.upos);
+    else seen.set(k, new Set([it.upos]));
   }
   return flagged;
 }
@@ -182,6 +190,25 @@ export class VocabManager {
   async createList(name: string): Promise<VocabList> {
     const t = this.stamp();
     return this.save({ id: this.newId(), name: name.trim(), createdAt: t, updatedAt: t, items: [] });
+  }
+
+  /** A new list with its items, stored in one write (T103). The name must not be empty. */
+  async createListWithItems(name: string, inputs: readonly NewVocabItem[]): Promise<VocabList> {
+    if (name.trim() === "") throw new TypeError("list name must not be empty");
+    const t = this.stamp();
+    const items = inputs.map((input) => {
+      if (input.word.trim() === "") throw new TypeError("word must not be empty");
+      return migrateItem({
+        ...input,
+        id: this.newId(),
+        word: input.word.trim(),
+        addedAt: t,
+        schemaVersion: VOCAB_SCHEMA_VERSION,
+      });
+    });
+    const list: VocabList = { id: this.newId(), name: name.trim(), createdAt: t, updatedAt: t, items };
+    flagDuplicates(list);
+    return this.save(list);
   }
 
   async renameList(listId: string, name: string): Promise<VocabList> {

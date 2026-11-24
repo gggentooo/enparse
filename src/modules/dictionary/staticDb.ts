@@ -112,10 +112,23 @@ export interface StaticDb {
   index(): Promise<DictionaryIndex>;
   /** The entry of a key, or null if the key is not a headword. */
   entry(key: string): Promise<DictionaryEntry | null>;
+  /**
+   * Entries of many keys (T102): each shard is read once, BULK_CONCURRENCY at a time, without
+   * evicting the single-word shard cache. Keys that are no headword are left out. A shard that
+   * cannot be read leaves its keys out and sets `error` (the first failure); cancelling throws.
+   */
+  entries(keys: Iterable<string>, options?: BulkOptions): Promise<BulkEntries>;
   offlineState(): Promise<OfflineState>;
   downloadAll(onProgress?: DownloadProgress, signal?: AbortSignal): Promise<void>;
   deleteAll(): Promise<void>;
 }
+
+/** Shard files read at the same time by a bulk lookup. */
+export const BULK_CONCURRENCY = 4;
+
+/** Progress (shards done of shards needed) and cancel of a bulk lookup. */
+export type BulkOptions = { signal?: AbortSignal; onProgress?: (done: number, total: number) => void };
+export type BulkEntries = { entries: Map<string, DictionaryEntry>; error: DictionaryLoadError | null };
 
 // -- narrowing (the data is JSON from the network) ---------------------------------------------
 
@@ -318,6 +331,58 @@ export function createStaticDb(
     return raw === undefined ? null : asEntry(key, raw);
   }
 
+  async function entries(keys: Iterable<string>, bulk: BulkOptions = {}): Promise<BulkEntries> {
+    const { signal, onProgress } = bulk;
+    const cancelled = (): DictionaryLoadError => new DictionaryLoadError("cancelled", "dictionary lookup cancelled");
+    const out = new Map<string, DictionaryEntry>();
+    let error: DictionaryLoadError | null = null;
+    let idx: DictionaryIndex;
+    let m: DictionaryManifest;
+    try {
+      [idx, m] = await Promise.all([index(), manifest()]);
+    } catch (e) {
+      return { entries: out, error: toLoadError(e) };
+    }
+    const byShard = new Map<string, string[]>();
+    for (const key of new Set(keys)) {
+      if (!idx.headwords.has(key)) continue;
+      const rel = shardPath(key, m.hash.shards);
+      byShard.set(rel, [...(byShard.get(rel) ?? []), key]);
+    }
+    const queue = [...byShard.keys()];
+    const total = queue.length;
+    let done = 0;
+    onProgress?.(0, total);
+    const worker = async (): Promise<void> => {
+      for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+        if (signal?.aborted) return;
+        let json: Record<string, unknown>;
+        try {
+          // A shard already in the single-word cache is reused; others are read once and dropped.
+          const raw = await (shards.get(rel) ?? file(rel));
+          if (!isObj(raw)) throw bad(rel);
+          json = raw;
+        } catch (e) {
+          error ??= toLoadError(e);
+          json = {};
+        }
+        for (const key of byShard.get(rel) ?? []) {
+          const raw = json[key];
+          if (raw === undefined) continue;
+          try {
+            out.set(key, asEntry(key, raw));
+          } catch (e) {
+            error ??= toLoadError(e);
+          }
+        }
+        onProgress?.(++done, total);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, total) }, worker));
+    if (signal?.aborted) throw cancelled();
+    return { entries: out, error };
+  }
+
   async function offlineState(): Promise<OfflineState> {
     const m = await manifest();
     const rels = Object.keys(m.files);
@@ -380,5 +445,5 @@ export function createStaticDb(
     }
   }
 
-  return { manifest, index, entry, offlineState, downloadAll, deleteAll };
+  return { manifest, index, entry, entries, offlineState, downloadAll, deleteAll };
 }

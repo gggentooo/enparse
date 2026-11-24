@@ -11,12 +11,13 @@
  *   1. Re-export annotate() from ./annotator.ts.
  *   2. Re-export public types from ./types.ts.
  *   3. Re-export the shared-result codecs from ./share.ts (T99).
+ *   4. Re-export the word list of a text from ./wordList.ts (T101).
  *
  * Dependencies:
- *   Internal: ./annotator.ts, ./share.ts, ./types.ts.
+ *   Internal: ./annotator.ts, ./share.ts, ./types.ts, ./wordList.ts.
  *   Used by: services/parserService.ts.
  *
- * Status: implemented (T57; sharing T99).
+ * Status: implemented (T57; sharing T99; word list T101).
  */
 
 export { annotate } from "./annotator";
@@ -34,6 +35,8 @@ export {
 } from "./share";
 export type { ShareErrorReason, ShareKind, SharedParse } from "./share";
 export { NEAR_TIE_SHARE } from "./types";
+export { POS_ORDER, sortWords, wordList } from "./wordList";
+export type { WordEntry, WordSort } from "./wordList";
 export type {
   AnnotatedNode,
   AnnotatedPhraseNode,

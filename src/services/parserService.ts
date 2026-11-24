@@ -49,6 +49,8 @@
  *      The result goes through modules/output annotate() (T57).
  *   4b. draft / setDraft(text): the input text, kept while the user moves
  *      between pages or waits for the model (InputPage; T56).
+ *   4c. wordsOf(annotation): the words of a parsed or shared text for the
+ *      vocabulary statistics and word lists (T101), cached per annotation.
  *   5. Shared state: model status (idle | checking | no-model | downloading +
  *      progress | loading + progress | ready + model id | failed + reason),
  *      device and model pre-flight reports, library snapshot (catalog,
@@ -76,6 +78,7 @@
 import { requestPersistentStorage } from "../core/environment";
 import {
   type Annotation,
+  type WordEntry,
   type ShareKind,
   type SharedParse,
   annotate,
@@ -85,6 +88,7 @@ import {
   encodeShareLink,
   shareKind,
   toShared,
+  wordList,
 } from "../modules/output";
 import { type PreprocessResult, preprocess } from "../modules/input";
 import {
@@ -153,8 +157,21 @@ export type {
   RoleKind,
   ShareErrorReason,
   ShareKind,
+  WordEntry,
+  WordSort,
 } from "../modules/output";
-export { SHARE_LINK_MAX_CHARS, SHARE_MAX_FILE_BYTES, ShareFormatError } from "../modules/output";
+export { POS_ORDER, SHARE_LINK_MAX_CHARS, SHARE_MAX_FILE_BYTES, ShareFormatError, sortWords } from "../modules/output";
+
+const wordLists = new WeakMap<Annotation, readonly WordEntry[]>();
+/** The words of an annotation (T101; rules T100), computed once per annotation. */
+export function wordsOf(annotation: Annotation): readonly WordEntry[] {
+  let words = wordLists.get(annotation);
+  if (!words) {
+    words = wordList(annotation);
+    wordLists.set(annotation, words);
+  }
+  return words;
+}
 export type { CheckResult, CheckStatus } from "../modules/preflight";
 export type { RemovalReport, PreprocessResult } from "../modules/input";
 export { InputTooLongError, MAX_INPUT_CHARS } from "../modules/input";

@@ -13,9 +13,15 @@
  * Dependencies:
  *   External: react.
  *   Internal: ./Button.tsx, ./Modal.module.css.
- *   Used by: VocabPage, Layout/Header (DiagnosticsPanel), and other pages.
+ *   Used by: VocabPage, Layout/Header (DiagnosticsPanel), OutputPage (WordStats,
+ *   CreateWordList), and other pages.
  *
- * Status: implemented (T39) with native <dialog> (focus containment, Escape, and focus return come from showModal()).
+ *   3. Tall variant (T104) for long content: at most 800px wide, the full
+ *      viewport height, a top bar that does not scroll (title, controls such
+ *      as a sort dropdown, Close), and a body that scrolls inside the dialog.
+ *
+ * Status: implemented (T39) with native <dialog> (focus containment, Escape, and focus return come from showModal());
+ *   tall variant T104.
  */
 
 import { type ReactNode, useEffect, useId, useRef } from "react";
@@ -28,12 +34,27 @@ export type ModalProps = {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  /** Action buttons; a Close button is shown when omitted. */
+  /** Action buttons; a Close button is shown when omitted (in the default variant). */
   actions?: ReactNode;
+  /**
+   * "tall" (T104): 800px wide at most and the full viewport height; the title, `toolbar`, and
+   * Close sit in a top bar that stays in place while the body scrolls.
+   */
+  variant?: "default" | "tall";
+  /** Controls in the tall variant's top bar (e.g. a sort dropdown). */
+  toolbar?: ReactNode;
 };
 
 /** Modal dialog (native <dialog>): Escape and the Close button call onClose; focus returns to the opener. */
-export function Modal({ open, title, onClose, children, actions }: ModalProps): React.JSX.Element {
+export function Modal({
+  open,
+  title,
+  onClose,
+  children,
+  actions,
+  variant = "default",
+  toolbar,
+}: ModalProps): React.JSX.Element {
   const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -48,16 +69,32 @@ export function Modal({ open, title, onClose, children, actions }: ModalProps): 
       else d.removeAttribute("open");
     }
   }, [open]);
+  const onCancel = (e: React.SyntheticEvent<HTMLDialogElement>): void => {
+    e.preventDefault();
+    onClose();
+  };
+  if (variant === "tall") {
+    return (
+      <dialog ref={ref} className={`${styles.dialog} ${styles.tall}`} aria-labelledby={titleId} onCancel={onCancel}>
+        <div className={styles.bar}>
+          <h2 id={titleId} className={styles.barTitle}>
+            {title}
+          </h2>
+          {toolbar && <div className={styles.toolbar}>{toolbar}</div>}
+          <Button variant="secondary" onClick={onClose}>
+            {t("common.close")}
+          </Button>
+        </div>
+        {/* Focusable so keyboard users can scroll it. */}
+        <div className={styles.scroll} tabIndex={0} role="region" aria-labelledby={titleId}>
+          {children}
+        </div>
+        {actions && <div className={`${styles.actions} ${styles.tallActions}`}>{actions}</div>}
+      </dialog>
+    );
+  }
   return (
-    <dialog
-      ref={ref}
-      className={styles.dialog}
-      aria-labelledby={titleId}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-    >
+    <dialog ref={ref} className={styles.dialog} aria-labelledby={titleId} onCancel={onCancel}>
       <h2 id={titleId} className={styles.title}>
         {title}
       </h2>

@@ -63,6 +63,48 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Components/Pages] Create a vocabulary list from the text · T106 · Build
+
+- **Files:** `src/components/Pages/CreateWordList.tsx` + `.module.css`, `OutputPage.tsx`, `VocabPage.tsx`, `src/paths.ts`, `src/i18n/en.ts`, `ko.ts`, `OutputPage.test.tsx`, `VocabPage.test.tsx`, `e2e/app.spec.ts`
+- **Done:** 2026-11-24 (owner request). Button "Create a vocabulary list from this text" (이 글로 단어장 만들기) on the output page opens a dialog: list title (required; refused if another list has it, compared without case), the toggle "Fill in meanings from the dictionary" (on by default; off leaves meanings empty), and the number of words. With the toggle on, meanings are looked up first (spinner, Cancel); if some cannot be loaded, "Create without the missing meanings" or "Try again". The list gets every word once (T101) and is stored in one write (T103); the confirmation links to it (`#/vocab?list=<id>`; `VocabPage` selects the list in `?list=`). Storage errors are shown. Checked in unit tests, e2e (create from a parsed text, open the list, meaning 달리다 filled), and in Chrome (desktop English, phone-width Korean). Recorded in `architecture.md` → *Word lists from a text*.
+- **Needs:** —
+
+#### [Components/Pages] Vocabulary statistics popup · T105 · Build
+
+- **Files:** `src/components/Pages/WordStats.tsx` + `.module.css`, `src/hooks/useWordGlosses.ts` + test, `OutputPage.tsx` + `.module.css`, `src/i18n/en.ts`, `ko.ts`, `OutputPage.test.tsx`, `e2e/app.spec.ts`
+- **Done:** 2026-11-24 (owner request). Button "Vocabulary statistics" (어휘 통계) opens the tall dialog (T104): a table of every word of the text with part of speech, short Korean meaning, and uses, plus totals (distinct and running words). Sort dropdown in the top bar: frequency (default), alphabetical, part of speech; `aria-sort` on the sorted column; English words `lang="en"`. Words and counts show at once; meanings load after opening, once per text; when some cannot be loaded, a note says so and the cells stay empty. e2e checks at 390×420 px: the dialog is the viewport's height, the table scrolls inside it, and the top bar does not move. Recorded in `architecture.md` → *Word lists from a text*.
+- **Needs:** —
+
+#### [Components/Shared] Modal: wide full-height variant with a fixed top bar · T104 · Build
+
+- **Files:** `src/components/Shared/Modal.tsx`, `Modal.module.css`, `Shared.test.tsx`
+- **Done:** 2026-11-24. `variant="tall"`: at most 800px wide, height 100% of the viewport (`100dvh`, `100vh` fallback), a top bar (title, `toolbar` slot, Close) that does not scroll, and a body region (focusable, named by the title) that scrolls when it overflows; optional action row at the bottom. Native `<dialog>` behaviour kept; the default variant is unchanged. Recorded in `architecture.md` → component hierarchy.
+- **Needs:** —
+
+#### [Modules/vocab, Services] Create a list with its items in one step · T103 · Build
+
+- **Files:** `src/modules/vocab/vocabManager.ts` + test, `src/services/vocabService.ts`, `src/hooks/useVocab.ts`, `src/i18n/en.ts`, `ko.ts` (duplicate hint)
+- **Done:** 2026-11-24. `createListWithItems(name, items)`: one stored write and one snapshot refresh; name and words must not be empty. Duplicate flag (T100): same word **and** part of speech; an item without a part of speech matches the word with any part of speech; applies to adding, editing, import, and merge. No schema change (flags are recomputed on the next write). Recorded in `architecture.md` → *Module decisions* (vocab) and *Logic modules*.
+- **Needs:** —
+
+#### [Modules/dictionary, Services] Look up many words at once · T102 · Build
+
+- **Files:** `src/modules/dictionary/dictionary.ts`, `staticDb.ts`, `index.ts`, `dictionary.test.ts`, `src/services/dictionaryService.ts`, `src/hooks/useDictionary.ts`
+- **Done:** 2026-11-24. `staticDb.entries(keys)`: each needed shard read once, 4 at a time, from Cache Storage or downloaded into it as for single lookups, without evicting the 16-shard LRU; progress (shards done of needed) and cancel. `dictionary.glosses(queries)`: same key order as `lookup`; the first entry with the word's part of speech (AUX → VERB, PROPN → NOUN) gives the Korean gloss (first translation group, at most 3 words) and the English one (first sense). A failed shard or index gives null glosses plus an error reason; only cancelling rejects. Service `lookupGlosses`; hook `useGlosses` (progress, cancel, newer load replaces older). Tested on the fixture and on the built v1 data. Recorded in `architecture.md` → *Logic modules*.
+- **Needs:** —
+
+#### [Modules/output] Word list of a parsed text · T101 · Build
+
+- **Files:** `src/modules/output/wordList.ts` + test, `index.ts`, `src/services/parserService.ts`, `src/hooks/useParser.ts`
+- **Done:** 2026-11-24. `wordList(annotation)`: one entry per word by the T100 rules (key, shown word, lemma, UPOS, count, written forms, first sentence, phrasal flag, dictionary query), primary readings only. `sortWords(entries, "alpha" | "pos" | "frequency")`: case-insensitive alphabetical (same word: by part of speech); part of speech in `POS_ORDER`, then alphabetical; most used first, then alphabetical. `parserService.wordsOf` caches it per annotation; `useParser().words`. Shared results give the same words. Recorded in `architecture.md` → *Logic modules*.
+- **Needs:** —
+
+#### [Project] Word lists from a parsed text: what counts as one word · T100 · Decision
+
+- **Files:** `dev_meta/architecture.md` (*Word lists from a text*)
+- **Done:** 2026-11-24 (owner approved all eight proposals). One word = lemma + part of speech (meanings within one part of speech cannot be separated); punctuation, symbols, digit numbers, and `X` left out, proper nouns and auxiliaries kept; phrasal verbs once; lemma shown (proper nouns as written); short Korean meaning = first Korean group of the matching part of speech, at most three words, empty when missing; toggle on fills `definitionKo` and `definitionEn`, toggle off leaves both empty; duplicate flag by word + part of speech; both features work on shared results. Recorded in `architecture.md` → *Word lists from a text*.
+- **Needs:** —
+
 #### [Modules/output, Services, Components/Pages, Deployment] Share parsed results without a server · T99 · Build
 
 - **Done:** 2026-11-24 (owner request and decisions the same day: learners share an already-parsed result so the other person does not need to download or run a model).
@@ -705,3 +747,13 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-24T05:30:41Z — Claude Fable 5.2, T99 added and done
 
 - Added: T99 (Done): sharing parsed results as a link (one sentence under 128 characters) or a file, main readings only with an other-readings flag; the R2 bucket is read-only for visitors (owner decisions, 2026-11-24).
+
+### 2026-11-24T06:27:08Z — Claude Fable 5.2, T100–T106 added (word lists from a parsed text)
+
+- Added: T100 (Decision, Stage 0): what counts as one word, definitions, duplicate rule. T104 (Stage 0): wide full-height Modal variant. T101–T103 (Stage 1): word list of a parse, bulk dictionary lookup, list creation with items. T105, T106 (Stage 2): vocabulary statistics popup; create a vocabulary list from the text (owner request, 2026-11-24).
+- Added: sections *Stage 1* and *Stage 2*.
+
+### 2026-11-24T06:42:14Z — Claude Opus 5.5, T100–T106 done
+
+- Modified: T100 decided (owner approved the eight proposals); T101–T106 built. All moved to *Done*.
+- Removed: sections *Stage 1* and *Stage 2* (empty).

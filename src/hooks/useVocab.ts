@@ -10,7 +10,8 @@
  * Tasks:
  *   1. Read lists with useSyncExternalStore(subscribe, getSnapshot); load
  *      them on first use (ensureLoaded; errors land in the snapshot).
- *   2. Return { status, lists, error, backupDue, createList, renameList,
+ *   2. Return { status, lists, error, backupDue, createList,
+ *      createListWithItems (T103), renameList,
  *      deleteList, addItem, updateItem, removeItem, moveItem, exportLists,
  *      importLists }. Actions reject on failure; the message is also kept in
  *      `error` (cleared by the next successful action).
@@ -40,6 +41,7 @@ export type UseVocab = VocabSnapshot &
   Pick<
     VocabService,
     | "createList"
+    | "createListWithItems"
     | "renameList"
     | "deleteList"
     | "addItem"
@@ -59,6 +61,7 @@ export function useVocab(service: VocabService = vocabService()): UseVocab {
   return {
     ...snap,
     createList: service.createList,
+    createListWithItems: service.createListWithItems,
     renameList: service.renameList,
     deleteList: service.deleteList,
     addItem: service.addItem,

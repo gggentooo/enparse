@@ -15,9 +15,10 @@
  *      (./VocabTransfer.tsx).
  *   4. user-facing text via useI18n() catalog keys (T68).
  *   5. Backup reminder (vocabService backupDue) and the last action error.
+ *   6. ?list=<id> selects that list (link from CreateWordList; T106).
  *
  * Dependencies:
- *   External: react.
+ *   External: react, react-router (useSearchParams).
  *   Internal: hooks/useVocab.ts, hooks/useI18n.ts, ./VocabLists.tsx,
  *             ./VocabListDetail.tsx, ./VocabTransfer.tsx, ./VocabPage.module.css.
  *   Used by: src/routes.tsx.
@@ -26,8 +27,10 @@
  */
 
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { useI18n } from "../../hooks/useI18n";
 import { useVocab } from "../../hooks/useVocab";
+import { VOCAB_LIST_PARAM } from "../../paths";
 import { VocabListDetail } from "./VocabListDetail";
 import { VocabLists } from "./VocabLists";
 import styles from "./VocabPage.module.css";
@@ -43,7 +46,9 @@ const quietly = (p: Promise<unknown>): Promise<void> =>
 export function VocabPage(): React.JSX.Element {
   const { t } = useI18n();
   const vocab = useVocab();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // #/vocab?list=<id> opens that list (the link after creating a list from a text; T106).
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => params.get(VOCAB_LIST_PARAM));
   // The selection falls back to the first list (also after the selected list is deleted).
   const selected = vocab.lists.find((l) => l.id === selectedId) ?? vocab.lists[0] ?? null;
 

@@ -25,16 +25,20 @@
  *      "Open a shared file" (./OpenShared.tsx), and a share link's data in
  *      ?s=… opened through useParser().openShared; a banner marks a shared
  *      result.
+ *   9. Words of the text (T105, T106): "Vocabulary statistics"
+ *      (./WordStats.tsx) and "Create a vocabulary list from this text"
+ *      (./CreateWordList.tsx).
  *
  * Dependencies:
  *   External: react, react-router (Link).
  *   Internal: hooks/useParser.ts, hooks/useI18n.ts, ./SentenceView.tsx,
  *             ./WordDetails.tsx, ./ShareResult.tsx, ./OpenShared.tsx,
+ *             ./WordStats.tsx, ./CreateWordList.tsx,
  *             Shared/ModelStatus.tsx (useModelName),
  *             ./OutputPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Status: implemented (T57; dictionary lookup T53; sharing T99). Tests: OutputPage.test.tsx.
+ * Status: implemented (T57; dictionary lookup T53; sharing T99; word tools T105, T106). Tests: OutputPage.test.tsx.
  */
 
 import { useEffect, useId, useState } from "react";
@@ -53,10 +57,12 @@ import { PATHS, SHARE_PARAM } from "../../paths";
 import { useModelName } from "../Shared/ModelStatus";
 import styles from "./OutputPage.module.css";
 import type { NestedLook } from "./NestedReading";
+import { CreateWordList } from "./CreateWordList";
 import { OpenShared } from "./OpenShared";
 import { ShareResult } from "./ShareResult";
 import { SentenceView } from "./SentenceView";
 import { WordDetails } from "./WordDetails";
+import { WordStats } from "./WordStats";
 
 const CHUNK_TYPES: readonly ChunkKind[] = ["NP", "VP", "PP", "ADJP", "ADVP"];
 
@@ -154,6 +160,10 @@ export function OutputPage(): React.JSX.Element {
         </p>
       )}
       {notice && <RemovedNotice notice={notice} />}
+      <div className={styles.wordTools}>
+        <WordStats />
+        <CreateWordList />
+      </div>
       <div className={styles.sharing}>
         <ShareResult />
         <OpenShared />

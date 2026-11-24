@@ -112,7 +112,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | dictionary (T25) | Definitions: Open English WordNet (CC BY 4.0); Korean translations: Wiktionary translation sections via kaikki.org extracts (CC BY-SA); examples: Tatoeba English–Korean pairs (CC BY 2.0 FR); ~10–20k headwords from a learner list (NGSL) plus frequent EWT words; phrasal verbs only; all senses, the predicted part of speech first; click/tap a word → popup → "more" opens `DictionaryPage`. Licenses to be re-checked before release. Served same-origin from R2. |
 | dictionary (T42) | **Format:** static JSON: a small index (headwords and the inflection map) loaded on first lookup, plus ~64–256 entry shards grouped by a hash of the lookup key, and a manifest with each file's size and SHA-256. **Loading:** shards fetched on demand and kept in a versioned Cache Storage cache (`enparse-dict-v<N>`); an opt-in "Make dictionary available offline" download fetches all shards with progress and integrity checks (T38 functions); nothing large downloads without the user. **Pipeline:** Python in `training/dictionary/` (sources, extraction, sharding) plus a `training/js` step that runs the app's `winkBackend` lemmatizer and `lookupKey` through `tsx`, so headwords match runtime words. **Lemmas:** a build-time inflection index (Wiktionary forms + WordNet exceptions, checked against wink) maps every form to its headword(s), so DictionaryPage resolves *ran* → *run* without wink; parse clicks use the token's wink lemma first (T71). **Keys:** `utils/helpers.ts` → `lookupKey` everywhere; phrasal verbs keyed as "verb particle". No new dependency. **Built (T70; owner 2026-11-23):** 128 shards chosen by FNV-1a 32 of the UTF-8 key; `index.json` = sorted headword keys + form key → headword keys; an entry lists parts of speech (UPOS) with WordNet senses (or Wiktionary definitions where WordNet has none) and, separately, Korean translations under Wiktionary's sense labels, plus Tatoeba examples with their sentence ids; data CC BY-SA 4.0 (`training/dictionary/DATA_CARD.md`). |
 | subword (T26) | Own curated affix list (~80–120, ordered by Bauer & Nation 1993 levels) with our own Korean glosses and 1–2 examples each; a compressed known-word list (NGSL + lemma forms) bundled in `subword/`. |
-| vocab (T27) | Entry: `id`, `word`, `lemma`, `upos`, `definitionEn`, `definitionKo`, `example`, `sourceSentence`, `notes`, `tags[]`, `addedAt`, `schemaVersion`. Export: versioned JSON (canonical) + CSV via a small hand-written codec (no new dependency). Import: merge by `id`; same word with another `id` kept and flagged; ask only on list-name collisions. Lists in IndexedDB, settings in LocalStorage (`core/storage.ts`); periodic "export a backup" reminder. |
+| vocab (T27) | Entry: `id`, `word`, `lemma`, `upos`, `definitionEn`, `definitionKo`, `example`, `sourceSentence`, `notes`, `tags[]`, `addedAt`, `schemaVersion`. Export: versioned JSON (canonical) + CSV via a small hand-written codec (no new dependency). Import: merge by `id`; same word with another `id` kept and flagged (since T100: same word **and** part of speech; an item without a part of speech matches any); ask only on list-name collisions. Lists in IndexedDB, settings in LocalStorage (`core/storage.ts`); periodic "export a backup" reminder. |
 
 | Module                       | Description                                                                                       |
 |------------------------------|---------------------------------------------------------------------------------------------------|
@@ -135,12 +135,13 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
 | `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (each with the token it attaches to, for the arrows; T79). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
+| `output/wordList.ts`         | Words of a parsed text (T101; rules in *Word lists from a text*): `wordList(annotation)` gives one entry per lemma and part of speech of the primary readings (count, written forms, first sentence, dictionary query); `sortWords` by alphabet, part of speech (`POS_ORDER`), or frequency. Exposed through `parserService.wordsOf` (cached per annotation) and `useParser().words`. |
 | `output/share.ts`            | Shared results (T99): the reduced form of a parse (`toShared`: main readings only, an `otherReadings` flag per sentence, no probabilities), the rule `shareKind` (link only for one sentence shorter than `SHARE_LINK_MAX_CHARS` = 128; else file), and the codecs: file = compact JSON (`enparse-share`, version 1), link = the same deflated (`CompressionStream`, built in) and base64url-encoded. Decoding treats the data as untrusted: size caps and checks of every offset, index, label, and depth; `ShareFormatError` (`invalid`, `version`, `too-large`, `unsupported`). |
-| `dictionary/dictionary.ts`   | Lookup (T46): a possible phrasal verb from neighbouring words first if it is a headword (T87), then the parse's lemma (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. Display is in components. |
-| `dictionary/staticDb.ts`     | Data access (T46): `manifest.json` from `/dict/v<N>/` (a copy kept for offline use; schema checked), `index.json` and shards from the versioned cache `enparse-dict-v<N>` or downloaded into it with size and SHA-256 checks (one retry after an integrity failure), an in-memory LRU of 16 shards, the offline download (`downloadAll` with byte progress, `deleteAll`, `offlineState`), and deletion of other versions' caches. Shard of a key: FNV-1a 32 of its UTF-8 bytes. Errors: `DictionaryLoadError` (network, integrity, storage, format, cancelled). No live API calls. |
+| `dictionary/dictionary.ts`   | Lookup (T46): a possible phrasal verb from neighbouring words first if it is a headword (T87), then the parse's lemma (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. `glosses(queries)` (T102): short meanings of many words at once with the same key order: the first entry with the word's part of speech gives the Korean gloss (first translation group, at most 3 words) and the English one (first sense); null when no entry has that part of speech. Display is in components. |
+| `dictionary/staticDb.ts`     | Data access (T46): `manifest.json` from `/dict/v<N>/` (a copy kept for offline use; schema checked), `index.json` and shards from the versioned cache `enparse-dict-v<N>` or downloaded into it with size and SHA-256 checks (one retry after an integrity failure), an in-memory LRU of 16 shards, bulk reads (`entries(keys)`, T102: each needed shard read once, 4 at a time, without evicting the LRU; a failed shard leaves its keys out and reports the first error; cancel through `AbortSignal`), the offline download (`downloadAll` with byte progress, `deleteAll`, `offlineState`), and deletion of other versions' caches. Shard of a key: FNV-1a 32 of its UTF-8 bytes. Errors: `DictionaryLoadError` (network, integrity, storage, format, cancelled). No live API calls. |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
 | `subword/affixes.ts`         | Affix inventory data used by `subwordParser`.                                                      |
-| `vocab/vocabManager.ts`      | CRUD for custom vocabulary lists. Export/import as JSON or CSV. Persists via `core/storage`.       |
+| `vocab/vocabManager.ts`      | CRUD for custom vocabulary lists; `createListWithItems` stores a new list with its items in one write (T103). Duplicate flag: same word and part of speech (T100). Export/import as JSON or CSV. Persists via `core/storage`. |
 
 ---
 
@@ -379,6 +380,25 @@ A learner can pass a parsed result to someone else, who reads it without downloa
 4. **Opening:** `parserService.openShared` decodes and validates (`output/share.ts`; untrusted data), then runs the normal `annotate()`; the output page shows it with a "Shared result" banner and no model. The dictionary, word parts, and vocabulary work as for a parse. A shared result can be shared on; a new parse replaces it.
 5. **Format versions:** marker `enparse-share`, version 1. A change that old readers cannot read needs a new version; readers refuse unknown versions with a message.
 
+### Word lists from a text (owner, 2026-11-24; T100–T106)
+
+The output page offers "Vocabulary statistics" (어휘 통계) and "Create a vocabulary list from this text" (이 글로 단어장 만들기). Both use the words of the shown result, parsed or shared (T99).
+
+1. **One word = lemma + part of speech** of the primary reading: "run" (noun) and "run" (verb) are two words; "ran", "runs", "running" (verb) are one. Meanings within one part of speech ("bank" of a river, "bank" for money) cannot be told apart: the parse gives no meaning, so they count as one word.
+2. **Left out:** punctuation, symbols, numbers written with digits, and unclassified tokens (`PUNCT`, `SYM`, `NUM` with a digit, `X`). Proper nouns and auxiliaries (`AUX`) keep their own parts of speech.
+3. **Phrasal verbs** marked by the parse ("looked … up") count once, as "look up" (verb).
+4. **Shown form:** the lemma; proper nouns as first written.
+5. **Short Korean meaning:** the first Korean translation group of the entry's matching part of speech, at most three words; empty when the dictionary has none (about 11,000 of 16,700 headwords have Korean translations).
+6. **Filled-in definitions:** with the toggle on, each new item gets `definitionKo` as in 5 and `definitionEn` = the first English sense of that part of speech; `lemma`, `upos`, and `sourceSentence` (first sentence with the word) are always filled. Toggle off: both definitions empty.
+7. **Duplicates in vocabulary lists:** same word and part of speech (items without a part of speech match any).
+8. **Shared results:** both work on a result opened from a link or file.
+
+**Statistics popup (T105):** tall dialog (`Shared/Modal` variant `tall`, T104: at most 800px wide, full viewport height, a top bar with the sort dropdown and Close that does not scroll, the table scrolls inside). Columns: word, part of speech, Korean meaning, uses; sort by frequency (default), alphabet, or part of speech; totals of distinct and running words. Meanings load after opening (`useWordGlosses`); if some cannot be loaded (offline without the stored dictionary), the words and counts stay and a note explains.
+
+**New list (T106):** a dialog with the list title (required; not the title of an existing list, compared without case) and the definitions toggle (on by default); it shows how many words the list gets. With the toggle on, meanings are looked up first (progress, Cancel); if some fail, the learner creates the list without them or tries again. The list is stored in one write (`createListWithItems`), then a link opens it on the vocabulary page (`#/vocab?list=<id>`, `paths.ts` → `VOCAB_LIST_PARAM`).
+
+**Dictionary traffic:** a long text can need most of the 128 shards (about 11 MB uncompressed in total with the index). They are read from Cache Storage when stored and otherwise downloaded and stored as for single lookups; no other request is made.
+
 ### Subword segmentation
 
 - wink provides the inflectional split via lemma (*running* → *run* + *-ing*).
@@ -437,6 +457,7 @@ Component ─► Hook ─► Service ─► Module(s)
 ### Routing
 
 - Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`, `#/models`, `#/about`).
+- **Vocabulary list links (T106):** `#/vocab?list=<id>` (`paths.ts` → `VOCAB_LIST_PARAM`) opens that list.
 - **Share links (T99):** `#/output?s=<data>` (`paths.ts` → `SHARE_PARAM`) carries a shared result; `OutputPage` opens it through `useParser().openShared` before showing anything. The data is after the `#`, so it is never sent to the server.
 - **Attribution (owner, 2026-11-21; T21):** `#/about` (*About & licenses*, linked from the sidebar) lists the app, models, training data (UD English EWT, CC BY-SA 4.0), runtime libraries, and dictionary sources with their licenses; each model card on `ModelsPage` also shows the model's license and source. Built in T50.
 - `ContentArea` renders the active route via `<Outlet />`.
@@ -453,13 +474,15 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       ├── InputPage.tsx (text input kept as parserService draft; count, .txt drop, model status; T56)
       │       │   └── OpenShared.tsx ("Open a shared file"; also on OutputPage; T99)
       │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57; shared-result banner and share link in ?s=…; T99)
+      │       │   ├── WordStats.tsx ("Vocabulary statistics": tall dialog with every word, part of speech, Korean meaning, uses; sort; T105)
+      │       │   ├── CreateWordList.tsx ("Create a vocabulary list from this text": title, definitions toggle; T106)
       │       │   ├── ShareResult.tsx ("Share": link copied and shown, or file handed to the share sheet / downloaded; T99)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
       │       │   │   └── NestedReading.tsx (one inline box or bracket per phrase, all words on one text line (T88); defaults: structure view, labels on hover, blocks, labels on top; single-choice toggles for labels, phrase shape, and phrase label position (T89); labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
       │       │   │       └── OutputWord.tsx (selectable word; ambiguity and change marks; used by both views)
       │       │   └── WordDetails.tsx (base form, part of speech, word parts, add to list; dictionary summary with "More in the dictionary": T25 popup, T53)
-      │       ├── VocabPage.tsx (custom vocab lists; T48)
+      │       ├── VocabPage.tsx (custom vocab lists; T48; ?list=<id> selects a list, T106)
       │       │   ├── VocabLists.tsx (list overview, create list)
       │       │   ├── VocabListDetail.tsx (rename, delete, add word, item table)
       │       │   │   └── VocabItemRow.tsx (edit, move, remove a word)
@@ -472,7 +495,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │       └── AboutPage.tsx (About & licenses: attribution for app, models, data, libraries, dictionary; T21)
       └── Shared/
           ├── Button.tsx
-          ├── Modal.tsx
+          ├── Modal.tsx (default; tall variant with fixed top bar and scrolling body, T104)
           ├── Tooltip.tsx
           ├── LoadingSpinner.tsx
           ├── ModelStatus.tsx (one-line model status with retry / details; InputPage, ModelsPage, DiagnosticsPanel)
@@ -484,10 +507,10 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
-| `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator`, `output/share` (`shareLink`, `shareFile`, `openShared`; snapshot `shared`, `shareKind`; T99) | `useParser`, `useModelLibrary` |
-| `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; offline state, storage check, and download progress via `subscribe` / `getSnapshot`; T46, T72) | `useDictionary`, `useDictionaryOffline` |
+| `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator`, `output/share` (`shareLink`, `shareFile`, `openShared`; snapshot `shared`, `shareKind`; T99), `output/wordList` (`wordsOf`; T101) | `useParser` (`words`), `useModelLibrary` |
+| `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; `lookupGlosses` for many words, T102; offline state, storage check, and download progress via `subscribe` / `getSnapshot`; T46, T72) | `useDictionary`, `useGlosses`, `useWordGlosses` (glosses by word of the shown text; T105, T106), `useDictionaryOffline` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
-| `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
+| `vocabService.ts`      | `vocabManager` (`createListWithItems`; T103)       | `useVocab`      |
 | `languageService.ts`   | `core/storage`, `i18n` (UI language; T68)          | `useI18n`       |
 | `appUpdateService.ts`  | `core/pwa` (service worker, update prompt; T69)    | `useAppUpdate`  |
 
@@ -541,6 +564,7 @@ enparse/
 │   │   │   ├── OutputPage.tsx + OutputPage.module.css
 │   │   │   ├── SentenceView.tsx, FlatReading.tsx, NestedReading.tsx, OutputWord.tsx, WordDetails.tsx (+ .module.css each; OutputPage parts)
 │   │   │   ├── ShareResult.tsx, OpenShared.tsx (+ .module.css each; shared results, T99)
+│   │   │   ├── WordStats.tsx, CreateWordList.tsx (+ .module.css each; words of the text, T105, T106)
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
 │   │   │   ├── VocabLists.tsx, VocabListDetail.tsx, VocabItemRow.tsx, VocabTransfer.tsx (+ .module.css each; VocabPage parts)
 │   │   │   ├── DictionaryPage.tsx, DictionaryEntry.tsx + .module.css each
@@ -560,7 +584,8 @@ enparse/
 │   ├── hooks/
 │   │   ├── useParser.ts
 │   │   ├── useModelLibrary.ts
-│   │   ├── useDictionary.ts
+│   │   ├── useDictionary.ts (useDictionary, useGlosses, useDictionaryOffline)
+│   │   ├── useWordGlosses.ts (glosses of the shown text's words; T105, T106)
 │   │   ├── useSubword.ts
 │   │   ├── useVocab.ts
 │   │   ├── useI18n.ts (T68)
@@ -603,6 +628,7 @@ enparse/
 │   │   ├── output/
 │   │   │   ├── annotator.ts
 │   │   │   ├── share.ts (shared results: reduced form, link and file codecs; T99)
+│   │   │   ├── wordList.ts (words of a parsed text and their sort orders; T101)
 │   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   ├── dictionary/
@@ -1013,3 +1039,9 @@ enparse/
 - Added: *Sharing results* (link for one sentence under 128 characters, file otherwise; main readings only with an other-readings flag; nothing uploaded); `output/share.ts` in *Logic modules*; share links in *Routing*; `ShareResult.tsx`, `OpenShared.tsx` in the component hierarchy and skeleton; `parserService` share actions.
 - Added: *Deployment* → read-only bucket rule (owner: visitors must never upload to R2).
 - Modified: *Deployment* → Access row: the closed beta has ended; the site is open (owner).
+
+### 2026-11-24T06:42:14Z — Claude Opus 5.5, Word lists from a text (T100–T106)
+
+- Added: *Word lists from a text* (owner decisions T100: one word = lemma + part of speech; left-out tokens; phrasal verbs once; shown form; short Korean meaning; filled-in definitions; duplicates by word and part of speech; shared results), the statistics popup (T105), and the new-list dialog (T106).
+- Added: `output/wordList.ts` in *Logic modules*; `WordStats.tsx`, `CreateWordList.tsx`, `useWordGlosses.ts` in the hierarchy, services table, and skeleton; vocabulary list links in *Routing*.
+- Modified: `dictionary/dictionary.ts` (`glosses`), `dictionary/staticDb.ts` (bulk `entries`), `vocab/vocabManager.ts` (`createListWithItems`, duplicate rule), vocab row of *Module decisions* (T27 duplicate rule), `Shared/Modal` (tall variant, T104), service rows for `parserService`, `dictionaryService`, `vocabService`.

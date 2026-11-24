@@ -2,9 +2,10 @@
  * src/components/Shared/Modal.module.css — styles for Modal.tsx
  *
  * Description: dialog panel and backdrop.
- * Tasks: 1. Panel. 2. ::backdrop. 3. Action row.
+ * Tasks: 1. Panel. 2. ::backdrop. 3. Action row. 4. Tall variant (T104): 800px wide at most,
+ *   full viewport height, fixed top bar, scrolling body.
  * Dependencies: src/css/tokens.css. Used by: Modal.tsx.
- * Status: implemented (T39).
+ * Status: implemented (T39; tall variant T104).
  */
 
 .dialog {
@@ -32,4 +33,63 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* -- tall variant (T104) -------------------------------------------------------------------- */
+
+.tall {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  margin: 0 auto;
+  padding: 0;
+  border-block: none;
+  border-radius: 0;
+}
+
+/* Only when open: a closed <dialog> must stay display: none. */
+.tall[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.barTitle {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-4);
+}
+
+.tallActions {
+  flex: none;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
 }

@@ -63,6 +63,39 @@ describe("lists and items", () => {
     expect(list?.items.map((x) => x.duplicate)).toEqual([false, true]);
   });
 
+  it("treats the same word with another part of speech as a different word (T100)", async () => {
+    const m = make();
+    const l = await m.createList("L");
+    await m.addItem(l.id, { word: "run", upos: "NOUN" });
+    expect((await m.addItem(l.id, { word: "run", upos: "VERB" })).duplicate).toBe(false);
+    expect((await m.addItem(l.id, { word: "Run", upos: "VERB" })).duplicate).toBe(true);
+    // Without a part of speech it matches the word with any part of speech.
+    expect((await m.addItem(l.id, { word: "run" })).duplicate).toBe(true);
+    const other = await m.createList("M");
+    await m.addItem(other.id, { word: "bank" });
+    expect((await m.addItem(other.id, { word: "bank", upos: "NOUN" })).duplicate).toBe(true);
+  });
+
+  it("creates a list with its items in one write (T103)", async () => {
+    const m = make();
+    const list = await m.createListWithItems("  Text 1 ", [
+      { word: "run", lemma: "run", upos: "VERB", definitionKo: "달리다", sourceSentence: "I run." },
+      { word: "run", lemma: "run", upos: "NOUN" },
+      { word: "run", upos: "NOUN" },
+    ]);
+    expect(list.name).toBe("Text 1");
+    expect(list.items.map((x) => [x.word, x.upos, x.duplicate])).toEqual([
+      ["run", "VERB", false],
+      ["run", "NOUN", false],
+      ["run", "NOUN", true],
+    ]);
+    expect(list.items[0]).toMatchObject({ definitionKo: "달리다", definitionEn: null, sourceSentence: "I run." });
+    expect((await m.loadAll()).map((l) => [l.name, l.items.length])).toEqual([["Text 1", 3]]);
+    await expect(m.createListWithItems(" ", [])).rejects.toBeInstanceOf(TypeError);
+    await expect(m.createListWithItems("X", [{ word: " " }])).rejects.toBeInstanceOf(TypeError);
+    expect(await m.loadAll()).toHaveLength(1);
+  });
+
   it("migrates stored items and refuses newer schemas", () => {
     expect(migrateItem({ id: "x", word: "go" })).toMatchObject({ lemma: null, notes: "", tags: [], schemaVersion: 1 });
     expect(() => migrateItem({ id: "x", word: "go", schemaVersion: 9 })).toThrow(VocabImportError);

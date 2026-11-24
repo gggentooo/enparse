@@ -19,6 +19,9 @@
  *      progress (updated at most every PROGRESS_NOTIFY_STEP), the last error
  *      reason.
  *   4. sources(): license and attributions from the manifest.
+ *   4a. lookupGlosses(queries, options): short definitions of many words at
+ *      once (T102), with progress and cancel; a failed shard gives null
+ *      glosses and an error reason instead of a failed call.
  *   5. Tests in dictionaryService.test.ts with a mocked module.
  *
  * Dependencies:
@@ -36,6 +39,8 @@ import {
   type DictionaryModule,
   type DictionaryQuery,
   type DictionarySource,
+  type BulkOptions,
+  type GlossResult,
   type LookupResult,
   type OfflineState,
   createDictionaryModule,
@@ -48,7 +53,10 @@ export type {
   DictionaryLoadReason,
   DictionaryQuery,
   DictionarySource,
+  BulkOptions,
   Example,
+  Gloss,
+  GlossResult,
   KoreanGroup,
   LookupResult,
   MatchKind,
@@ -56,7 +64,7 @@ export type {
   PosGroup,
   Sense,
 } from "../modules/dictionary";
-export { DictionaryLoadError, PHRASAL_PARTICLES } from "../modules/dictionary";
+export { DictionaryLoadError, GLOSS_KOREAN_WORDS, PHRASAL_PARTICLES } from "../modules/dictionary";
 
 /** Download progress updates the snapshot at most once per this share of the total. */
 export const PROGRESS_NOTIFY_STEP = 0.01;
@@ -98,6 +106,8 @@ export type DictionaryService = {
   subscribe(listener: () => void): () => void;
   getSnapshot(): DictionarySnapshot;
   lookupWord(query: DictionaryQuery): Promise<LookupResult>;
+  /** Short definitions of many words (T102); rejects only when cancelled. */
+  lookupGlosses(queries: readonly DictionaryQuery[], options?: BulkOptions): Promise<GlossResult>;
   refreshOfflineState(): Promise<OfflineState>;
   /** Store every dictionary file for offline use (user action only); resolves when done or cancelled. */
   downloadAll(): Promise<void>;
@@ -153,6 +163,8 @@ export function createDictionaryService(
         return fail(e);
       }
     },
+
+    lookupGlosses: (queries, options) => module.glosses(queries, options),
 
     refreshOfflineState,
 

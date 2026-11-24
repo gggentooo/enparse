@@ -620,4 +620,114 @@ describe("OutputPage", () => {
       expect(screen.getByRole("article", { name: "Sentence 1" })).toBeTruthy();
     });
   });
+
+  describe("words of the text (T105, T106)", () => {
+    const rows = (scope: HTMLElement): string[][] =>
+      within(scope)
+        .getAllByRole("row")
+        .slice(1)
+        .map((r) => [...r.querySelectorAll("th, td")].map((c) => c.textContent ?? ""));
+
+    it("lists every word with its part of speech, Korean meaning, and uses; sorts from the fixed top bar", async () => {
+      setup();
+      fireEvent.click(screen.getByRole("button", { name: "Vocabulary statistics" }));
+      const dialog = await screen.findByRole("dialog", { name: "Vocabulary statistics" });
+      expect(within(dialog).getByText("3 different words, 3 words in all.")).toBeTruthy();
+      // The primary reading only ("look" is a verb there), punctuation left out; meanings load after opening.
+      await waitFor(() => expect(within(dialog).getByText("보다")).toBeTruthy());
+      expect(rows(dialog)).toEqual([
+        ["dog", "Noun (NOUN)", "", "1"],
+        ["look", "Verb (VERB)", "보다", "1"],
+        ["unhappy", "Adjective (ADJ)", "", "1"],
+      ]);
+      const sort = within(dialog).getByRole("combobox", { name: "Sort by" });
+      expect(within(dialog).getByRole("columnheader", { name: "Uses" }).getAttribute("aria-sort")).toBe("descending");
+      fireEvent.change(sort, { target: { value: "pos" } });
+      expect(rows(dialog).map((r) => r[0])).toEqual(["dog", "look", "unhappy"]);
+      expect(within(dialog).getByRole("columnheader", { name: "Part of speech" }).getAttribute("aria-sort")).toBe(
+        "ascending",
+      );
+      fireEvent.change(sort, { target: { value: "alpha" } });
+      expect(within(dialog).getByRole("columnheader", { name: "Word" }).getAttribute("aria-sort")).toBe("ascending");
+      // The table is inside the scrolling region; the sort and Close are not.
+      const region = within(dialog).getByRole("region", { name: "Vocabulary statistics" });
+      expect(within(region).getByRole("table")).toBeTruthy();
+      expect(within(region).queryByRole("combobox")).toBeNull();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("keeps the words and counts when meanings cannot be loaded", async () => {
+      const api = fakeApi();
+      api.offline = true;
+      h.dict = createDictionaryService(createDictionaryModule({ api }), async () => null);
+      setup();
+      fireEvent.click(screen.getByRole("button", { name: "Vocabulary statistics" }));
+      const dialog = await screen.findByRole("dialog", { name: "Vocabulary statistics" });
+      expect(await within(dialog).findByText(/Some meanings could not be loaded/)).toBeTruthy();
+      expect(rows(dialog).map((r) => [r[0], r[2], r[3]])).toEqual([
+        ["dog", "", "1"],
+        ["look", "", "1"],
+        ["unhappy", "", "1"],
+      ]);
+    });
+
+    const openCreate = async (): Promise<HTMLElement> => {
+      fireEvent.click(screen.getByRole("button", { name: "Create a vocabulary list from this text" }));
+      return screen.findByRole("dialog", { name: "New vocabulary list from this text" });
+    };
+
+    it("creates a list of every word once, with meanings from the dictionary, and links to it", async () => {
+      setup();
+      const dialog = await openCreate();
+      expect(within(dialog).getByText("The list will get 3 words, each word once.")).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create list" }));
+      expect(within(dialog).getByRole("alert").textContent).toBe("Enter a title for the list.");
+      expect(within(dialog).getByRole<HTMLInputElement>("switch", { name: /Fill in meanings/ }).checked).toBe(true);
+      fireEvent.change(within(dialog).getByLabelText("List title"), { target: { value: "Text 1" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create list" }));
+      expect(await within(dialog).findByText("Created “Text 1” with 3 words.")).toBeTruthy();
+      const list = h.vocab?.getSnapshot().lists[0];
+      expect(list?.name).toBe("Text 1");
+      expect(list?.items.map((i) => [i.word, i.upos, i.definitionKo, i.definitionEn, i.duplicate])).toEqual([
+        ["dog", "NOUN", null, null, false],
+        ["look", "VERB", "보다", "perceive with attention", false],
+        ["unhappy", "ADJ", null, null, false],
+      ]);
+      expect(list?.items[1]?.sourceSentence).toBe(TEXT);
+      expect(within(dialog).getByRole("link", { name: "Open the list" }).getAttribute("href")).toBe(
+        `/vocab?list=${list?.id}`,
+      );
+    });
+
+    it("leaves meanings empty when the toggle is off, and refuses a title already in use", async () => {
+      setup();
+      await h.vocab?.createList("Week 1");
+      const dialog = await openCreate();
+      fireEvent.click(within(dialog).getByRole("switch", { name: /Fill in meanings/ }));
+      expect(within(dialog).getByText("Meanings are left empty for you to fill in.")).toBeTruthy();
+      fireEvent.change(within(dialog).getByLabelText("List title"), { target: { value: " week 1 " } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create list" }));
+      expect(within(dialog).getByRole("alert").textContent).toMatch(/already exists/);
+      fireEvent.change(within(dialog).getByLabelText("List title"), { target: { value: "Week 2" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create list" }));
+      expect(await within(dialog).findByText("Created “Week 2” with 3 words.")).toBeTruthy();
+      const list = h.vocab?.getSnapshot().lists.find((l) => l.name === "Week 2");
+      expect(list?.items.every((i) => i.definitionKo === null && i.definitionEn === null)).toBe(true);
+    });
+
+    it("offers to create without the meanings that could not be loaded", async () => {
+      const api = fakeApi();
+      api.offline = true;
+      h.dict = createDictionaryService(createDictionaryModule({ api }), async () => null);
+      setup();
+      const dialog = await openCreate();
+      fireEvent.change(within(dialog).getByLabelText("List title"), { target: { value: "Offline" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create list" }));
+      expect((await within(dialog).findByRole("alert")).textContent).toMatch(/^Some meanings could not be loaded/);
+      expect(within(dialog).getByRole("button", { name: "Try again" })).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create without the missing meanings" }));
+      expect(await within(dialog).findByText("Created “Offline” with 3 words.")).toBeTruthy();
+    });
+  });
 });
