@@ -30,6 +30,8 @@ export function mockService(status: ModelStatus = { state: "no-model" }) {
     modelChecks: null,
     library,
     annotation: null,
+    shared: false,
+    shareKind: null,
     notice: null,
     draft: "",
   };
@@ -50,6 +52,9 @@ export function mockService(status: ModelStatus = { state: "no-model" }) {
     parseText: vi.fn<ParserService["parseText"]>(async (): Promise<ParseOutcome> => {
       throw new ParserNotReadyError();
     }),
+    shareLink: vi.fn<ParserService["shareLink"]>(async () => "DATA"),
+    shareFile: vi.fn<ParserService["shareFile"]>(() => "{}"),
+    openShared: vi.fn<ParserService["openShared"]>(async () => undefined),
   };
   const update = (patch: Partial<ParserSnapshot>): void => {
     snap = { ...snap, ...patch };

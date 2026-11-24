@@ -1,10 +1,14 @@
 /**
  * functions/models/[[path]].test.ts — tests for the R2 model-file Function (T12)
  *
- * Fake R2 bucket; covers keys, whole files, byte ranges, HEAD, 304, 404, 405, 416.
+ * Fake R2 bucket; covers keys, whole files, byte ranges, HEAD, 304, 404, 405, 416, and the
+ * read-only rule for every Function (no visitor can write to the bucket; owner, 2026-11-24; T99).
  */
 
-import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { onRequest as dictOnRequest } from "../dict/[[path]]";
 import { type R2BucketLike, keyOf, onRequest, parseRange } from "./[[path]]";
 
 const FILES: Record<string, string> = {
@@ -82,5 +86,51 @@ describe("onRequest", () => {
     expect((await call("nope.json")).status).toBe(404);
     expect((await call("../x")).status).toBe(404);
     expect((await call("catalog.json", { method: "POST" })).status).toBe(405);
+  });
+});
+
+describe("the bucket is read-only for visitors (owner, 2026-11-24; T99)", () => {
+  const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+  it("every Function refuses write methods without touching the bucket", async () => {
+    const spied = {
+      head: vi.fn<R2BucketLike["head"]>(async () => ({ size: 1, httpEtag: '"x"' })),
+      get: vi.fn<R2BucketLike["get"]>(async () => ({ size: 1, httpEtag: '"x"', body: new Response("x").body })),
+      put: vi.fn<() => Promise<void>>(async () => undefined),
+      delete: vi.fn<() => Promise<void>>(async () => undefined),
+      createMultipartUpload: vi.fn<() => Promise<void>>(async () => undefined),
+    };
+    for (const [prefix, handler] of [
+      ["models", onRequest],
+      ["dict", dictOnRequest],
+    ] as const) {
+      for (const method of WRITE_METHODS) {
+        for (const path of ["catalog.json", "new/file.json"]) {
+          const res = await handler({
+            request: new Request(`https://app.test/${prefix}/${path}`, { method, body: "data" }),
+            env: { MODELS: spied },
+            params: { path: path.split("/") },
+          });
+          expect({ prefix, method, path, status: res.status }).toEqual({ prefix, method, path, status: 405 });
+          expect(res.headers.get("Allow")).toBe("GET, HEAD");
+        }
+      }
+    }
+    for (const fn of Object.values(spied)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("no Function's code calls a bucket write (put, delete, multipart upload)", () => {
+    const root = join(import.meta.dirname, "..");
+    const files = (readdirSync(root, { recursive: true }) as string[]).filter(
+      (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
+    );
+    expect(files.length).toBeGreaterThanOrEqual(2);
+    for (const f of files) {
+      const code = readFileSync(join(root, f), "utf8");
+      expect({ f, writes: code.match(/\.(put|delete|createMultipartUpload|resumeMultipartUpload)\s*\(/g) }).toEqual({
+        f,
+        writes: null,
+      });
+    }
   });
 });

@@ -357,6 +357,27 @@ export const en = {
   "output.list": "List",
   "output.defaultList": "My words",
   "output.added": "Added “{word}” to “{list}”.",
+  "share.button": "Share",
+  "share.hint.link": "This sentence is shared as a link. Nothing is uploaded: the link itself holds the result.",
+  "share.hint.file":
+    "This result is shared as a file you send yourself. Links are made only for a single sentence shorter than {max} characters.",
+  "share.linkCopied": "Link copied. Whoever opens it sees this result without downloading a model.",
+  "share.linkReady": "Copy this link and send it:",
+  "share.linkLabel": "Share link",
+  "share.fileSaved": "Saved “{name}”. Send the file; the recipient opens it with “Open a shared file”.",
+  "share.fileShared": "The file was handed to the app you chose.",
+  "share.failed": "Sharing failed: {message}",
+  "share.open": "Open a shared file",
+  "share.opening": "Opening the shared result…",
+  "share.error.invalid": "This is not a readable Enparse shared result.",
+  "share.error.version":
+    "This shared result was made with a newer version of Enparse. Reload the page to update, then try again.",
+  "share.error.too-large": "This shared result is too large to open.",
+  "share.error.unsupported": "This browser cannot open share links. Ask for the result as a file instead.",
+  "share.banner":
+    "Shared result: it was parsed on someone else’s device, so you can read it without a model. Only the main reading of each sentence is included.",
+  "share.otherReadings":
+    "The original parse also offered other readings of this sentence. Shared results do not include them.",
   "upos.ADJ": "Adjective (ADJ)",
   "upos.ADP": "Preposition (ADP)",
   "upos.ADV": "Adverb (ADV)",

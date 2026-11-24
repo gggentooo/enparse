@@ -50,7 +50,7 @@ Then, in Chrome or Safari:
 
 1. **Models** (`#/models`): choose a model (*이 모델 사용*). It downloads once, is verified, and loads; the header badge shows *준비됨* when ready. Downloaded models stay in the browser's cache, so later visits load them without downloading.
 2. **Input** (`#/input`): paste English text and press *분석하기*.
-3. **Output** (`#/output`): switch between the flat and structure views, open *다른 해석* where a sentence has other readings, and select words for details.
+3. **Output** (`#/output`): switch between the flat and structure views, open *다른 해석* where a sentence has other readings, and select words for details. *공유* shares the result without a server: a link for one sentence under 128 characters, a file otherwise (opened with *공유 파일 열기*; T99).
 
 Notes:
 

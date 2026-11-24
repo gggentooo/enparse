@@ -70,11 +70,22 @@
  *   No React imports; no other services.
  *   Used by: hooks/useParser.ts, hooks/useModelLibrary.ts.
  *
- * Status: implemented (T52; annotation and draft T56/T57). Tests: parserService.test.ts.
+ * Status: implemented (T52; annotation and draft T56/T57; shared results T99). Tests: parserService.test.ts.
  */
 
 import { requestPersistentStorage } from "../core/environment";
-import { type Annotation, annotate } from "../modules/output";
+import {
+  type Annotation,
+  type ShareKind,
+  type SharedParse,
+  annotate,
+  decodeShareFile,
+  decodeShareLink,
+  encodeShareFile,
+  encodeShareLink,
+  shareKind,
+  toShared,
+} from "../modules/output";
 import { type PreprocessResult, preprocess } from "../modules/input";
 import {
   type CardBadge,
@@ -140,7 +151,10 @@ export type {
   Reading,
   ReadingNote,
   RoleKind,
+  ShareErrorReason,
+  ShareKind,
 } from "../modules/output";
+export { SHARE_LINK_MAX_CHARS, SHARE_MAX_FILE_BYTES, ShareFormatError } from "../modules/output";
 export type { CheckResult, CheckStatus } from "../modules/preflight";
 export type { RemovalReport, PreprocessResult } from "../modules/input";
 export { InputTooLongError, MAX_INPUT_CHARS } from "../modules/input";
@@ -188,8 +202,12 @@ export type ParserSnapshot = {
   /** Model stage report of the last chosen model (null until a model is checked). */
   modelChecks: PreflightReport | null;
   library: LibrarySnapshot;
-  /** Annotation of the last parse (modules/output). */
+  /** Annotation of the last parse, or of the shared result that was opened (modules/output). */
   annotation: Annotation | null;
+  /** The annotation is a shared result someone else parsed (opened from a link or file; T99). */
+  shared: boolean;
+  /** How the shown result would be shared: a link (one short sentence) or a file; null with no result (T99). */
+  shareKind: ShareKind | null;
   /** Input text being edited (kept across pages). */
   draft: string;
   /** What the preprocessor removed from the last parsed input (null if nothing). */
@@ -218,6 +236,17 @@ export class ParseSupersededError extends Error {
   }
 }
 
+/** Where an opened shared result comes from: a link's data, or a share file's content. */
+export type SharedSource = { kind: "link"; data: string } | { kind: "file"; content: string };
+
+/** Sharing was asked for with no result shown. */
+export class NothingToShareError extends Error {
+  constructor() {
+    super("there is no result to share");
+    this.name = "NothingToShareError";
+  }
+}
+
 /** A newer model choice replaced this one (internal control flow). */
 class SupersededChoice extends Error {}
 
@@ -232,6 +261,12 @@ export type ParserService = {
   retryLoad(): Promise<void>;
   parseText(raw: string): Promise<ParseOutcome>;
   setDraft(text: string): void;
+  /** Data part of a share link for the shown result (T99). Nothing is uploaded: the link is the data. */
+  shareLink(): Promise<string>;
+  /** Content of a share file for the shown result (JSON text; T99). */
+  shareFile(): string;
+  /** Show a shared result (no model needed); throws ShareFormatError if it cannot be read. */
+  openShared(source: SharedSource): Promise<void>;
 };
 
 /** Everything the service calls (module functions; injectable for tests). */
@@ -297,9 +332,13 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
     modelChecks: null,
     library: EMPTY_LIBRARY,
     annotation: null,
+    shared: false,
+    shareKind: null,
     notice: null,
     draft: "",
   };
+  /** Reduced form of the shown result (main readings only): what sharing sends (T99). */
+  let shareable: SharedParse | null = null;
   const listeners = new Set<() => void>();
   let starting: Promise<void> | null = null;
   let device: DeviceAssessment | null = null;
@@ -635,8 +674,36 @@ export function createParserService(overrides: Partial<ParserServiceDeps> = {}):
       const result = await worker.parse(input.text);
       if (seq !== parseSeq) throw new ParseSupersededError();
       const annotation = annotate(result, input.text);
-      set({ annotation, notice: input.hasRemovals ? input : null });
+      shareable = toShared(result, input.text);
+      set({
+        annotation,
+        shared: false,
+        shareKind: shareKind(shareable),
+        notice: input.hasRemovals ? input : null,
+      });
       return { annotation, input };
+    },
+
+    async shareLink() {
+      if (!shareable) throw new NothingToShareError();
+      return encodeShareLink(shareable);
+    },
+
+    shareFile() {
+      if (!shareable) throw new NothingToShareError();
+      return encodeShareFile(shareable);
+    },
+
+    async openShared(source) {
+      const opened = source.kind === "link" ? await decodeShareLink(source.data) : decodeShareFile(source.content);
+      parseSeq++; // a parse still running must not replace what the user just opened
+      shareable = opened;
+      set({
+        annotation: annotate(opened.input, opened.text),
+        shared: true,
+        shareKind: shareKind(opened),
+        notice: null,
+      });
     },
   };
 }

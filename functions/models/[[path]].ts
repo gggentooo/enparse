@@ -13,6 +13,11 @@
  *
  * Layer: deployment (not an app layer; runs on Cloudflare, never in the browser).
  *
+ * Read-only (owner, 2026-11-24; T99): visitors must never be able to put data
+ *   in the bucket. Only GET and HEAD are answered (405 otherwise), and
+ *   R2BucketLike has no write method, so a write cannot be typed here by
+ *   accident. Do not add one; a test fails if any Function calls put/delete.
+ *
  * Bindings: MODELS (R2 bucket). Configured in the Cloudflare Pages project
  *   settings (no wrangler dependency in this repo).
  *
@@ -27,7 +32,7 @@ export interface R2ObjectLike {
   body?: ReadableStream | null;
 }
 
-/** The part of an R2 bucket the function uses. */
+/** The part of an R2 bucket the function uses: reads only (never add put or delete; see the header). */
 export interface R2BucketLike {
   get(key: string, options?: { range?: { offset: number; length: number } }): Promise<R2ObjectLike | null>;
   head(key: string): Promise<R2ObjectLike | null>;

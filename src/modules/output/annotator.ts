@@ -243,6 +243,7 @@ function annotateSentence(s: InputSentence, index: number, paragraph: number, te
     tokens,
     readings: [primary, ...alternatives.sort((a, b) => a.rank - b.rank)],
     nearTie,
+    otherReadingsOmitted: s.otherReadings === true && s.alternatives.length === 0,
   };
 }
 

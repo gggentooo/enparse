@@ -73,3 +73,60 @@ test("paste text → chunks → look up a word → add to vocabulary → export"
   expect(JSON.stringify(exported)).toContain('"word":"runs"');
   expect(JSON.stringify(exported)).toContain('"lemma":"run"');
 });
+
+test("share a parsed result: a short sentence as a link, anything else as a file; opened without a model (T99)", async ({
+  page,
+  browser,
+}) => {
+  await page.goto("/#/models");
+  await page.getByLabel("언어").selectOption("en");
+  await page.getByRole("listitem", { name: MODEL }).getByRole("button", { name: "Use this model" }).click();
+  await expect(page.getByText(`Ready: ${MODEL}`).first()).toBeVisible();
+  const parse = async (text: string): Promise<void> => {
+    await page.getByRole("link", { name: "Input" }).click();
+    await page.getByLabel("English text").fill(text);
+    await page.getByRole("button", { name: "Parse", exact: true }).click();
+    await expect(page.getByRole("article", { name: "Sentence 1" })).toBeVisible();
+  };
+  // No request may carry a result anywhere: only GET and HEAD leave the page.
+  const writes: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() !== "GET" && r.method() !== "HEAD") writes.push(`${r.method()} ${r.url()}`);
+  });
+
+  // One short sentence → a link.
+  await parse("The little dog runs fast.");
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const link = await page.getByRole("textbox", { name: "Share link" }).inputValue();
+  expect(link).toMatch(/#\/output\?s=[A-Za-z0-9_-]+$/);
+
+  // Two sentences → a file.
+  await parse(TEXT);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^enparse-share-\d{4}-\d{2}-\d{2}\.json$/);
+  await expect(page.getByRole("textbox", { name: "Share link" })).toHaveCount(0);
+  expect(writes).toEqual([]);
+
+  // Someone else: a fresh browser profile with no model downloaded.
+  const context = await browser.newContext();
+  const other = await context.newPage();
+  await other.goto(link);
+  await other.getByLabel("언어").selectOption("en");
+  const shared = other.getByRole("article", { name: "Sentence 1" });
+  await expect(shared.getByRole("group", { name: /Subject/ }).first()).toContainText("dog");
+  await expect(other.getByRole("article", { name: "Sentence 2" })).toHaveCount(0);
+  await expect(other.getByRole("status").filter({ hasText: "Shared result" })).toBeVisible();
+
+  await other.goto("/#/input");
+  await other.getByLabel("Open a shared file").setInputFiles((await file.path()) as string);
+  await expect(other).toHaveURL(/#\/output$/);
+  await expect(
+    other
+      .getByRole("article", { name: "Sentence 2" })
+      .getByRole("group", { name: /Predicate/ })
+      .first(),
+  ).toContainText("barks");
+  await context.close();
+});

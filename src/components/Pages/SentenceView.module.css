@@ -68,3 +68,10 @@
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
 }
+
+/* Shared result: the original parse had other readings that the share does not carry (T99). */
+.omitted {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

@@ -135,6 +135,7 @@ The app has four layers. Each layer may only depend on the layer(s) below it.
 | `parser/ambiguity.ts`        | Builds alternative parses from low-margin label probabilities and attachment patterns.            |
 | `parser/parser.worker.ts`    | Web Worker entry: loads the model once, reports load status, and parses off the main thread only when the model is ready. Typed message protocol (`types.ts`: requests with ids; `status` broadcasts, `result`, `done`, `error`); `index.ts` → `createParserWorker()` is the typed client. |
 | `output/annotator.ts`        | Converts parse results into an annotation model: sentences by paragraph, tokens (lemma, spacing, ambiguity mark), readings (primary + alternatives with share, reason, changed words) with flat segments and nested nodes (each with the token it attaches to, for the arrows; T79). Input type is structural (matches `ParseResult`; checked by a test). Rendering is in `OutputPage` (T57). |
+| `output/share.ts`            | Shared results (T99): the reduced form of a parse (`toShared`: main readings only, an `otherReadings` flag per sentence, no probabilities), the rule `shareKind` (link only for one sentence shorter than `SHARE_LINK_MAX_CHARS` = 128; else file), and the codecs: file = compact JSON (`enparse-share`, version 1), link = the same deflated (`CompressionStream`, built in) and base64url-encoded. Decoding treats the data as untrusted: size caps and checks of every offset, index, label, and depth; `ShareFormatError` (`invalid`, `version`, `too-large`, `unsupported`). |
 | `dictionary/dictionary.ts`   | Lookup (T46): a possible phrasal verb from neighbouring words first if it is a headword (T87), then the parse's lemma (parse clicks), then the word as a headword, then the inflection index (a form can give several headwords: *saw* → saw, see); keys from `lookupKey`; senses of the queried part of speech first (AUX → VERB, PROPN → NOUN); recent results kept. Display is in components. |
 | `dictionary/staticDb.ts`     | Data access (T46): `manifest.json` from `/dict/v<N>/` (a copy kept for offline use; schema checked), `index.json` and shards from the versioned cache `enparse-dict-v<N>` or downloaded into it with size and SHA-256 checks (one retry after an integrity failure), an in-memory LRU of 16 shards, the offline download (`downloadAll` with byte progress, `deleteAll`, `offlineState`), and deletion of other versions' caches. Shard of a key: FNV-1a 32 of its UTF-8 bytes. Errors: `DictionaryLoadError` (network, integrity, storage, format, cancelled). No live API calls. |
 | `subword/subwordParser.ts`   | Rule-based segmenter: splits a word (plus its lemma) into prefixes, base, suffixes, and inflection (e.g., *un-* + *happy* + *-ness*). |
@@ -259,7 +260,8 @@ The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2**
 | App (`dist/`) | Cloudflare Pages | `npm run build`; `public/models/` and the ONNX Runtime `.wasm` that Vite copies from the library are left out of `dist/` (`vite.config.ts` → `skipModelFiles`), since single files (26.9–302 MB) exceed Pages' 25 MiB per-file limit; the build fails if any file is over it (T66). Deployed with Wrangler Direct Upload (`PUBLISHING.md`). |
 | Model files (`/models/*`) | R2 bucket bound as `MODELS` | `functions/models/[[path]].ts` (Pages Function) serves GET/HEAD with single byte ranges, ETag, and cache headers (`catalog.json` and every `labels.json` always revalidate; T66). Integrity is checked by the app (SHA-256 in `labels.json` → `files`). |
 | ONNX Runtime Web (`/models/_ort/*`) | Same R2 bucket | `ort-wasm-simd-threaded.asyncify.{mjs,wasm}` from the `onnxruntime-web` version Transformers.js pins (the `.wasm` is 26.9 MB, over Pages' limit). `transformerBackend.ts` sets `wasmPaths` here; by default Transformers.js would load them from cdn.jsdelivr.net (not allowed). |
-| Access (closed preview) | Cloudflare Access | Self-hosted application on the Pages hostnames, email one-time PIN; same-origin requests carry its cookie, and the manifest is fetched with credentials (`PUBLISHING.md`; T66). |
+| Read-only bucket (owner, 2026-11-24; T99) | `functions/` | Visitors must never be able to put data in R2. The Functions answer only GET and HEAD (405 otherwise) and their bucket type has no write method; tests fail if a Function accepts a write method or calls `put` / `delete` / a multipart upload. Uploads happen only from the owner's machine (`scripts/r2.ts`, Wrangler login). Features that move user data (shared results, vocabulary export) use links and files, never the bucket. |
+| Access | Cloudflare Access | The closed beta has ended and the site is open to everyone (owner, 2026-11-24). For a closed preview: self-hosted application on the Pages hostnames, email one-time PIN; same-origin requests carry its cookie, and the manifest is fetched with credentials (`PUBLISHING.md`; T66). |
 | Response headers | `public/_headers` | COOP `same-origin` + COEP `require-corp` (cross-origin isolation for multi-threaded WASM), `nosniff`, `no-referrer`; `sw.js` is `no-cache` so updates are found. |
 | Offline app shell (T69) | `dist/sw.js` (from `src/pwa/sw.ts`) | Precaches the built shell (list and version hash injected at build); page loads network-first with the cached shell offline (COOP/COEP re-applied); never handles `/models/*` or `/dict/*`; a new version waits for the user's "reload" in the update banner. |
 | Source of truth | `public/models/` (ONNX via Git LFS) | Written by `training/scripts/package_models.py` (T66). `scripts/r2.ts` maps every release file to its R2 key (model files at the bucket root, `_ort/`, `dict/v<N>/`) and uploads with `wrangler r2 object put --remote` (via npx; `catalog.json` last), or verifies a deployed site. `npm run preview:release` (`vite.release.ts`) serves the production build with the real Functions over the same files. |
@@ -367,6 +369,16 @@ ready
 
 6. **Display (owner, 2026-11-21; T11):** the primary parse is shown; ambiguous words and phrases are marked in it; each sentence with alternatives has an "Other readings (n)" control that switches that sentence's whole view (flat and nested) to the chosen alternative, and back. Label and attachment alternatives use the same control. Built in `ambiguity.ts` (T60), `output/annotator.ts`, and `OutputPage` (T57).
 
+### Sharing results (owner, 2026-11-24; T99)
+
+A learner can pass a parsed result to someone else, who reads it without downloading or running a model. Nothing is uploaded (no backend; the R2 bucket is read-only, see *Deployment*).
+
+1. **What is shared:** the main reading of each sentence only: text, words (lemma, part of speech, chunk tag, head, relation), flat chunks, and nested phrases with roles and attachments. No probabilities and no other readings. A sentence that had other readings carries a flag, and the recipient sees a note that the original parse offered other readings.
+2. **Link or file:** a link only when the input is one sentence **and** shorter than 128 characters; everything else is a file (`enparse-share-<date>.json`) that the learner sends and the recipient opens with "Open a shared file".
+3. **Link:** `#/output?s=<data>`; the data is the compact form, deflated and base64url-encoded, after the `#` (never sent to the server).
+4. **Opening:** `parserService.openShared` decodes and validates (`output/share.ts`; untrusted data), then runs the normal `annotate()`; the output page shows it with a "Shared result" banner and no model. The dictionary, word parts, and vocabulary work as for a parse. A shared result can be shared on; a new parse replaces it.
+5. **Format versions:** marker `enparse-share`, version 1. A change that old readers cannot read needs a new version; readers refuse unknown versions with a message.
+
 ### Subword segmentation
 
 - wink provides the inflectional split via lemma (*running* → *run* + *-ing*).
@@ -425,6 +437,7 @@ Component ─► Hook ─► Service ─► Module(s)
 ### Routing
 
 - Routes are defined in `src/routes.tsx` with React Router's `createHashRouter` (`#/input`, `#/output`, `#/vocab`, `#/dictionary`, `#/models`, `#/about`).
+- **Share links (T99):** `#/output?s=<data>` (`paths.ts` → `SHARE_PARAM`) carries a shared result; `OutputPage` opens it through `useParser().openShared` before showing anything. The data is after the `#`, so it is never sent to the server.
 - **Attribution (owner, 2026-11-21; T21):** `#/about` (*About & licenses*, linked from the sidebar) lists the app, models, training data (UD English EWT, CC BY-SA 4.0), runtime libraries, and dictionary sources with their licenses; each model card on `ModelsPage` also shows the model's license and source. Built in T50.
 - `ContentArea` renders the active route via `<Outlet />`.
 
@@ -438,7 +451,9 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
       │   ├── Sidebar.tsx (page navigation)
       │   └── ContentArea.tsx (route outlet)
       │       ├── InputPage.tsx (text input kept as parserService draft; count, .txt drop, model status; T56)
-      │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57)
+      │       │   └── OpenShared.tsx ("Open a shared file"; also on OutputPage; T99)
+      │       ├── OutputPage.tsx (view choice, color legend, removal notice, paragraphs; T57; shared-result banner and share link in ?s=…; T99)
+      │       │   ├── ShareResult.tsx ("Share": link copied and shown, or file handed to the share sheet / downloaded; T99)
       │       │   ├── SentenceView.tsx (one sentence; "Other readings (n)" radio group switches the reading; T11)
       │       │   │   ├── FlatReading.tsx (chunk highlights with type tags)
       │       │   │   └── NestedReading.tsx (one inline box or bracket per phrase, all words on one text line (T88); defaults: structure view, labels on hover, blocks, labels on top; single-choice toggles for labels, phrase shape, and phrase label position (T89); labels inside the phrases; arrows under the sentence as rounded rectangles; scrolls sideways only, thin scrollbar; main-clause subject and predicate outermost, dashed when unsure; one sentence per line, scrolling sideways when long; labels always or on hover per two OutputPage toggles, Subject and Predicate always; arrow to the attached word on hover or focus)
@@ -469,7 +484,7 @@ main.tsx (entry: mounts <RouterProvider> into index.html)
 
 | Service                | Wraps                                              | Hook            |
 |------------------------|----------------------------------------------------|-----------------|
-| `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator` | `useParser`, `useModelLibrary` |
+| `parserService.ts`     | `preflight`, `modelLibrary`, `textInput`, `parser`, `annotator`, `output/share` (`shareLink`, `shareFile`, `openShared`; snapshot `shared`, `shareKind`; T99) | `useParser`, `useModelLibrary` |
 | `dictionaryService.ts` | `dictionary`, `staticDb` (lookups; offline state, storage check, and download progress via `subscribe` / `getSnapshot`; T46, T72) | `useDictionary`, `useDictionaryOffline` |
 | `subwordService.ts`    | `subwordParser`                                    | `useSubword`    |
 | `vocabService.ts`      | `vocabManager`                                     | `useVocab`      |
@@ -525,6 +540,7 @@ enparse/
 │   │   │   ├── InputPage.tsx + InputPage.module.css
 │   │   │   ├── OutputPage.tsx + OutputPage.module.css
 │   │   │   ├── SentenceView.tsx, FlatReading.tsx, NestedReading.tsx, OutputWord.tsx, WordDetails.tsx (+ .module.css each; OutputPage parts)
+│   │   │   ├── ShareResult.tsx, OpenShared.tsx (+ .module.css each; shared results, T99)
 │   │   │   ├── VocabPage.tsx + VocabPage.module.css
 │   │   │   ├── VocabLists.tsx, VocabListDetail.tsx, VocabItemRow.tsx, VocabTransfer.tsx (+ .module.css each; VocabPage parts)
 │   │   │   ├── DictionaryPage.tsx, DictionaryEntry.tsx + .module.css each
@@ -586,6 +602,7 @@ enparse/
 │   │   │   └── testFixtures.ts (test-only: mocked backend for *.test.ts)
 │   │   ├── output/
 │   │   │   ├── annotator.ts
+│   │   │   ├── share.ts (shared results: reduced form, link and file codecs; T99)
 │   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   ├── dictionary/
@@ -990,3 +1007,9 @@ enparse/
 ### 2026-11-23T20:00:00Z — Claude Fable 5.2, Phones: warn instead of block
 
 - Modified: *Pre-flight checks* → `mobile-memory` only warns for larger models (owner); *Model readiness* → low-memory loading applies to the small model.
+
+### 2026-11-24T05:30:41Z — Claude Fable 5.2, Shared results and the read-only bucket (T99)
+
+- Added: *Sharing results* (link for one sentence under 128 characters, file otherwise; main readings only with an other-readings flag; nothing uploaded); `output/share.ts` in *Logic modules*; share links in *Routing*; `ShareResult.tsx`, `OpenShared.tsx` in the component hierarchy and skeleton; `parserService` share actions.
+- Added: *Deployment* → read-only bucket rule (owner: visitors must never upload to R2).
+- Modified: *Deployment* → Access row: the closed beta has ended; the site is open (owner).

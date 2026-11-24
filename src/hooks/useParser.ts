@@ -15,7 +15,8 @@
  *      canParse, notice, error, isParsing, parseText, retryLoad }. canParse
  *      is true only when status is `ready`. preflight is the device
  *      PreflightReport (null until checked); modelChecks the chosen model's
- *      report. draft is the input text kept across pages (T56).
+ *      report. draft is the input text kept across pages (T56). shared,
+ *      shareKind, shareLink, shareFile, openShared: shared results (T99).
  *   3. Local pending/error state per call; a superseded parse is ignored
  *      (resolves null, no error).
  *   4. Tests in useParser.test.ts with a mocked service (passed as the
@@ -39,6 +40,8 @@ import {
   type ParserService,
   type PreflightReport,
   type PreprocessResult,
+  type ShareKind,
+  type SharedSource,
   parserService,
 } from "../services/parserService";
 
@@ -62,8 +65,16 @@ export type {
   Reading,
   ReadingNote,
   RoleKind,
+  ShareErrorReason,
+  ShareKind,
+  SharedSource,
 } from "../services/parserService";
-export { MAX_INPUT_CHARS } from "../services/parserService";
+export {
+  MAX_INPUT_CHARS,
+  SHARE_LINK_MAX_CHARS,
+  SHARE_MAX_FILE_BYTES,
+  ShareFormatError,
+} from "../services/parserService";
 
 export type UseParser = {
   status: ModelStatus;
@@ -83,6 +94,16 @@ export type UseParser = {
   /** Parse raw input; null if a newer parse replaced it. Errors are also kept in `error`. */
   parseText: (raw: string) => Promise<ParseOutcome | null>;
   retryLoad: () => Promise<void>;
+  /** The annotation is a shared result opened from a link or file (T99). */
+  shared: boolean;
+  /** How the shown result would be shared (null with no result). */
+  shareKind: ShareKind | null;
+  /** Data part of a share link for the shown result. */
+  shareLink: () => Promise<string>;
+  /** Content of a share file for the shown result. */
+  shareFile: () => string;
+  /** Show a shared result; rejects with ShareFormatError if it cannot be read. */
+  openShared: (source: SharedSource) => Promise<void>;
 };
 
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
@@ -131,5 +152,10 @@ export function useParser(service: ParserService = parserService()): UseParser {
     error,
     parseText,
     retryLoad,
+    shared: snap.shared,
+    shareKind: snap.shareKind,
+    shareLink: service.shareLink,
+    shareFile: service.shareFile,
+    openShared: service.openShared,
   };
 }

@@ -84,6 +84,11 @@ export function SentenceView({
         </p>
       )}
       {view === "nested" && reading.nodes ? <NestedReading {...props} look={look} /> : <FlatReading {...props} />}
+      {sentence.otherReadingsOmitted && (
+        <p role="note" className={styles.omitted}>
+          {t("share.otherReadings")}
+        </p>
+      )}
       {alternatives > 0 && (
         <details className={styles.readings} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
           <summary>

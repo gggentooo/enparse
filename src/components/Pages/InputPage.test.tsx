@@ -97,4 +97,14 @@ describe("InputPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Parser diagnostics" });
     expect(within(dialog).getByText("Browser and device")).toBeTruthy();
   });
+
+  it("opens a shared file without a model and goes to the output page (T99)", async () => {
+    const m = mockService({ state: "no-model" });
+    h.service = m.service;
+    const router = renderPage(<InputPage />, "/input");
+    const file = new File(["CONTENT"], "share.json", { type: "application/json" });
+    fireEvent.change(screen.getByLabelText("Open a shared file"), { target: { files: [file] } });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/output"));
+    expect(m.service.openShared).toHaveBeenCalledWith({ kind: "file", content: "CONTENT" });
+  });
 });

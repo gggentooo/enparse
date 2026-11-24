@@ -8,11 +8,11 @@ import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStorage } from "../../core/storage";
 import { mockService } from "../../hooks/testParserService";
-import { annotate } from "../../modules/output";
+import { annotate, encodeShareFile, encodeShareLink, toShared } from "../../modules/output";
 import type { ParseResult, Token } from "../../modules/parser";
 import { VocabManager } from "../../modules/vocab";
 import { languageService } from "../../services/languageService";
-import type { ParserService, PreprocessResult } from "../../services/parserService";
+import { type ParserService, type PreprocessResult, createParserService } from "../../services/parserService";
 import type { SubwordService } from "../../services/subwordService";
 import { type VocabService, createVocabService } from "../../services/vocabService";
 import { type DictionaryService, createDictionaryService } from "../../services/dictionaryService";
@@ -541,5 +541,83 @@ describe("OutputPage", () => {
     );
     fireEvent.click(word("Dogs"));
     expect(await within(screen.getByRole("complementary")).findByText("No dictionary entry for “Dogs”.")).toBeTruthy();
+  });
+
+  describe("sharing (T99)", () => {
+    const shareButton = (): HTMLElement => screen.getByRole("button", { name: "Share" });
+    const withKind = (kind: "link" | "file") => {
+      const m = mockService({ state: "ready", modelId: "deberta_v3_xsmall", backend: "wasm", modelVersion: "v1" });
+      m.update({ annotation: annotate(result, TEXT), shareKind: kind });
+      h.parser = m.service;
+      renderPage(<OutputPage />, "/output");
+      return m;
+    };
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("shares one short sentence as a link: copied, and shown to copy by hand", async () => {
+      const writeText = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      const m = withKind("link");
+      expect(screen.getByText(/shared as a link. Nothing is uploaded/)).toBeTruthy();
+      fireEvent.click(shareButton());
+      const field = await screen.findByRole<HTMLInputElement>("textbox", { name: "Share link" });
+      expect(field.value).toMatch(/#\/output\?s=DATA$/);
+      expect(writeText).toHaveBeenCalledWith(field.value);
+      expect(screen.getByText(/^Link copied/)).toBeTruthy();
+      expect(m.service.shareFile).not.toHaveBeenCalled();
+    });
+
+    it("still shows the link when the clipboard is not available", async () => {
+      vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+      withKind("link");
+      fireEvent.click(shareButton());
+      expect(await screen.findByText("Copy this link and send it:")).toBeTruthy();
+    });
+
+    it("shares anything else as a downloaded file, never as a link", async () => {
+      const createObjectURL = vi.fn<(file: File) => string>(() => "blob:x");
+      vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: () => undefined }));
+      const m = withKind("file");
+      expect(screen.getByText(/single sentence shorter than 128 characters/)).toBeTruthy();
+      fireEvent.click(shareButton());
+      expect(await screen.findByText(/^Saved “enparse-share-\d{4}-\d{2}-\d{2}\.json”/)).toBeTruthy();
+      const file = createObjectURL.mock.calls[0]?.[0];
+      expect(file?.name).toMatch(/^enparse-share-.*\.json$/);
+      expect(m.service.shareLink).not.toHaveBeenCalled();
+      expect(screen.queryByRole("textbox", { name: "Share link" })).toBeNull();
+    });
+
+    it("opens a share link without a model: the result, a banner, and the other-readings note", async () => {
+      const data = await encodeShareLink(toShared(result, TEXT));
+      h.parser = createParserService(); // never started: no catalog, no model
+      renderPage(<OutputPage />, "/output", `/output?s=${data}`);
+      expect(await screen.findByText(/^Shared result:/)).toBeTruthy();
+      const sentence = screen.getByRole("article", { name: "Sentence 1" });
+      expect(word("unhappy", sentence)).toBeTruthy();
+      expect(within(sentence).getByRole("note").textContent).toMatch(/also offered other readings/);
+      expect(within(sentence).queryByText(/Other readings \(/)).toBeNull();
+      expect(screen.getByText("Parsed with deberta_v3_xsmall (v1, WASM)")).toBeTruthy();
+      // The recipient can pass it on.
+      expect(shareButton()).toBeTruthy();
+    });
+
+    it("explains a link that cannot be read and offers to open a file", async () => {
+      h.parser = createParserService();
+      renderPage(<OutputPage />, "/output", "/output?s=AAAA");
+      expect((await screen.findByRole("alert")).textContent).toBe("This is not a readable Enparse shared result.");
+      expect(screen.getByLabelText("Open a shared file")).toBeTruthy();
+    });
+
+    it("opens a share file, and refuses other files with a message", async () => {
+      h.parser = createParserService();
+      renderPage(<OutputPage />, "/output");
+      const input = screen.getByLabelText<HTMLInputElement>("Open a shared file");
+      fireEvent.change(input, { target: { files: [new File(["{}"], "x.json", { type: "application/json" })] } });
+      expect((await screen.findByRole("alert")).textContent).toBe("This is not a readable Enparse shared result.");
+      const good = new File([encodeShareFile(toShared(result, TEXT))], "share.json", { type: "application/json" });
+      fireEvent.change(input, { target: { files: [good] } });
+      expect(await screen.findByText(/^Shared result:/)).toBeTruthy();
+      expect(screen.getByRole("article", { name: "Sentence 1" })).toBeTruthy();
+    });
   });
 });

@@ -63,6 +63,19 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Modules/output, Services, Components/Pages, Deployment] Share parsed results without a server · T99 · Build
+
+- **Done:** 2026-11-24 (owner request and decisions the same day: learners share an already-parsed result so the other person does not need to download or run a model).
+  - **Rule (owner):** the "Share" button on the output page makes a **link** only when the input is a single sentence **and** shorter than 128 characters (`SHARE_LINK_MAX_CHARS`; both conditions). Everything else is shared as a **file** (`enparse-share-YYYY-MM-DD.json`), which the recipient opens with "Open a shared file" (input and output pages).
+  - **Content (owner):** only the main reading of each sentence (text, words with lemma, part of speech, chunk tag, head and relation, flat chunks, nested phrases with roles and attachments; no probabilities). A sentence that had other readings carries a flag; the recipient sees a note that the original parse offered other readings which are not included. Model id, version, and backend are kept for the "Parsed with …" line.
+  - **No server (owner):** nothing is uploaded. A link holds the result after the `#` (`#/output?s=<data>`: the compact form, deflated with the browser's `CompressionStream` and base64url-encoded; about 435 characters for a five-word sentence), so it is never sent to Cloudflare; a file is sent by the learner. No new dependency.
+  - **Untrusted data:** decoding caps sizes (link 8,192 characters and 256 KiB inflated; file 4 MiB; text 5,000 characters) and checks every offset, index, label, and nesting depth before the annotator sees it; unreadable data gives a message and leaves the shown result as it was. Format marker `enparse-share`, version 1 (other versions are refused with "reload to update").
+  - **Recipient:** the output page renders the shared result with no model loaded (banner "Shared result"); the dictionary, word parts, and "add to list" work as usual; the result can be shared on. A new parse replaces it.
+  - **R2 is read-only for visitors (owner: strictly prohibited to upload).** The Functions already answered only GET and HEAD; now recorded as a rule (`agents.md` → *Agent boundaries*, `architecture.md` → *Deployment*, `PUBLISHING.md`) and guarded by tests: every Function refuses POST, PUT, PATCH, and DELETE with 405 without touching the bucket, and no Function's code may call a bucket write (`functions/models/[[path]].test.ts`).
+  - **Built in:** `modules/output/share.ts` (`toShared`, `shareKind`, link and file codecs, `ShareFormatError`), `output/types.ts` and `annotator.ts` (`otherReadings` → `otherReadingsOmitted`), `parserService` (`shareLink`, `shareFile`, `openShared`; snapshot `shared`, `shareKind`), `useParser`, `ShareResult.tsx`, `OpenShared.tsx`, `OutputPage`, `SentenceView`, `InputPage`, `paths.ts` (`SHARE_PARAM`), i18n (Korean and English).
+  - **Checked:** 411 unit tests (`share.test.ts`, `parserService.test.ts`, `OutputPage.test.tsx`, `InputPage.test.tsx`, Functions), typecheck, lint; `npm run test:e2e` in Chrome with the fake model: link opened in a fresh browser profile with no model, file opened from the input page, and no non-GET request left the page. Looked at in Chrome (wide and phone width, Korean and English). **Not checked:** Safari and real phones (the system share sheet for files is used only where the browser accepts JSON files; otherwise the file is downloaded); the production deployment.
+  - **Not done:** older browsers without `CompressionStream` (before Safari 16.4 / Firefox 113) share everything as a file and cannot open links (they get a message).
+
 #### [Training] Low-memory loading and the Lite model · T98 · Build
 
 - **Done:** 2026-11-23 (owner request: even Compact did not load on an iPhone 12 mini). Not yet confirmed on the phone.
@@ -688,3 +701,7 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-23T20:00:00Z — Claude Fable 5.2, T98: phones no longer block models; Lite texts approved
 
 - Modified: T98 and T96 (Done): larger models only warn on phones and tablets and load the usual way (owner: Large runs on an iPhone 16 Pro); Lite's name, descriptions, and the versioning approved by the owner.
+
+### 2026-11-24T05:30:41Z — Claude Fable 5.2, T99 added and done
+
+- Added: T99 (Done): sharing parsed results as a link (one sentence under 128 characters) or a file, main readings only with an other-readings flag; the R2 bucket is read-only for visitors (owner decisions, 2026-11-24).

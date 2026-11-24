@@ -21,31 +21,40 @@
  *   5. Removed-text notice of the last parse; model id, version, backend.
  *   6. Split into child components next to this file (agents.md → React).
  *   7. user-facing text via useI18n() catalog keys (T68).
+ *   8. Shared results (T99): "Share" (./ShareResult.tsx: link or file),
+ *      "Open a shared file" (./OpenShared.tsx), and a share link's data in
+ *      ?s=… opened through useParser().openShared; a banner marks a shared
+ *      result.
  *
  * Dependencies:
  *   External: react, react-router (Link).
  *   Internal: hooks/useParser.ts, hooks/useI18n.ts, ./SentenceView.tsx,
- *             ./WordDetails.tsx, Shared/ModelStatus.tsx (useModelName),
+ *             ./WordDetails.tsx, ./ShareResult.tsx, ./OpenShared.tsx,
+ *             Shared/ModelStatus.tsx (useModelName),
  *             ./OutputPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Status: implemented (T57; dictionary lookup T53). Tests: OutputPage.test.tsx.
+ * Status: implemented (T57; dictionary lookup T53; sharing T99). Tests: OutputPage.test.tsx.
  */
 
-import { useId, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useId, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { useI18n } from "../../hooks/useI18n";
 import {
   type AnnotatedSentence,
   type AnnotatedToken,
   type ChunkKind,
   type PreprocessResult,
+  type ShareErrorReason,
+  ShareFormatError,
   useParser,
 } from "../../hooks/useParser";
-import { PATHS } from "../../paths";
+import { PATHS, SHARE_PARAM } from "../../paths";
 import { useModelName } from "../Shared/ModelStatus";
 import styles from "./OutputPage.module.css";
 import type { NestedLook } from "./NestedReading";
+import { OpenShared } from "./OpenShared";
+import { ShareResult } from "./ShareResult";
 import { SentenceView } from "./SentenceView";
 import { WordDetails } from "./WordDetails";
 
@@ -67,7 +76,27 @@ function RemovedNotice({ notice }: { notice: PreprocessResult }): React.JSX.Elem
 
 export function OutputPage(): React.JSX.Element {
   const { t } = useI18n();
-  const { annotation, notice } = useParser();
+  const { annotation, notice, shared, openShared } = useParser();
+  // A share link carries the result in ?s=… (T99): open it before showing anything.
+  const [params] = useSearchParams();
+  const linkData = params.get(SHARE_PARAM);
+  const [link, setLink] = useState<{ data: string; error: ShareErrorReason | null } | null>(null);
+  useEffect(() => {
+    if (!linkData) return;
+    let stale = false;
+    openShared({ kind: "link", data: linkData }).then(
+      () => {
+        if (!stale) setLink({ data: linkData, error: null });
+      },
+      (e: unknown) => {
+        if (!stale) setLink({ data: linkData, error: e instanceof ShareFormatError ? e.reason : "invalid" });
+      },
+    );
+    return () => {
+      stale = true;
+    };
+  }, [linkData, openShared]);
+  const linkState = linkData && link?.data === linkData ? link : null;
   const modelName = useModelName();
   // Defaults (owner, T88): the structure view, labels on hover, phrases as blocks.
   const [view, setView] = useState<"flat" | "nested">("nested");
@@ -81,14 +110,22 @@ export function OutputPage(): React.JSX.Element {
   const [panelPos, setPanelPos] = useState<"side" | "bottom">("side");
   const panelName = useId();
 
-  if (!annotation) {
+  const linkPending = linkData !== null && linkState === null;
+  if (!annotation || linkPending || linkState?.error) {
     return (
       <section className={styles.page} aria-labelledby="page-title">
         <h1 id="page-title">{t("page.output.title")}</h1>
-        <p>{t("output.empty")}</p>
+        {linkPending ? (
+          <p role="status">{t("share.opening")}</p>
+        ) : linkState?.error ? (
+          <p role="alert">{t(`share.error.${linkState.error}`)}</p>
+        ) : (
+          <p>{t("output.empty")}</p>
+        )}
         <p>
           <Link to={PATHS.input}>{t("output.goInput")}</Link>
         </p>
+        {!linkPending && <OpenShared />}
       </section>
     );
   }
@@ -111,7 +148,16 @@ export function OutputPage(): React.JSX.Element {
           backend: annotation.backend.toUpperCase(),
         })}
       </p>
+      {shared && (
+        <p role="status" className={styles.notice}>
+          {t("share.banner")}
+        </p>
+      )}
       {notice && <RemovedNotice notice={notice} />}
+      <div className={styles.sharing}>
+        <ShareResult />
+        <OpenShared />
+      </div>
 
       <div className={styles.toolbar}>
         <fieldset className={styles.views}>

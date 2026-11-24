@@ -27,7 +27,7 @@
  *             components/Shared/ModelStatus.tsx, ./InputPage.module.css.
  *   Used by: src/routes.tsx.
  *
- * Status: implemented (T56). Tests: InputPage.test.tsx.
+ * Status: implemented (T56; "Open a shared file" T99). Tests: InputPage.test.tsx.
  */
 
 import { useId, useState } from "react";
@@ -38,6 +38,7 @@ import { PATHS } from "../../paths";
 import { Button } from "../Shared/Button";
 import { ModelStatus } from "../Shared/ModelStatus";
 import styles from "./InputPage.module.css";
+import { OpenShared } from "./OpenShared";
 
 /** Length as the preprocessor counts it (code points). */
 const codePoints = (text: string): number => [...text].length;
@@ -137,6 +138,8 @@ export function InputPage(): React.JSX.Element {
           </Button>
         </div>
       </form>
+      {/* A result someone shared as a file opens without a model (T99). */}
+      <OpenShared />
     </section>
   );
 }

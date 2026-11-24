@@ -7,7 +7,8 @@ Description:
   Pages with its Functions, restrict access with Cloudflare Access, share it,
   and update it. Architecture: dev_meta/architecture.md → Deployment.
 
-Status: written for release model-v1.0.0 (T66, 2026-11-23).
+Status: written for release model-v1.0.0 (T66, 2026-11-23). 2026-11-24: the closed beta has
+  ended and the site is open (step 5 is optional); the bucket is read-only for visitors (T99).
 -->
 
 # Publishing Enparse (closed preview)
@@ -70,6 +71,12 @@ In the preview, choose a model, parse a few sentences, open a word's dictionary 
    npx wrangler@4 r2 bucket create enparse-models
    ```
    Keep the bucket **private**: don't turn on the `r2.dev` public URL or a custom domain. The app reads it only through the Pages Functions.
+
+   **Visitors must never be able to upload to the bucket** (owner rule, T99):
+   - The Functions answer GET and HEAD only and never write; tests enforce this (`npm test`). Don't deploy Functions that fail them.
+   - An R2 binding itself allows writes, so the Function code is the guard: don't add other Functions or Workers bound to this bucket.
+   - Don't create R2 API tokens with write access for anything but your own uploads, and never put a token in the app or the repository.
+   - Shared results (the "Share" button) need no storage: they travel in the link or as a file.
 2. Upload:
    ```sh
    npm run r2 -- upload enparse-models --dry-run   # what would be uploaded
@@ -125,6 +132,8 @@ This checks every file through the Functions: the size of each model file (HEAD)
 4. Open a word, then its dictionary entry, and add it to a list.
 
 ## 5. Restrict access to your colleagues (Cloudflare Access)
+
+> Optional. The closed beta has ended and the site is open to everyone (2026-11-24); use this step only for a closed preview.
 
 Cloudflare Zero Trust is free for up to 50 users. Colleagues sign in with a one-time code sent to their email; no accounts or passwords are needed.
 

@@ -19,3 +19,6 @@ export const PATHS = {
   models: "/models",
   about: "/about",
 } as const;
+
+/** Query parameter of #/output that carries a shared result (modules/output share link; T99). */
+export const SHARE_PARAM = "s";

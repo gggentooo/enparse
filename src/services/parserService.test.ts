@@ -15,12 +15,16 @@ import {
 import fixture from "../modules/modelLibrary/catalog.fixture.json";
 import type { ModelRef, ParseResult, ParserClient, WorkerStatus } from "../modules/parser";
 import { ParserLoadError, ParserNotReadyError } from "../modules/parser";
+import { SHARE_MAX_TEXT_CHARS } from "../modules/output/share";
 import type { DeviceAssessment, ModelFitness, PreflightReport } from "../modules/preflight";
 import {
   type ModelStatus,
   ModelUnavailableError,
+  MAX_INPUT_CHARS,
+  NothingToShareError,
   ParseSupersededError,
   type ParserServiceDeps,
+  ShareFormatError,
   createParserService,
 } from "./parserService";
 
@@ -61,6 +65,8 @@ function fakeWorker() {
   const calls: string[] = [];
   const loadFailures: Error[] = [];
   let parseGate: Promise<void> = Promise.resolve();
+  /** Results the next parses return (default: an empty result). */
+  const parseResults: ParseResult[] = [];
   const client: ParserClient = {
     async load(model: ModelRef) {
       calls.push(`load:${model.id}:${model.variant}${model.lowMemory ? ":low-memory" : ""}`);
@@ -80,7 +86,7 @@ function fakeWorker() {
     async parse(text: string) {
       calls.push(`parse:${text}`);
       await parseGate;
-      return parseResult(status.state === "ready" ? status.modelId : "?");
+      return parseResults.shift() ?? parseResult(status.state === "ready" ? status.modelId : "?");
     },
     status: () => status,
     onStatus(fn) {
@@ -93,6 +99,7 @@ function fakeWorker() {
     client,
     calls,
     loadFailures,
+    parseResults,
     gateParse(p: Promise<void>) {
       parseGate = p;
     },
@@ -460,5 +467,138 @@ describe("parseText", () => {
       throw new RangeError("too long");
     });
     await expect(t.service.parseText("x")).rejects.toThrow("too long");
+  });
+});
+
+describe("shared results (T99)", () => {
+  /** A parse of space-separated words as one sentence per entry of `sentences`. */
+  const parsed = (sentences: string[], alternatives = false): { result: ParseResult; text: string } => {
+    const text = sentences.join(" ");
+    let pos = 0;
+    const result = {
+      modelId: A.id,
+      modelVersion: "1.0.0",
+      backend: "wasm",
+      sentences: sentences.map((s) => {
+        const start = pos;
+        const tokens = s.split(" ").map((w, index) => {
+          const t = {
+            index,
+            text: w,
+            start: pos,
+            end: pos + w.length,
+            lemma: w.toLowerCase(),
+            upos: "NOUN",
+            uposProb: 1,
+            chunkTag: "O",
+            chunkProb: 1,
+            head: index === 0 ? -1 : 0,
+            relation: index === 0 ? "root" : "dep",
+            headProb: 1,
+            relationProb: 1,
+          };
+          pos += w.length + 1;
+          return t;
+        });
+        const alts = alternatives
+          ? [
+              {
+                rank: 1,
+                probability: 0.2,
+                reason: "probability",
+                changes: [{ index: 0, upos: "VERB" }],
+                chunks: [],
+                phrases: null,
+              },
+            ]
+          : [];
+        return { start, end: pos - 1, tokens, chunks: [], phrases: null, treeRepaired: false, alternatives: alts };
+      }),
+    } as unknown as ParseResult;
+    return { result, text };
+  };
+  const ready = async (p: { result: ParseResult; text: string }) => {
+    const t = setup({ cached: [A.id] });
+    await t.service.start();
+    await t.service.chooseModel(A.id);
+    t.worker.parseResults.push(p.result);
+    await t.service.parseText(p.text);
+    return t;
+  };
+
+  it("accepts text up to the input limit", () => {
+    expect(SHARE_MAX_TEXT_CHARS).toBe(MAX_INPUT_CHARS);
+  });
+
+  it("has nothing to share before a parse", async () => {
+    const t = setup();
+    expect(t.service.getSnapshot().shareKind).toBeNull();
+    expect(() => t.service.shareFile()).toThrow(NothingToShareError);
+    await expect(t.service.shareLink()).rejects.toBeInstanceOf(NothingToShareError);
+  });
+
+  it("shares one short sentence as a link; the recipient sees it without a model, with the other-readings flag", async () => {
+    const t = await ready(parsed(["Dogs chase cats"], true));
+    expect(t.service.getSnapshot().shareKind).toBe("link");
+    expect(t.service.getSnapshot().annotation?.sentences[0]?.readings).toHaveLength(2);
+    const data = await t.service.shareLink();
+
+    const other = setup(); // never started: no catalog, no model, no worker
+    await other.service.openShared({ kind: "link", data });
+    const snap = other.service.getSnapshot();
+    expect(snap.shared).toBe(true);
+    expect(snap.status).toEqual({ state: "idle" });
+    expect(snap.annotation?.modelId).toBe(A.id);
+    expect(snap.annotation?.sentences.map((s) => s.text)).toEqual(["Dogs chase cats"]);
+    expect(snap.annotation?.sentences[0]?.readings).toHaveLength(1);
+    expect(snap.annotation?.sentences[0]?.otherReadingsOmitted).toBe(true);
+    expect(other.worker.calls).toEqual([]);
+    // The recipient can pass it on, flag included.
+    expect(snap.shareKind).toBe("link");
+    const again = setup();
+    await again.service.openShared({ kind: "link", data: await other.service.shareLink() });
+    expect(again.service.getSnapshot().annotation).toEqual(snap.annotation);
+  });
+
+  it("shares several sentences, or a long sentence, as a file", async () => {
+    const two = await ready(parsed(["Hi there", "Bye now"]));
+    expect(two.service.getSnapshot().shareKind).toBe("file");
+    const long = await ready(parsed([Array.from({ length: 40 }, () => "word").join(" ")]));
+    expect(long.service.getSnapshot().shareKind).toBe("file");
+
+    const other = setup();
+    await other.service.openShared({ kind: "file", content: two.service.shareFile() });
+    const snap = other.service.getSnapshot();
+    expect(snap.shared).toBe(true);
+    expect(snap.shareKind).toBe("file");
+    expect(snap.annotation?.sentences.map((s) => s.text)).toEqual(["Hi there", "Bye now"]);
+    expect(snap.annotation?.sentences[0]?.otherReadingsOmitted).toBe(false);
+  });
+
+  it("refuses unreadable data and keeps what was shown; a new parse replaces a shared result", async () => {
+    const t = await ready(parsed(["Dogs chase cats"]));
+    const before = t.service.getSnapshot().annotation;
+    await expect(t.service.openShared({ kind: "file", content: "{}" })).rejects.toBeInstanceOf(ShareFormatError);
+    await expect(t.service.openShared({ kind: "link", data: "AAAA" })).rejects.toBeInstanceOf(ShareFormatError);
+    expect(t.service.getSnapshot().annotation).toBe(before);
+    expect(t.service.getSnapshot().shared).toBe(false);
+
+    await t.service.openShared({ kind: "file", content: t.service.shareFile() });
+    expect(t.service.getSnapshot().shared).toBe(true);
+    expect(t.service.getSnapshot().notice).toBeNull();
+    await t.service.parseText("Plain.");
+    expect(t.service.getSnapshot().shared).toBe(false);
+  });
+
+  it("opening a shared result wins over a parse still running", async () => {
+    const t = await ready(parsed(["Dogs chase cats"]));
+    const content = t.service.shareFile();
+    const gate = deferred();
+    t.worker.gateParse(gate.promise);
+    const running = t.service.parseText("one");
+    await t.service.openShared({ kind: "file", content });
+    gate.resolve();
+    await expect(running).rejects.toBeInstanceOf(ParseSupersededError);
+    expect(t.service.getSnapshot().shared).toBe(true);
   });
 });

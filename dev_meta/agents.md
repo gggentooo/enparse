@@ -74,6 +74,7 @@ Rules and reference for AI agents (and humans) developing Enparse. Read this doc
 - Do not change the architecture (layers, module list, stack) without updating `architecture.md` in the same change and telling the owner.
 - Do not delete or rewrite document content outside the task's scope.
 - Never add network calls, telemetry, or analytics (owner confirmed no tracking at all, T17).
+- **Never let visitors upload data** (owner, 2026-11-24; T99): no Function, route, or app code may write to the R2 bucket or any other server-side store. The Functions in `functions/` answer GET and HEAD only and never call a bucket write; tests in `functions/models/[[path]].test.ts` enforce this. Features that move user data between people use links and files (shared results, vocabulary export), never a server.
 
 ---
 
@@ -143,7 +144,7 @@ components/ → hooks/ → services/ → modules/ → core/, utils/
 ### Parser and worker code
 
 - Parsing runs only inside `parser.worker.ts`. Never parse on the main thread.
-- The only allowed network requests are loading static assets (model files, dictionary data) from the app's own static host. Model files are served at `/models/*` on that origin by the Pages Function in `functions/models/` (from R2; owner, 2026-11-21, T12); this is the same origin, not an exception.
+- The only allowed network requests are loading static assets (model files, dictionary data) from the app's own static host: GET and HEAD only, never a request that sends user data. Model files are served at `/models/*` on that origin by the Pages Function in `functions/models/` (from R2; owner, 2026-11-21, T12); this is the same origin, not an exception.
 - Preprocessor limits and ambiguity thresholds come from constants or `labels.json`, never hard-coded in multiple places.
 
 ### User-facing text
@@ -358,3 +359,8 @@ Tooling decisions: T13 (owner, 2026-11-21).
 
 - Added: *Testing guide* → release checks (packaged-model integration test, `test:e2e:release`).
 - Added: *Tooling and commands* → `test:e2e:release`, `preview:release`, `r2`; `PUBLISHING.md`.
+
+### 2026-11-24T05:30:41Z — Claude Fable 5.2, No uploads (T99)
+
+- Added: *Agent boundaries* → visitors must never be able to upload data; the R2 bucket is read-only through the Functions (owner).
+- Modified: *Parser and worker code* → the allowed requests are GET and HEAD only.

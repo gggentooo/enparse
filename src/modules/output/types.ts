@@ -19,7 +19,7 @@
  * Dependencies:
  *   None. Used by: ./annotator.ts, ./index.ts.
  *
- * Status: implemented (T57; attachments T79; near-tie notes and forks T83).
+ * Status: implemented (T57; attachments T79; near-tie notes and forks T83; shared results T99).
  */
 
 /** Flat chunk types (parser ChunkType). */
@@ -93,6 +93,8 @@ export type AnnotatorInput = {
       phrases: ReadonlyArray<InputPhrase | InputWord> | null;
       attachment?: { word: number; from: number; to: number };
     }>;
+    /** A shared result (./share.ts; T99): the original parse offered other readings, which are not included. */
+    otherReadings?: boolean;
   }>;
   modelId: string;
   modelVersion: string;
@@ -211,6 +213,8 @@ export type AnnotatedSentence = {
   readings: Reading[];
   /** The top reading's share is below NEAR_TIE_SHARE: no reading is presented as the likely one. */
   nearTie: boolean;
+  /** Shared result (T99): the original parse offered other readings that the share does not carry. */
+  otherReadingsOmitted: boolean;
 };
 
 export type Annotation = {
