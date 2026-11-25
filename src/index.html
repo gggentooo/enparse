@@ -6,6 +6,9 @@ Description:
 
 Tasks:
   1. <!doctype html>, lang attribute (depends on UI language), viewport meta, title.
+  1b. Search engines and link previews (T109–T113): Korean title and description, canonical link,
+     Open Graph tags with a preview image, JSON-LD (WebApplication), and a static introduction
+     inside #root for crawlers that do not run scripts. The site address comes from vite.seo.ts.
   2. <div id="root"> mount node.
   3. <script type="module" src="./main.tsx">.
   4. No external scripts, fonts, analytics, or CDNs (agents.md → no network calls).
@@ -22,7 +25,57 @@ Status: implemented (T39). lang="ko" is the default UI language (T18); services/
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Enparse</title>
+    <!-- Search engines and link previews (T109–T113). %SITE_URL% is set by vite.seo.ts. Keep the wording
+         true to the app: one natural mention of what people search for, no keyword lists. -->
+    <title>Enparse – 무료 영어 구문분석 툴</title>
+    <meta
+      name="description"
+      content="영어 문장을 붙여 넣으면 주어·서술어·목적어와 구 구조를 색과 괄호로 보여 주는 무료 영어 구문분석 툴. 브라우저에서 바로 쓰고, 입력한 글은 서버로 보내지 않습니다."
+    />
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Enparse" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:title" content="Enparse – 무료 영어 구문분석 툴" />
+    <meta
+      property="og:description"
+      content="영어 문장의 주어·서술어·목적어와 구 구조를 색과 괄호로 보여 줍니다. 무료, 브라우저에서 바로 사용."
+    />
+    <meta property="og:image" content="%SITE_URL%/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Enparse – 무료 영어 구문분석 툴" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Enparse",
+        "alternateName": "Enparse 영어 구문분석 툴",
+        "url": "%SITE_URL%/",
+        "description": "영어 문장의 주어·서술어·목적어와 구 구조를 색과 괄호로 보여 주는 한국어 학습자용 영어 구문 분석 도구. 분석은 브라우저 안에서 이루어집니다.",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "JavaScript와 WebAssembly를 지원하는 최신 브라우저",
+        "inLanguage": ["ko", "en"],
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" }
+      }
+    </script>
+    <style>
+      /* The static introduction below, shown until the app has loaded. */
+      .intro {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+        font-family: system-ui, sans-serif;
+        line-height: 1.6;
+      }
+      .intro h1 {
+        font-size: 1.5rem;
+      }
+    </style>
     <!-- Placeholder icons until the visual design (T20); PWA manifest (T69). -->
     <link rel="icon" type="image/png" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
@@ -32,7 +85,26 @@ Status: implemented (T39). lang="ko" is the default UI language (T18); services/
     <meta name="theme-color" content="#0a58ca" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static introduction (T110): what crawlers and people read before the app has loaded. React replaces
+         the content of #root when it starts. It must stay true to what the app does. -->
+    <div id="root">
+      <main class="intro">
+        <h1>Enparse – 무료 영어 구문분석 툴</h1>
+        <p>
+          영어 문장을 붙여 넣으면 주어·서술어·목적어와 명사구·동사구·전치사구 같은 구 구조를 색과 괄호로 보여
+          주는, 한국어 학습자를 위한 영어 구문 분석 도구입니다.
+        </p>
+        <ul>
+          <li>무료이며, 분석은 브라우저 안에서 이루어집니다. 입력한 글은 서버로 보내지 않습니다.</li>
+          <li>문장마다 구(평면) 보기와 구조(중첩) 보기를 제공하고, 해석이 여러 가지인 문장은 다른 해석도 보여 줍니다.</li>
+          <li>단어를 누르면 기본형, 품사, 사전 뜻, 단어 구성을 볼 수 있습니다.</li>
+          <li>분석한 글의 어휘 통계를 보고, 단어장을 만들고, 분석 결과를 링크나 파일로 공유할 수 있습니다.</li>
+          <li>분석 모델을 한 번 내려받으면 오프라인에서도 쓸 수 있습니다.</li>
+        </ul>
+        <p>불러오는 중…</p>
+        <noscript><p>Enparse를 사용하려면 브라우저에서 JavaScript를 켜 주세요.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

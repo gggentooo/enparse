@@ -41,6 +41,7 @@ import { defineConfig } from "vitest/config";
 import { e2eStandIns } from "./vite.e2e.ts";
 import { releasePreview } from "./vite.release.ts";
 import { localModels } from "./vite.localModels.ts";
+import { seo } from "./vite.seo.ts";
 
 /** Cloudflare Pages' per-file limit (25 MiB); larger files go to R2. */
 const PAGES_MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -77,6 +78,9 @@ function skipModelFiles(): Plugin {
   };
 }
 
+/** Files only crawlers and link previews read: not part of the offline app shell (T109–T113). */
+const CRAWLER_ONLY = /^(robots\.txt|sitemap\.xml|og-image\.png|google[0-9a-f]+\.html|naver[0-9a-f]+\.html)$/;
+
 /** Files of the built app shell (relative to dist/), excluding the worker itself and host config. */
 async function shellFiles(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -88,7 +92,7 @@ async function shellFiles(dir: string): Promise<string[]> {
     }
   };
   await walk(dir);
-  return out.filter((f) => f !== "sw.js" && f !== "_headers" && !f.endsWith(".map")).sort();
+  return out.filter((f) => f !== "sw.js" && f !== "_headers" && !f.endsWith(".map") && !CRAWLER_ONLY.test(f)).sort();
 }
 
 /**
@@ -134,6 +138,8 @@ export default defineConfig(({ mode }) => ({
   base: "./",
   plugins: [
     react(),
+    // Site address in the page head, robots.txt, sitemap.xml (T109–T113).
+    seo(),
     skipModelFiles(),
     pwaServiceWorker(),
     ...(mode === "local-models" ? [localModels()] : []),

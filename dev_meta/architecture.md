@@ -264,6 +264,7 @@ The app is hosted on **Cloudflare Pages**; model files live in **Cloudflare R2**
 | Read-only bucket (owner, 2026-11-24; T99) | `functions/` | Visitors must never be able to put data in R2. The Functions answer only GET and HEAD (405 otherwise) and their bucket type has no write method; tests fail if a Function accepts a write method or calls `put` / `delete` / a multipart upload. Uploads happen only from the owner's machine (`scripts/r2.ts`, Wrangler login). Features that move user data (shared results, vocabulary export) use links and files, never the bucket. |
 | Access | Cloudflare Access | The closed beta has ended and the site is open to everyone (owner, 2026-11-24). For a closed preview: self-hosted application on the Pages hostnames, email one-time PIN; same-origin requests carry its cookie, and the manifest is fetched with credentials (`PUBLISHING.md`; T66). |
 | Response headers | `public/_headers` | COOP `same-origin` + COEP `require-corp` (cross-origin isolation for multi-threaded WASM), `nosniff`, `no-referrer`; `sw.js` is `no-cache` so updates are found. |
+| Search engines (T109–T113; owner, 2026-11-25) | `src/index.html`, `vite.seo.ts`, `public/og-image.png`, `public/google….html` | Korean title and description, canonical link, Open Graph tags with a 1200×630 preview image, JSON-LD (`WebApplication`, free), and a static Korean introduction inside `#root` (replaced by the app when it starts; must stay true to the app). The build writes `robots.txt` (all allowed except `/models/` and `/dict/`) and `sitemap.xml` (one URL: hash routes are one page to a search engine). One site address: `vite.seo.ts` → `SITE_URL` (env `SITE_URL` overrides). Ownership-verification files of search consoles live in `public/`. These files are not in the offline app shell. No analytics or third-party scripts (unchanged rule). |
 | Offline app shell (T69) | `dist/sw.js` (from `src/pwa/sw.ts`) | Precaches the built shell (list and version hash injected at build); page loads network-first with the cached shell offline (COOP/COEP re-applied); never handles `/models/*` or `/dict/*`; a new version waits for the user's "reload" in the update banner. |
 | Source of truth | `public/models/` (ONNX via Git LFS) | Written by `training/scripts/package_models.py` (T66). `scripts/r2.ts` maps every release file to its R2 key (model files at the bucket root, `_ort/`, `dict/v<N>/`) and uploads with `wrangler r2 object put --remote` (via npx; `catalog.json` last), or verifies a deployed site. `npm run preview:release` (`vite.release.ts`) serves the production build with the real Functions over the same files. |
 | Dictionary data | R2, same origin | Sharded JSON (T42) at `/dict/v<N>/` (owner, 2026-11-23): `functions/dict/[[path]].ts` serves the R2 bucket `MODELS` under the key prefix `dict/`; versioned files are immutable (one-year cache), `manifest.json` revalidates. Built by `training/dictionary/` (T70; format in `training/dictionary/DATA_CARD.md`); data license CC BY-SA 4.0. `npm run dev:models` serves `training/data/dict/` locally. |
@@ -647,8 +648,11 @@ enparse/
 │       └── helpers.ts
 ├── functions/
 │   └── models/[[path]].ts (Cloudflare Pages Function: /models/* from R2; T12)
+├── vite.seo.ts (site address; robots.txt and sitemap.xml at build; T111)
 ├── public/
 │   ├── _headers (Cloudflare Pages: COOP/COEP; sw.js no-cache; T12, T69)
+│   ├── og-image.png (link preview image, 1200×630; T112)
+│   ├── google<id>.html (Google Search Console ownership file; owner's, do not edit)
 │   ├── manifest.webmanifest (PWA; T69)
 │   ├── icons/ (placeholder app icons until T20; T69)
 │   └── models/ (built by training/ in Phase 11; Git LFS; uploaded to R2, not in dist/)
@@ -1052,3 +1056,7 @@ enparse/
 
 - Added: `Shared/ScrollToTop.tsx` in the component hierarchy and skeleton (rendered by `Layout`; content area and bottom word panel keep `--to-top-clearance` free below their last line).
 - Modified: `OutputPage` entry: bold-head hint in the structure view.
+
+### 2026-11-25T00:52:17Z — Claude Fable 5.2, Search-engine basics (T109–T113)
+
+- Added: *Deployment* → *Search engines* row (title, description, canonical, Open Graph, JSON-LD, static introduction, `robots.txt`, `sitemap.xml`, `SITE_URL`); skeleton → `vite.seo.ts`, `public/og-image.png`, the Search Console file.

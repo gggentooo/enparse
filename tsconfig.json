@@ -60,6 +60,7 @@
     "vite.localModels.ts",
     "vite.e2e.ts",
     "vite.release.ts",
+    "vite.seo.ts",
     "playwright.config.ts",
     "e2e",
     "scripts"

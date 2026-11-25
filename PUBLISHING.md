@@ -204,6 +204,18 @@ git push && git push origin model-v1.0.0
 
 CI checks out without LFS. The packaged-model tests skip there (they detect pointer files), and the fake-backend end-to-end tests still run.
 
+## 10. Search engines
+
+The build already contains what crawlers read (title, description, link preview, `robots.txt`, `sitemap.xml`; `todo.md` → T109–T113). After deploying:
+
+1. **The site must be open.** If Cloudflare Access (step 5) still covers `enparse.pages.dev`, crawlers get a sign-in page and nothing is indexed. Check in a private window.
+2. **Google Search Console** (https://search.google.com/search-console): add a *URL prefix* property for `https://enparse.pages.dev/`, choose *HTML file*, and put the downloaded `google….html` in `public/` unchanged (the current one is already there). Deploy, open `https://enparse.pages.dev/google….html` to see that it is served, then press *Verify*. Keep the file deployed: Google re-checks it. Then *Sitemaps* → submit `sitemap.xml`, and *URL inspection* → the home page → *Request indexing*.
+3. **Naver Search Advisor** (https://searchadvisor.naver.com): add the site, verify with its HTML file (`naver….html` in `public/`, same way), then *요청 → 사이트맵 제출* (`sitemap.xml`) and *웹 페이지 수집* for the home page. Naver rarely finds a new site by itself.
+4. **A custom domain later:** set `SITE_URL` in `vite.seo.ts` (or build with `SITE_URL=https://…`), deploy, and add the new address as a new property in both consoles.
+5. **Link previews:** KakaoTalk and others cache the card. After changing the title, description, or `og-image.png`, clear it at https://developers.kakao.com/tool/debugger/sharing.
+
+No analytics or tracking scripts: the consoles' own reports (queries, impressions) are the feedback.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |

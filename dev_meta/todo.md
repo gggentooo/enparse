@@ -63,6 +63,36 @@ This guide applies to all contributors (human and AI) editing this file.
 
 ## Done
 
+#### [Project] Structured data: WebApplication (JSON-LD) · T113 · Build
+
+- **Files:** `src/index.html`, `src/seo.test.ts`
+- **Done:** 2026-11-25 (owner request). A JSON-LD block in the page head describes the site as a `WebApplication`: name, address, Korean description, category `EducationalApplication`, languages ko and en, free (`isAccessibleForFree`, offer price 0 KRW). No ratings or reviews (there are none). A test checks that it is valid JSON and carries no rating. Recorded in `architecture.md` → *Search engines*.
+- **Needs:** —
+
+#### [Project] Link previews: Open Graph tags and preview image · T112 · Build
+
+- **Files:** `src/index.html`, `public/og-image.png` (new), `vite.config.ts`, `src/seo.test.ts`
+- **Done:** 2026-11-25 (owner request). `og:type`, `og:site_name`, `og:locale` (ko_KR), `og:url`, `og:title`, `og:description`, `og:image` (absolute URL, 1200×630, with alt text) and `twitter:card` = `summary_large_image`, for the card shown when the link is shared (KakaoTalk, blogs, social media). The image is a first version made from the app's own look (name, "무료 영어 구문분석 툴", a sample sentence in boxes); it is not precached by the service worker. Not checked with the KakaoTalk or Facebook preview tools (needs the deployed site). Recorded in `architecture.md` → *Search engines*.
+- **Needs:** —
+
+#### [Project] robots.txt and sitemap.xml · T111 · Build
+
+- **Files:** `vite.seo.ts` (new), `vite.config.ts`, `package.json` (lint and format lists), `tsconfig.json`, `src/seo.test.ts` (new)
+- **Done:** 2026-11-25 (owner request). The build writes `dist/robots.txt` (everything allowed except `/models/` and `/dict/`: data files, no page content; pointer to the sitemap) and `dist/sitemap.xml` (the one indexable URL, `lastmod` = build date; hash routes are the same page to a search engine). The site address is one constant, `vite.seo.ts` → `SITE_URL` (`https://enparse.pages.dev`; override with the environment variable `SITE_URL` for a custom domain), also used for the canonical link and the T112 and T113 tags. Search-engine files and verification files (`google….html`, `naver….html`) are left out of the offline app shell. Recorded in `architecture.md` → *Search engines*, `PUBLISHING.md` → step 10.
+- **Needs:** —
+
+#### [Project] Static introduction in the HTML · T110 · Build
+
+- **Files:** `src/index.html`, `src/seo.test.ts`
+- **Done:** 2026-11-25 (owner request). `#root` carries a short Korean introduction (heading, what the tool shows, free and nothing sent to a server, views, word details, vocabulary and sharing, offline use) and a `<noscript>` note, for crawlers that do not run scripts (Naver) and as the first paint while the app loads. React replaces it when the app starts. Every statement is true of the app; keep it so when features change (text shown only to crawlers would be cloaking). Recorded in `architecture.md` → *Search engines*.
+- **Needs:** —
+
+#### [Project] Page title, description, and canonical link · T109 · Build
+
+- **Files:** `src/index.html`, `src/seo.test.ts`
+- **Done:** 2026-11-25 (owner request). Title "Enparse – 무료 영어 구문분석 툴"; a Korean meta description (what it does, free, runs in the browser, text is not sent to a server) with one natural mention of the search phrase and no keyword list; `<link rel="canonical">` to the site address. Tests keep the title ≤ 40 and the description ≤ 110 characters and forbid a keywords tag and third-party URLs. The title stays Korean when the interface is switched to English. Recorded in `architecture.md` → *Search engines*.
+- **Needs:** —
+
 #### [Components/Pages] Source code and blog links on the About page · T108 · Build
 
 - **Files:** `src/components/Pages/AboutPage.tsx`, `AboutPage.test.tsx`, `src/i18n/en.ts`, `ko.ts`
@@ -777,3 +807,7 @@ This guide applies to all contributors (human and AI) editing this file.
 ### 2026-11-24T08:06:01Z — Claude Opus 5.5, T108 added and done
 
 - Added: T108 (Done): source code and blog links on the About page (owner request, 2026-11-24).
+
+### 2026-11-25T00:52:17Z — Claude Fable 5.2, T109–T113 added and done
+
+- Added: T109–T113 (Done): search-engine basics (owner request, 2026-11-25): Korean title, description, and canonical link; static introduction in the HTML; `robots.txt` and `sitemap.xml`; Open Graph tags with a preview image; JSON-LD.
