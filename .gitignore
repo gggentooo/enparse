@@ -63,6 +63,9 @@ unsloth_compiled_cache/
 *.swo
 *~
 
+# Wrangler's local working folder (temporary build output of `wrangler pages deploy` / `dev`)
+.wrangler/
+
 # OS files
 .DS_Store
 Thumbs.db
