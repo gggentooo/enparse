@@ -1048,7 +1048,7 @@ async function onRequest2({ request, env: env2, params }) {
 }
 __name(onRequest2, "onRequest");
 
-// ../.wrangler/tmp/pages-dZj9Tg/functionsRoutes-0.3939849959965456.mjs
+// ../.wrangler/tmp/pages-etJXI8/functionsRoutes-0.5973244625359605.mjs
 var routes = [
   {
     routePath: "/dict/:path*",
